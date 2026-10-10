@@ -13,7 +13,7 @@ namespace MedievalKnight
         public const float CamPitch = 56f, CamDist = 16f, CamFov = 40f;
         public const float MinotaurRespawn = 20f;
         // co-op rules: enemy health per extra player, seconds a downed knight waits, protection while picking a level-up card
-        public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 1.4f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
+        public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 3f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
         public const float MaxHitDamage = 20000f;  // host-side sanity limit for one reported hit
         static readonly Vector3 MinotaurHome = new Vector3(0f, 0f, 12.5f);
         static readonly Vector3 DummyPos = new Vector3(5f, 0f, -3.5f);
@@ -61,6 +61,8 @@ namespace MedievalKnight
         // Monsters get tougher as the party levels, so the upgrades keep mattering; each extra player adds health.
         public float EnemyHpScale { get { return (1f + 0.45f * (PartyLevel - 1f)) * (1f + CoopHpPerPlayer * Mathf.Max(0, players.Count - 1)); } }
         public float EnemyDamageScale { get { return 1f + 0.08f * (PartyLevel - 1f); } }
+        // EXP per monster grows with the party level too (read when the monster appears), so level 25 is reachable
+        public float EnemyExpScale { get { return 1f + 0.15f * (PartyLevel - 1f); } }
 
         Transform actors;
         bool waveQueued, started, readyPending, wiped;
@@ -178,6 +180,7 @@ namespace MedievalKnight
             LevelStep = 0;
             InventoryOpen = false;
             hud.HideLevelUp();
+            hud.HideDeath();
             hud.HideInventory();
             hud.SetVisible(false);
             Time.timeScale = 1f;
@@ -702,8 +705,9 @@ namespace MedievalKnight
                     {
                         if (credit) progress.kills++;
                         if (exp) GrantExp(e.expReward, at);
+                        if (exp) GrantSouls(e.soulReward, at);
                     }
-                    else Net.SendExp(p.pid, exp ? e.expReward : 0f, at, credit);
+                    else Net.SendExp(p.pid, exp ? e.expReward : 0f, at, credit, exp ? e.soulReward : 0);
                 }
             }
             RollDrop(e);
@@ -903,6 +907,15 @@ namespace MedievalKnight
             return gained;
         }
 
+        // Soul points: a plain score for now (nothing to spend them on). They belong to the player and survive death.
+        public void GrantSouls(int amount, Vector3 popupAt)
+        {
+            if (amount <= 0 || knight == null) return;
+            knight.souls += amount;
+            hud.Popup(popupAt + new Vector3(0.9f, -0.3f, 0f), "+" + amount + " Soul", Hud.SoulColor, 18);
+            Fx.I.Burst(popupAt, 5, Hud.SoulColor, 1.5f, 3f, Vector3.up, 0.8f, 0.7f, -2f, 0.08f);
+        }
+
         // Step 1: the three upgrade cards. Step 2 (after a card is picked): where the stat point goes.
         void OpenLevelUp()
         {
@@ -958,11 +971,32 @@ namespace MedievalKnight
         }
 
         // The local knight got back up.
+        // The local knight just went down: close any window and show the YOU DIED screen with the numbers from before
+        // the reset (the reset itself happens when he stands up again, in OnKnightRevive).
+        public void OnKnightDown(Knight k)
+        {
+            if (k != knight) return;
+            LevelStep = 0;
+            offers = null;
+            hud.HideLevelUp();
+            SetInventory(false);
+            progress.pendingChoices = 0;
+            hud.ShowDeath(progress.level, k.inventory.OwnedCount, Weapons.All.Length, k.souls, k);
+        }
+
+        // The local knight got back up: dying costs the level, EXP, cards and stat points (swords and Soul stay).
         public void OnKnightRevive(Knight k)
         {
-            progress.exp = 0f;                                    // dying costs the progress inside the current level
+            hud.HideDeath();
+            k.ResetProgress();
             if (Net.Authority) PushEnemiesFrom(k.spawnPoint);
-            hud.Banner("Revived - EXP of this level lost", new Color(0.7f, 0.9f, 1f));
+            hud.Banner("Revived - back to Level 1", new Color(0.7f, 0.9f, 1f));
+        }
+
+        // The camera jumps (does not glide) to the local knight.
+        public void SnapCamera()
+        {
+            if (knight != null) camFocus = knight.transform.position;
         }
 
         // Clears the area around a knight who is about to stand up again (single player / host).
@@ -1042,6 +1076,7 @@ namespace MedievalKnight
             offers = null;
             LevelStep = 0;
             hud.HideLevelUp();
+            hud.HideDeath();
             SetInventory(false);
             hitStopUntil = 0f;
             minoRespawnAt = 0f;

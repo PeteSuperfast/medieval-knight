@@ -10,6 +10,7 @@ namespace MedievalKnight
     public class Minotaur : Enemy
     {
         public const float BaseHp = 520f, BaseArmor = 120f, ExpReward = 250f, AggroRange = 12.5f;
+        public const int SoulReward = 50;
         const float SweepRange = 4.7f, SweepHalfArc = 110f, SmashRadius = 2.4f, LaneLength = 15f, LaneWidth = 2.6f;
         const float SweepDamage = 26f, SmashDamage = 38f, ChargeDamage = 30f;
 
@@ -37,7 +38,8 @@ namespace MedievalKnight
             label = "Minotaur";
             radius = 1.15f; height = 3.3f; mass = 40f; solid = true;
             knockResist = 0.12f; stunResist = 0.5f;
-            expReward = ExpReward;
+            expReward = ExpReward * Game.I.EnemyExpScale;      // scaled by the party level at the moment it appears
+            soulReward = SoulReward;
             dmgScale = Game.I.EnemyDamageScale;
             InitStats(BaseHp * Game.I.EnemyHpScale, BaseArmor * Game.I.EnemyHpScale);
             Build();

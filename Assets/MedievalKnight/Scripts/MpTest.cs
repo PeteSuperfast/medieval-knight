@@ -332,7 +332,7 @@ namespace MedievalKnight
             for (int i = 0; i < me.inventory.owned.Length; i++) if (me.inventory.owned[i]) own |= 1 << i;
             string mstates = "";
             foreach (string s in minoStates) mstates += s + ",";
-            sb.Append(";lvl=").Append(me.progress.level).Append(";texp=").Append(F1(me.progress.totalExp)).Append(";kills=").Append(me.progress.kills)
+            sb.Append(";lvl=").Append(me.progress.level).Append(";texp=").Append(F1(me.progress.totalExp)).Append(";kills=").Append(me.progress.kills).Append(";souls=").Append(me.souls)
               .Append(";own=").Append(own).Append(";ts=").Append(F2(Time.timeScale)).Append(";snap=").Append(Net.SnapshotsReceived)
               .Append(";panel=").Append(g.LevelStep).Append(";tags=").Append(g.hud.NameTagsShown).Append(";rows=").Append(g.hud.PartyRowsShown)
               .Append(";wave=").Append(g.wave).Append(";ping=").Append(Net.PingMs)
@@ -930,10 +930,12 @@ namespace MedievalKnight
                 m.hp = 5f; m.armor = 0f;
                 g.dropOverride = -1;                                  // the Minotaur's normal 100% drop
                 int mid = m.netId;
+                float mExp = m.expReward;
                 yield return W(0.3f);
                 yield return Sum();
                 var texp0 = new Dictionary<string, float>();
-                foreach (string r in peers) texp0[r] = N(r, "texp");
+                var soul0 = new Dictionary<string, float>();
+                foreach (string r in peers) { texp0[r] = N(r, "texp"); soul0[r] = N(r, "souls"); }
                 yield return Cmd(A, "hunt", mid.ToString(), "10");
                 Map hunt = Parse(Rep(last, A));
                 g.dropOverride = 0;
@@ -942,9 +944,12 @@ namespace MedievalKnight
                 yield return Sum();
                 bool expOk = true;
                 string expSeen = "";
-                foreach (string r in peers) { float de = N(r, "texp") - texp0[r]; expSeen += r + "+" + F1(de) + " "; if (Mathf.Abs(de - Minotaur.ExpReward) > 0.05f) expOk = false; }
+                foreach (string r in peers) { float de = N(r, "texp") - texp0[r]; expSeen += r + "+" + F1(de) + " "; if (Mathf.Abs(de - mExp) > 0.05f) expOk = false; }
                 Ck(hunt.G("dead") == "True" && Eq("mino") && S("H", "mino") == "none", A + " struck the last blow on the Minotaur (" + hunt.G("swings") + " swing(s)); he is dead on every screen");
                 Check("every player got the Minotaur's 250 EXP: " + expSeen, expOk);
+                bool soulOk = true; string soulSeen = "";
+                foreach (string r in peers) { float ds = N(r, "souls") - soul0[r]; soulSeen += r + "+" + F1(ds) + " "; if (Mathf.Abs(ds - Minotaur.SoulReward) > 0.05f) soulOk = false; }
+                Check("every player got the Minotaur's 50 Soul: " + soulSeen, soulOk);
                 bool onePerPlayer = true; int ownedAlready = 0; string bossSeen = "";
                 foreach (string r in peers) { bool has = ((int)N(r, "own") & (1 << Weapons.Boss)) != 0; if (has) ownedAlready++; bossSeen += r + "=" + (has ? "taken" : S(r, "pk") + " on the ground") + " "; if (!has && S(r, "pk") != "1") onePerPlayer = false; if (has && S(r, "pk") != "0") onePerPlayer = false; }
                 Check("boss sword: one per player, each player sees only his own (" + bossSeen.Trim() + "; still on the host: " + S("H", "pkall") + ")", onePerPlayer && N("H", "pkall") + ownedAlready == n + 1);
@@ -967,6 +972,7 @@ namespace MedievalKnight
             // ------------------------------------------------ 8. a client dies and comes back
             {
                 Vector3 home = Game.SpawnPointFor(pidC);
+                float soulsC0 = N(C, "souls"), lvC0 = N(C, "lvl");
                 yield return Tp(C, 6f, -14f, 6f, 0f);
                 for (int i = 0; i < peers.Length; i++) if (peers[i] != C) yield return Tp(peers[i], 2f + i, -11f, 6f, -14f);
                 yield return Cmd(C, "autoheal", "0");
@@ -982,6 +988,9 @@ namespace MedievalKnight
                 Ck(Eq("dead" + pidC) && S("H", "dead" + pidC) == "0" && Near("x" + pidC, 0.3f) && Near("z" + pidC, 0.3f)
                     && Mathf.Abs(N("H", "x" + pidC) - home.x) < 0.5f && Mathf.Abs(N("H", "z" + pidC) - home.z) < 0.5f,
                     C + " revived after " + Game.ReviveDelayCoop + " s at his spawn point (" + F1(home.x) + ", " + F1(home.z) + ") on every screen");
+                Ck(Eq("lv" + pidC) && S("H", "lv" + pidC) == "1" && N(C, "lvl") == 1f && lvC0 > 1f,
+                    C + " fell from level " + lvC0 + " and is back at level 1 on every screen");
+                Check(C + " kept his Soul through death (" + soulsC0 + " -> " + N(C, "souls") + ")", soulsC0 > 0f && Mathf.Abs(N(C, "souls") - soulsC0) < 0.01f);
             }
 
             // ------------------------------------------------ 9. F5: refused for a client, the host restarts everybody

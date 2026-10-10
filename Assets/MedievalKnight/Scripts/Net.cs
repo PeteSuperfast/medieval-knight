@@ -49,7 +49,7 @@ namespace MedievalKnight
         public NetW U16(int v) { Need(2); b[n++] = (byte)v; b[n++] = (byte)(v >> 8); return this; }
         public NetW I32(int v) { Need(4); b[n++] = (byte)v; b[n++] = (byte)(v >> 8); b[n++] = (byte)(v >> 16); b[n++] = (byte)(v >> 24); return this; }
         public NetW F32(float v) { return I32(BitConverter.SingleToInt32Bits(v)); }
-        // a coordinate in centimetres (the arena is 38 m wide)
+        // a coordinate in centimetres (i16 reaches +-327 m; the arena is 380 m wide)
         public NetW Pos(float v) { return U16(Mathf.Clamp(Mathf.RoundToInt(v * 100f), -32767, 32767) & 0xFFFF); }
         public NetW Vec(Vector3 v) { return Pos(v.x).Pos(v.y).Pos(v.z); }
         public NetW Yaw(float deg) { return U16(Mathf.RoundToInt(Mathf.Repeat(deg, 360f) / 360f * 65535f)); }
@@ -259,7 +259,7 @@ namespace MedievalKnight
     // Net.Poll (start of Game.Update) and Net.LateTick (Game.LateUpdate).
     public static class Net
     {
-        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 1;
+        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 2;     // 2: Exp carries Soul, pickups carry a kind, Act kind 20 = dash
         public const int Magic = 0x4D4B4E54;                                 // "MKNT"
         public const float SnapshotRate = 15f, StateRate = 20f;              // messages per second
         public const float ConnectTimeout = 6f, HandshakeTimeout = 6f, SilenceTimeout = 10f;
@@ -891,7 +891,9 @@ namespace MedievalKnight
                     Vector3 at = r.Vec();
                     bool credit = r.U8() != 0;
                     if (credit) g.progress.kills++;
+                    int souls = r.U16();
                     if (amount > 0f) g.GrantExp(amount, at);
+                    if (souls > 0) g.GrantSouls(souls, at);
                     break;
                 }
 
@@ -970,11 +972,11 @@ namespace MedievalKnight
             c.Send(m);
         }
 
-        public static void SendExp(int pid, float amount, Vector3 at, bool killCredit)
+        public static void SendExp(int pid, float amount, Vector3 at, bool killCredit, int souls)
         {
             Conn c = IsHost ? ConnOf(pid) : null;
             if (c == null) return;
-            byte[] m = new NetW(Msg.Exp).F32(amount).Vec(at).U8(killCredit ? 1 : 0).Done();
+            byte[] m = new NetW(Msg.Exp).F32(amount).Vec(at).U8(killCredit ? 1 : 0).U16(Mathf.Clamp(souls, 0, 65535)).Done();
             BytesOut += m.Length;
             c.Send(m);
         }

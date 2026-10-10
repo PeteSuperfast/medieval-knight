@@ -122,6 +122,7 @@ namespace MedievalKnight
         public Vector3 spawnPoint;
         public Progress progress = new Progress();
         public readonly Inventory inventory = new Inventory();
+        public int souls;                                   // Soul points: not part of Progress, because dying resets that
         public readonly NetInterp interp = new NetInterp();
         public float hp = BaseHp, armor = BaseArmor, stamina = BaseStamina;
         public readonly float[] cd = new float[4], cdMax = new float[4];
@@ -132,6 +133,7 @@ namespace MedievalKnight
         public bool Invulnerable { get { return invuln || Glowing || Dashing; } }
         // 0.5 s of invulnerability from the moment of a dash (the body only moves for the first 0.2 s)
         public bool Dashing { get { return Time.time < dashInvulnUntil; } }
+        public float ReviveIn { get { return Dead ? Mathf.Max(0f, reviveAt - Time.time) : 0f; } }       // seconds until he stands up again
         public float DashReadyIn { get { return Mathf.Max(0f, dashReadyAt - Time.time); } }
         // just revived, or picking a level-up card online: cannot be hurt, and glows
         public bool Glowing { get { return remote ? netGlow : Time.time < invulnUntil || Time.time < protectUntil; } }
@@ -175,7 +177,7 @@ namespace MedievalKnight
         float swYaw = RestYaw, swPitch = RestPitch, swHand = RestHand;
         float rigLean, rigHop, rigSpin, jumpY, walkPhase, hurtTint;
         float lastSpendTime = -10f, lastDamageTime = -10f, lastAttackEnd = -10f, invulnUntil, protectUntil;
-        float dashInvulnUntil, dashMoveEnd, dashReadyAt, lastDodgeFx = -10f, lastRunDust;
+        float dashInvulnUntil, dashMoveEnd, dashReadyAt, lastDodgeFx = -10f, lastRunDust, reviveAt;
         Vector3 dashDir;
         bool invuln, lockFacing, whirl, shieldPush;
         float shieldPushK;
@@ -306,6 +308,7 @@ namespace MedievalKnight
         {
             CancelAction();
             progress = new Progress();
+            souls = 0;                                                   // F5 clears Soul too (dying does not)
             inventory.Reset();
             RebuildSword();
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
@@ -332,6 +335,16 @@ namespace MedievalKnight
         {
             IsAttacking = false; lockFacing = false; whirl = false; shieldPush = false; invuln = false;
             queued = -1; rigSpin = 0f;
+        }
+
+        // Dying: level, EXP, upgrade cards and stat points start over. Swords, Soul and the kill count stay.
+        // Health / armor / stamina come back full for the new (level 1) maximums.
+        public void ResetProgress()
+        {
+            int kills = progress.kills;
+            progress = new Progress { kills = kills };
+            hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
+            queued = -1;
         }
 
         public void OnLevelUp()
@@ -1184,19 +1197,22 @@ namespace MedievalKnight
             IsBlocking = false; Airborne = false;
             jumpY = 0f; dashMoveEnd = 0f; dashInvulnUntil = 0f;
             bool online = Net.Multiplayer;
-            Game.I.hud.Banner(online ? "You are down! Back in " + Game.ReviveDelayCoop.ToString("0") + " seconds..." : "Knight down! Reviving...", new Color(1f, 0.5f, 0.4f));
+            reviveAt = Time.time + (online ? Game.ReviveDelayCoop : Game.ReviveDelaySingle);
+            Game.I.OnKnightDown(this);                      // YOU DIED screen (the numbers shown are the ones from before the reset)
             yield return FallRoutine();
-            yield return new WaitForSeconds(online ? Game.ReviveDelayCoop : Game.ReviveDelaySingle);
-            Game.I.OnKnightRevive(this);
+            yield return new WaitForSeconds(Mathf.Max(0f, reviveAt - Time.time));
+            Game.I.OnKnightRevive(this);                    // back to level 1 (swords and Soul stay)
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
             rigLean = 0f; rigHop = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             knockVel = Vector3.zero;
             transform.position = spawnPoint;
+            Game.I.SnapCamera();
             invulnUntil = Time.time + 2.5f;
             Dead = false;
             Sfx.I.Play(Snd.Ready);
             Fx.I.Ring(Ground(0.06f), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
+            Fx.I.Burst(transform.position + Vector3.up * 1.0f, 18, new Color(0.8f, 0.92f, 1f), 2f, 6f, Vector3.up, 0.8f, 0.7f, 2f, 0.1f);
         }
     }
 }

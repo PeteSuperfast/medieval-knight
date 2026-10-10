@@ -68,6 +68,16 @@ namespace MedievalKnight
         BarUi hpBar, armorBar, staminaBar, expBar, bossBar;
         Text statsText, bannerText, actionText, noticeText, controlsText, bossText, levelTitle, levelSub, invSlot, invStats;
         GameObject controlsPanel, bossPanel, levelRoot, invRoot;
+        public static readonly Color SoulColor = new Color(0.62f, 0.91f, 1f);
+        GameObject deathRoot;
+        Image deathDim;
+        Text deathTitle, deathLose, deathKeep, deathCount;
+        Knight deathKnight;
+        float deathShownAt;
+        Image soulIcon;
+        Text soulText;
+        int soulShown;
+        float soulBumpAt = -10f;
         readonly Image[] staminaTicks = new Image[10];
         float lastStamina, tickFlashAt = -10f;
         int tickFlash = -1;
@@ -120,7 +130,7 @@ namespace MedievalKnight
             popupRoot = Rect("Popups", Vector2.zero, Vector2.zero, Vector2.zero);
 
             // --- knight bars + level / EXP, top-left ---
-            Panel("BarsPanel", new Vector2(0, 1), new Vector2(16, -16), new Vector2(400, 146), PanelCol);
+            Panel("BarsPanel", new Vector2(0, 1), new Vector2(16, -16), new Vector2(400, 180), PanelCol);
             hpBar = MakeBar("HEALTH", new Vector2(0, 1), new Vector2(116, -28), 288, new Color(0.86f, 0.2f, 0.2f));
             armorBar = MakeBar("ARMOR", new Vector2(0, 1), new Vector2(116, -60), 288, new Color(0.5f, 0.68f, 0.92f));
             staminaBar = MakeBar("STAMINA", new Vector2(0, 1), new Vector2(116, -92), 288, new Color(0.95f, 0.78f, 0.22f));
@@ -128,6 +138,17 @@ namespace MedievalKnight
             expBar.label.fontStyle = FontStyle.Bold;
             expBar.label.color = new Color(1f, 0.9f, 0.45f);
             expBar.label.fontSize = 18;
+
+            // --- Soul, the fifth row of the top-left panel ---
+            Text soulLabel = MakeText("SoulLabel", new Vector2(0, 1), new Vector2(28, -156), new Vector2(90, 24), 15, TextAnchor.MiddleLeft);
+            soulLabel.text = "SOUL";
+            soulLabel.color = SoulColor;
+            soulIcon = Panel("SoulIcon", new Vector2(0, 1), new Vector2(116, -158), new Vector2(14, 20), SoulColor);
+            soulIcon.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+            soulText = MakeText("SoulValue", new Vector2(0, 1), new Vector2(136, -156), new Vector2(240, 24), 20, TextAnchor.MiddleLeft);
+            soulText.fontStyle = FontStyle.Bold;
+            soulText.color = SoulColor;
+            soulText.text = "0";
 
             // thin dividers on the stamina bar every 25 points: one section = one dash
             for (int i = 0; i < staminaTicks.Length; i++)
@@ -141,20 +162,20 @@ namespace MedievalKnight
             }
 
             // --- upgrade totals, under the bars ---
-            Panel("StatsPanel", new Vector2(0, 1), new Vector2(16, -168), new Vector2(400, 152), PanelCol);
-            statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -174), new Vector2(380, 142), 13, TextAnchor.UpperLeft);
+            Panel("StatsPanel", new Vector2(0, 1), new Vector2(16, -202), new Vector2(400, 152), PanelCol);
+            statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -208), new Vector2(380, 142), 13, TextAnchor.UpperLeft);
             statsText.supportRichText = true;
 
             // --- online: connection line and the other players, under the stats ---
             RectTransform pr = Rect("Party", new Vector2(0, 1), Vector2.zero, Vector2.zero);
             partyRoot = pr.gameObject;
-            partyPanel = Panel("PartyPanel", new Vector2(0, 1), new Vector2(16, -326), new Vector2(400, 110), PanelCol, pr);
-            netText = MakeText("NetStatus", new Vector2(0, 1), new Vector2(28, -330), new Vector2(380, 20), 13, TextAnchor.MiddleLeft, pr);
+            partyPanel = Panel("PartyPanel", new Vector2(0, 1), new Vector2(16, -360), new Vector2(400, 110), PanelCol, pr);
+            netText = MakeText("NetStatus", new Vector2(0, 1), new Vector2(28, -364), new Vector2(380, 20), 13, TextAnchor.MiddleLeft, pr);
             netText.color = new Color(0.75f, 0.95f, 0.8f);
             for (int i = 0; i < party.Length; i++)
             {
                 var u = new PartyUi();
-                float y = -354f - i * 26f;
+                float y = -388f - i * 26f;
                 RectTransform row = Rect("PartyRow" + i, new Vector2(0, 1), Vector2.zero, Vector2.zero, pr);
                 u.go = row.gameObject;
                 u.swatch = Panel("Swatch", new Vector2(0, 1), new Vector2(28, y - 2), new Vector2(10, 18), Color.white, row);
@@ -208,6 +229,8 @@ namespace MedievalKnight
 
             BuildLevelPanel();
             BuildInventoryPanel();
+
+            BuildDeathPanel();
 
             // --- pick-up / equip / volume notice: above the last-action line, on top of the panels ---
             noticeText = MakeText("Notice", new Vector2(0.5f, 0), new Vector2(0, 148), new Vector2(900, 30), 21, TextAnchor.MiddleCenter);
@@ -394,6 +417,52 @@ namespace MedievalKnight
             invRoot.SetActive(false);
         }
 
+        // The YOU DIED screen. Not clickable (nothing under it can be pressed anyway: a dead knight takes no input).
+        void BuildDeathPanel()
+        {
+            RectTransform dr = Rect("Death", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            Fill(dr);
+            deathRoot = dr.gameObject;
+            deathDim = Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.12f, 0f, 0f, 0f), dr);
+            Fill(deathDim.rectTransform);
+            deathTitle = MakeText("Title", new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(900, 90), 60, TextAnchor.MiddleCenter, dr);
+            deathTitle.fontStyle = FontStyle.Bold;
+            deathTitle.color = new Color(0.77f, 0.17f, 0.17f);
+            deathTitle.text = "YOU DIED";
+            deathLose = MakeText("Lose", new Vector2(0.5f, 0.5f), new Vector2(0, -10), new Vector2(900, 60), 22, TextAnchor.UpperCenter, dr);
+            deathLose.color = new Color(0.8f, 0.82f, 0.86f);
+            deathLose.supportRichText = true;
+            deathKeep = MakeText("Keep", new Vector2(0.5f, 0.5f), new Vector2(0, -70), new Vector2(900, 34), 22, TextAnchor.MiddleCenter, dr);
+            deathKeep.color = new Color(1f, 0.88f, 0.45f);
+            deathKeep.supportRichText = true;
+            deathCount = MakeText("Count", new Vector2(0.5f, 0.5f), new Vector2(0, -130), new Vector2(900, 34), 24, TextAnchor.MiddleCenter, dr);
+            deathCount.fontStyle = FontStyle.Bold;
+            deathRoot.SetActive(false);
+        }
+
+        public bool DeathVisible { get { return deathRoot.activeSelf; } }
+        public string DeathLoseText { get { return deathLose.text; } }
+        public string DeathKeepText { get { return deathKeep.text; } }
+        public string DeathCountText { get { return deathCount.text; } }
+
+        // The numbers are the ones from before the reset (it happens when the knight stands up again).
+        public void ShowDeath(int level, int swords, int swordTotal, int souls, Knight k)
+        {
+            deathRoot.SetActive(true);
+            deathKnight = k;
+            deathShownAt = Time.unscaledTime;
+            bannerTime = 0f; bannerText.text = "";
+            deathLose.text = "You lose:   Lv " + level + "  >  Lv 1\nall upgrade cards and stat points";
+            deathKeep.text = "You keep:   Swords (" + swords + " / " + swordTotal + ")      <color=" + Hex(SoulColor) + ">Souls " + souls.ToString("N0") + "</color>";
+            Color c = deathDim.color; c.a = 0f; deathDim.color = c;
+        }
+
+        public void HideDeath()
+        {
+            if (deathRoot != null) deathRoot.SetActive(false);
+            deathKnight = null;
+        }
+
         // ---------------------------------------------------------------- public API
 
         // Longer-lived line for things the player should not miss: sword picked up, equipped, sound volume.
@@ -510,7 +579,7 @@ namespace MedievalKnight
                 }
                 else if (a == Attr.Block)
                 {
-                    c.line.text = "+2% Block  +" + Progress.ArmorPerPoint.ToString("0") + " Armor";
+                    c.line.text = "+" + (Progress.BlockPerPoint * 100f).ToString("0.#") + "% Block  +" + Progress.ArmorPerPoint.ToString("0") + " Armor";
                     c.detail.text = "Shield stops  " + (pr.BlockReduction * 100f).ToString("0") + "% > " + ((pr.BlockReduction + Progress.BlockPerPoint) * 100f).ToString("0") + "%"
                         + "\nMax armor  " + k.MaxArmor.ToString("0") + " > " + (k.MaxArmor + Progress.ArmorPerPoint).ToString("0") + pts;
                 }
@@ -651,6 +720,16 @@ namespace MedievalKnight
             UpdateBar(armorBar, k.armor, k.MaxArmor, dt, false, null);
             UpdateBar(staminaBar, k.stamina, k.MaxStamina, dt, Time.unscaledTime - k.StaminaDeniedTime < 0.35f, null);
             UpdateStaminaTicks(k);
+            UpdateSoul(k);
+            if (deathRoot.activeSelf && deathKnight != null)
+            {
+                // fades in over 0.6 s: dark red, a little less dark online (the others keep fighting)
+                float a = Mathf.Clamp01((Time.unscaledTime - deathShownAt) / 0.6f) * (Net.Multiplayer ? 0.35f : 0.75f);
+                Color dc = deathDim.color; dc.a = a; deathDim.color = dc;
+                int left = Mathf.CeilToInt(deathKnight.ReviveIn - 0.001f);
+                deathCount.text = (Net.Multiplayer ? "Returning in  " : "Returning to town in  ") + Mathf.Max(0, left) + " ...";
+                deathCount.color = new Color(1f, 1f, 1f, 0.85f);
+            }
             expBar.label.text = "LV " + pr.level;
             if (pr.IsMax) UpdateBar(expBar, 1f, 1f, dt, false, "MAX LEVEL");
             else UpdateBar(expBar, pr.exp, Progress.Need(pr.level), dt, false, Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level) + " EXP");
@@ -763,6 +842,21 @@ namespace MedievalKnight
                 p.text.color = c;
                 p.text.rectTransform.localScale = Vector3.one * (1f + Mathf.Clamp01(1f - t * 6f) * 0.6f);
             }
+        }
+
+        public string SoulShown { get { return soulText.text; } }
+
+        void UpdateSoul(Knight k)
+        {
+            if (k.souls != soulShown)
+            {
+                if (k.souls > soulShown) soulBumpAt = Time.unscaledTime;
+                soulShown = k.souls;
+                soulText.text = soulShown.ToString("N0");
+            }
+            float t = Mathf.Clamp01((Time.unscaledTime - soulBumpAt) / 0.3f);
+            float s = 1f + 0.2f * Mathf.Sin(t * Mathf.PI);              // a short 1.2x bounce when it goes up
+            soulText.rectTransform.localScale = Vector3.one * s;
         }
 
         // Dividers at 25, 50, ... of the maximum (one dash each). The one that was just crossed upwards flashes;

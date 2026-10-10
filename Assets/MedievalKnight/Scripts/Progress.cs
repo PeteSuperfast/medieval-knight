@@ -15,7 +15,7 @@ namespace MedievalKnight
         public string title, line, detail;
     }
 
-    // Level 1..10, EXP curve, and the upgrade totals that feed combat.
+    // Level 1..25, EXP curve, and the upgrade totals that feed combat.
     //
     // "+Nx" is literal: it is added to a multiplier.
     //   Damage  +Nx : damage multiplier (starts x1.0) += N.                       capped at x10
@@ -27,19 +27,24 @@ namespace MedievalKnight
     // An upgrade is either for ALL attacks (rolls 0.5 .. 1.0) or for one skill only (rolls 1.0 .. 2.0);
     // a skill uses "all" + its own bonus.
     //
-    // Every level-up also gives 1 stat point that the player puts into HP, BLOCK or STAMINA (max 6 each):
+    // Every level-up also gives 1 stat point that the player puts into HP, BLOCK or STAMINA (max 10 each, 24 points at level 25):
     //   HP       +20 max health
-    //   BLOCK    +10 max armor, and a raised shield stops 2% more of a blow (80% -> at most 92%)
+    //   BLOCK    +10 max armor, and a raised shield stops 1.2% more of a blow (80% -> 92% at 10 points)
     //   STAMINA  +15 max stamina (= dash charges) and +5% stamina regeneration
     // One Progress belongs to one Knight; the equipped sword is combined with these totals in Knight.RollDamage.
     public class Progress
     {
-        public const int MaxLevel = 10;
-        public const float ExpBase = 30f, ExpGrowth = 1.5f;
+        public const int MaxLevel = 25;
+        // EXP from level L to L+1 (index L-1): level 25 needs 16,410 EXP in total
+        public static readonly int[] NeedTable =
+        {
+            30, 45, 65, 90, 120, 155, 195, 240, 290, 345, 405, 470,
+            540, 620, 710, 810, 920, 1040, 1170, 1310, 1460, 1620, 1790, 1970
+        };
         public const float DamageCap = 10f, SpeedCap = 4f, BasicSpeedCap = 3f, CritMultCap = 10f, CritChanceCap = 0.75f;
         public const float BaseCritChance = 0.10f, BaseCritMult = 1.5f, CritChancePerX = 0.05f;
-        public const int AttrCap = 6;
-        public const float HpPerPoint = 20f, ArmorPerPoint = 10f, BaseBlock = 0.80f, BlockPerPoint = 0.02f, StaminaPerPoint = 15f, RegenPerPoint = 0.05f;
+        public const int AttrCap = 10;
+        public const float HpPerPoint = 20f, ArmorPerPoint = 10f, BaseBlock = 0.80f, BlockPerPoint = 0.012f, StaminaPerPoint = 15f, RegenPerPoint = 0.05f;
 
         public int level = 1;
         public float exp;                 // EXP inside the current level
@@ -50,8 +55,8 @@ namespace MedievalKnight
         public int statPoints;            // unspent stat points (1 per level-up)
         public readonly int[] attr = new int[3];                                               // points in HP / BLOCK / STAMINA
 
-        // EXP needed to go from "lvl" to "lvl + 1":  round(30 * 1.5^(lvl-1))
-        public static int Need(int lvl) { return Mathf.RoundToInt(ExpBase * Mathf.Pow(ExpGrowth, lvl - 1)); }
+        // EXP needed to go from "lvl" to "lvl + 1" (NeedTable)
+        public static int Need(int lvl) { return NeedTable[Mathf.Clamp(lvl - 1, 0, NeedTable.Length - 1)]; }
 
         public bool IsMax { get { return level >= MaxLevel; } }
 

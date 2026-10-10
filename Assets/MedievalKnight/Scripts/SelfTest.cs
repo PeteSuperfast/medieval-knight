@@ -244,7 +244,7 @@ namespace MedievalKnight
             int total = 0;
             for (int l = 1; l < Progress.MaxLevel; l++) { table += " L" + l + ">" + (l + 1) + "=" + Progress.Need(l); total += Progress.Need(l); }
             Log("exp table:" + table + "  total=" + total);
-            Check("exp curve is strictly increasing by x1.5", Progress.Need(1) == 30 && Progress.Need(2) == 45 && Progress.Need(9) > Progress.Need(8));
+            { bool inc = true; for (int l = 2; l < Progress.MaxLevel; l++) inc &= Progress.Need(l) > Progress.Need(l - 1); Check("exp table: 24 steps, strictly increasing, 30 / 45 first, 1970 last, 16,410 in total", inc && Progress.MaxLevel == 25 && Progress.Need(1) == 30 && Progress.Need(2) == 45 && Progress.Need(24) == 1970 && total == 16410); }
 
             // ------------------------------------------------ movement (real key path)
             Vector3 p0 = k.transform.position;
@@ -791,6 +791,7 @@ namespace MedievalKnight
                 yield return W(0.7f);
                 Slime sl = Nearest<Slime>(k.transform.position);
                 float e0 = pr.totalExp;
+                int soulsA = k.souls;
                 int swings = 0;
                 bool found = sl != null;                               // a dead slime is destroyed, so do not test the reference later
                 while (found && !sl.Dead && swings < 14)
@@ -805,9 +806,12 @@ namespace MedievalKnight
                     if (sl.Dead) Shot("slime_killed_by_sword");
                     yield return WaitIdle(1.5f);
                 }
-                bool ok = found && sl.Dead && pr.totalExp - e0 >= Slime.ExpFor(sl.kind) - 0.01f;
+                int slKind = found ? sl.kind : 0;
+                bool ok = found && sl.Dead && pr.totalExp - e0 >= Slime.ExpFor(slKind) - 0.01f;
                 Log("sword kill: " + (found ? sl.label + " maxHp " + F(sl.maxHp) + " dead=" + sl.Dead : "no slime") + " after " + swings + " swings, total exp " + F(e0) + " -> " + F(pr.totalExp));
                 Check("sword attacks kill a slime and its EXP is granted", ok);
+                yield return W(0.2f);
+                Check("the kill adds that slime kind's Soul (green 1 / blue 3 / red 6) and the HUD row shows it", found && k.souls - soulsA == Slime.SoulsFor(slKind) && g.hud.SoulShown == k.souls.ToString("N0"));
                 yield return W(0.8f);
                 yield return ClearLevelUps();
             }
@@ -918,9 +922,9 @@ namespace MedievalKnight
                     yield return Click(c2);
                     Log("stat point by mouse click on card 2 (BLOCK) at " + c2 + ": max armor " + F(ma0) + " -> " + F(k.MaxArmor) + ", shield stops " + F(br0 * 100f) + "% -> " + F(pr.BlockReduction * 100f)
                         + "%, BLOCK points " + pr.Points(Attr.Block) + ", panel step " + g.LevelStep);
-                    Check("mouse click puts the point into BLOCK: +10 max armor, shield stops 2% more",
+                    Check("mouse click puts the point into BLOCK: +10 max armor, shield stops 1.2% more",
                         !g.LevelUpOpen && pr.Points(Attr.Block) == bp0 + 1 && Mathf.Abs(k.MaxArmor - ma0 - Progress.ArmorPerPoint) < 0.001f
-                        && Mathf.Abs(pr.BlockReduction - br0 - Progress.BlockPerPoint) < 0.0001f && Mathf.Abs(pr.BlockReduction - (0.80f + 0.02f * pr.Points(Attr.Block))) < 0.0001f);
+                        && Mathf.Abs(pr.BlockReduction - br0 - Progress.BlockPerPoint) < 0.0001f && Mathf.Abs(pr.BlockReduction - (0.80f + Progress.BlockPerPoint * pr.Points(Attr.Block))) < 0.0001f);
                     yield return W(0.4f);
 
                     // and the better block is what a real blocked blow uses
@@ -932,7 +936,7 @@ namespace MedievalKnight
                     k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest");
                     float wantLoss = 20f * (1f - pr.BlockReduction);
                     Log("block with " + pr.Points(Attr.Block) + " BLOCK point(s): blocking=" + k.IsBlocking + ", 20 damage -> armor " + F(ab) + " -> " + F(k.armor) + " (want -" + F(wantLoss) + ", was -4.00 with no points)");
-                    Check("a blocked 20 damage blow now costs less armor than the base 4 (20 x (1 - block%))", k.IsBlocking && wantLoss < 3.61f && Mathf.Abs(ab - k.armor - wantLoss) < 0.01f);
+                    Check("a blocked 20 damage blow now costs less armor than the base 4 (20 x (1 - block%))", k.IsBlocking && wantLoss < 3.99f && Mathf.Abs(ab - k.armor - wantLoss) < 0.01f);
                     SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, false);
                     yield return W(0.2f);
                     Heal();
@@ -949,14 +953,16 @@ namespace MedievalKnight
                 Pickup bossDrop = null;
                 if (m != null)
                 {
-                    float e0 = pr.totalExp;
+                    float e0 = pr.totalExp, wantExp = m.expReward;
+                    int souls0 = k.souls;
                     int l0 = pr.level;
                     m.TakeHit(99999f, 1f, k.transform.position, false, 0f, 0f, "selftest");
                     yield return W(0.3f);
                     Shot("minotaur_slain");
                     Log("minotaur finished by the self-test with a 99999 hit: total exp " + F(e0) + " -> " + F(pr.totalExp) + ", level " + l0 + " -> " + pr.level
                         + ", pending choices " + pr.pendingChoices + ", respawn in " + F(g.MinotaurRespawnIn) + "s");
-                    Check("Minotaur death gives 250 EXP and starts the respawn timer", Mathf.Abs(pr.totalExp - e0 - Minotaur.ExpReward) < 0.01f && g.minotaur == null && g.MinotaurRespawnIn > 15f);
+                    Check("Minotaur death gives its EXP (250 x the scale from when it appeared: " + F(wantExp) + ") and starts the respawn timer", Mathf.Abs(pr.totalExp - e0 - wantExp) < 0.01f && g.minotaur == null && g.MinotaurRespawnIn > 15f);
+                    Check("Minotaur death gives 50 Soul", k.souls - souls0 == Minotaur.SoulReward);
                     bossDrop = g.lastPickup;
                     Log("minotaur drop (normal 100% roll, not forced): " + (bossDrop != null ? Weapons.All[bossDrop.weaponId].name + " at " + V(bossDrop.transform.position) : "nothing") + ", pickups on the ground " + Pickup.All.Count);
                     Check("the Minotaur drops the Horned King's Blade", bossDrop != null && bossDrop.weaponId == Weapons.Boss && Pickup.All.Contains(bossDrop));
@@ -964,7 +970,7 @@ namespace MedievalKnight
                 Heal(); StandNear(d, 1.3f);
                 int safety = 0;
                 bool staminaDone = false;
-                while ((!pr.IsMax || pr.pendingChoices > 0) && safety++ < 30)
+                while ((!pr.IsMax || pr.pendingChoices > 0) && safety++ < 70)
                 {
                     Heal();
                     if (pr.pendingChoices == 0 && !g.LevelUpOpen) g.GrantExp(Progress.Need(pr.level) - pr.exp, k.transform.position + Vector3.up * 2f);
@@ -997,25 +1003,25 @@ namespace MedievalKnight
                     else if (g.LevelStep == 2) yield return Tap(StatKey());
                     yield return W(0.35f);
                 }
-                Log("stat points after 9 level-ups: HP " + pr.Points(Attr.Hp) + ", BLOCK " + pr.Points(Attr.Block) + ", STAMINA " + pr.Points(Attr.Stamina) + ", unspent " + pr.statPoints
-                    + " -> max health " + F(k.MaxHp) + " (100 + 10 x 9 levels + 20 x " + pr.Points(Attr.Hp) + "), max armor " + F(k.MaxArmor) + ", max stamina " + F(k.MaxStamina)
+                Log("stat points after 24 level-ups: HP " + pr.Points(Attr.Hp) + ", BLOCK " + pr.Points(Attr.Block) + ", STAMINA " + pr.Points(Attr.Stamina) + ", unspent " + pr.statPoints
+                    + " -> max health " + F(k.MaxHp) + " (100 + 10 x 24 levels + 20 x " + pr.Points(Attr.Hp) + "), max armor " + F(k.MaxArmor) + ", max stamina " + F(k.MaxStamina)
                     + ", shield stops " + F(pr.BlockReduction * 100f) + "%");
-                Check("all 9 stat points are spent and add up",
-                    pr.statPoints == 0 && pr.Points(Attr.Hp) + pr.Points(Attr.Block) + pr.Points(Attr.Stamina) == 9
-                    && Mathf.Abs(k.MaxHp - (100f + 90f + 20f * pr.Points(Attr.Hp))) < 0.001f && Mathf.Abs(k.MaxArmor - (60f + 10f * pr.Points(Attr.Block))) < 0.001f
+                Check("all 24 stat points are spent and add up",
+                    pr.statPoints == 0 && pr.Points(Attr.Hp) + pr.Points(Attr.Block) + pr.Points(Attr.Stamina) == 24
+                    && Mathf.Abs(k.MaxHp - (100f + 240f + 20f * pr.Points(Attr.Hp))) < 0.001f && Mathf.Abs(k.MaxArmor - (60f + 10f * pr.Points(Attr.Block))) < 0.001f
                     && Mathf.Abs(k.MaxStamina - (100f + Progress.StaminaPerPoint * pr.Points(Attr.Stamina))) < 0.001f);
                 {
                     // the cap, on a scratch Progress: 6 points per stat, the 7th is refused
-                    var scratch = new Progress { statPoints = 10 };
+                    var scratch = new Progress { statPoints = 12 };
                     int spent = 0;
-                    for (int n = 0; n < 8; n++) if (scratch.Spend(Attr.Block)) spent++;
-                    Check("a stat takes at most 6 points (block tops out at 92%)", spent == Progress.AttrCap && scratch.statPoints == 4 && Mathf.Abs(scratch.BlockReduction - 0.92f) < 0.0001f && !scratch.CanSpend(Attr.Block) && scratch.CanSpend(Attr.Hp));
+                    for (int n = 0; n < 12; n++) if (scratch.Spend(Attr.Block)) spent++;
+                    Check("a stat takes at most 10 points (block tops out at 92%)", spent == Progress.AttrCap && scratch.statPoints == 2 && Mathf.Abs(scratch.BlockReduction - 0.92f) < 0.0001f && !scratch.CanSpend(Attr.Block) && scratch.CanSpend(Attr.Hp));
                 }
                 Log("EXP granted directly by the self-test up to max level. level " + pr.level + ", pending " + pr.pendingChoices
                     + ", all: dmg x" + F(pr.DamageMult(-1)) + " spd x" + F(pr.SpeedMult(-1)) + " (sword x" + F(pr.BasicSpeed()) + ") crit " + F(pr.CritChance(-1) * 100f) + "% x" + F(pr.CritMult(-1)));
                 for (int i = 0; i < 4; i++)
                     Log("  skill " + Knight.Skills[i].key + ": dmg x" + F(pr.DamageMult(i)) + " spd x" + F(pr.SpeedMult(i)) + " crit " + F(pr.CritChance(i) * 100f) + "% x" + F(pr.CritMult(i)));
-                Check("level caps at 10 with all 9 upgrades picked", pr.level == Progress.MaxLevel && pr.pendingChoices == 0 && !g.LevelUpOpen);
+                Check("level caps at 25 with all 24 upgrades picked", pr.level == Progress.MaxLevel && pr.pendingChoices == 0 && !g.LevelUpOpen);
                 int lv = pr.level;
                 g.GrantExp(500f, k.transform.position);
                 Check("no EXP past max level", pr.level == lv && pr.exp == 0f && pr.pendingChoices == 0);
@@ -1131,24 +1137,42 @@ namespace MedievalKnight
                     + ", wave " + g.wave + ", slimes alive " + g.slimesAlive + (sl != null ? ", nearest " + sl.label + " maxHp " + F(sl.maxHp) : ""));
             }
 
-            // ------------------------------------------------ death and revive
+            // ------------------------------------------------ death and revive: back to level 1, swords + Soul stay, YOU DIED screen
             {
                 yield return WaitIdle(3f);
                 int owned0 = k.inventory.OwnedCount, equipped0 = k.inventory.equipped, ready0 = Snds(Snd.Ready);
-                int hpPts = g.progress.Points(Attr.Hp);
+                int lvBefore = g.progress.level, souls0 = k.souls, kills0 = g.progress.kills;
+                float tDie = Time.realtimeSinceStartup;
                 k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
                 bool dead = k.Dead;
-                yield return W(0.5f);
+                yield return W(0.7f);
                 Shot("knight_down");
+                bool overlay = g.hud.DeathVisible;
+                string lose = g.hud.DeathLoseText, keep = g.hud.DeathKeepText, count1 = g.hud.DeathCountText;
+                float in1 = k.ReviveIn;
+                bool stillAtLevel = g.progress.level == lvBefore;            // the reset happens when he stands up, not before
+                yield return W(1.2f);
+                string count2 = g.hud.DeathCountText;
                 float t0 = Time.realtimeSinceStartup;
                 while (k.Dead && Time.realtimeSinceStartup - t0 < 6f) yield return null;
+                float downTime = Time.realtimeSinceStartup - tDie;
                 yield return W(0.3f);
-                Log("death: dead=" + dead + " -> revived=" + !k.Dead + " hp " + F(k.hp) + "/" + F(k.MaxHp) + " at " + V(k.transform.position) + ", level kept " + g.progress.level);
-                Check("knight dies and revives with full health, level kept", dead && !k.Dead && k.hp >= k.MaxHp - 0.01f && g.progress.level == Progress.MaxLevel);
+                Log("death: dead=" + dead + " -> revived=" + !k.Dead + " after " + F(downTime) + "s, hp " + F(k.hp) + "/" + F(k.MaxHp) + " at " + V(k.transform.position)
+                    + ", level " + lvBefore + " -> " + g.progress.level + ", overlay \"" + lose.Replace("\n", " / ") + "\" \"" + keep + "\" \"" + count1 + "\" then \"" + count2 + "\"");
+                Check("knight dies and revives after about 3 seconds with full health", dead && !k.Dead && k.hp >= k.MaxHp - 0.01f && downTime > 2.5f && downTime < 4.2f);
+                Check("dying sends the level, EXP, upgrades and stat points back to level 1",
+                    lvBefore == Progress.MaxLevel && g.progress.level == 1 && g.progress.exp == 0f && g.progress.statPoints == 0 && g.progress.pendingChoices == 0
+                    && g.progress.Points(Attr.Hp) + g.progress.Points(Attr.Block) + g.progress.Points(Attr.Stamina) == 0
+                    && Mathf.Abs(g.progress.DamageMult(-1) - 1f) < 0.001f && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
+                    && g.progress.kills == kills0);
+                Check("YOU DIED screen shows while down, with the level from before the reset and the counter going down",
+                    overlay && stillAtLevel && lose.Contains("Lv " + lvBefore + "  >  Lv 1") && keep.Contains("Swords (" + owned0 + " / " + Weapons.All.Length + ")")
+                    && keep.Contains("Souls " + souls0.ToString("N0")) && in1 > 1.5f && in1 <= 3f && count1.Contains("Returning to town in") && count1 != count2);
+                Check("the YOU DIED screen is gone after the revive", !g.hud.DeathVisible);
                 Log("after death: swords owned " + owned0 + " -> " + k.inventory.OwnedCount + ", equipped " + k.inventory.NameOf(k.inventory.equipped) + " (model " + k.SwordModel.name
-                    + "), HP points " + hpPts + " -> " + g.progress.Points(Attr.Hp) + ", knight_ready +" + (Snds(Snd.Ready) - ready0));
-                Check("death keeps the swords, the equipped sword and the stat points",
-                    k.inventory.OwnedCount == owned0 && owned0 == 5 && k.inventory.equipped == equipped0 && k.SwordModel.name == k.Weapon.name && g.progress.Points(Attr.Hp) == hpPts);
+                    + "), souls " + souls0 + " -> " + k.souls + ", knight_ready +" + (Snds(Snd.Ready) - ready0));
+                Check("death keeps the swords, the equipped sword and the Soul",
+                    k.inventory.OwnedCount == owned0 && owned0 == 5 && k.inventory.equipped == equipped0 && k.SwordModel.name == k.Weapon.name && k.souls == souls0 && souls0 > 0);
                 Check("reviving plays the 'ready' voice line", Snds(Snd.Ready) - ready0 == 1);
                 Shot("revived");
             }
@@ -1157,6 +1181,7 @@ namespace MedievalKnight
             {
                 g.SpawnPickup(Weapons.Fang, new Vector3(6f, 0f, 6f));      // must be swept away by the restart
                 int readyF5 = Snds(Snd.Ready);
+                int soulsPre = k.souls;
                 yield return W(3.2f);                                      // (the ready line has a 3 s minimum gap)
                 yield return Tap(Key.F5);
                 yield return W(1.2f);
@@ -1170,6 +1195,7 @@ namespace MedievalKnight
                     && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxArmor - 60f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
                     && Mathf.Abs(f5.BlockReduction - 0.8f) < 0.0001f && Pickup.All.Count == 0 && Mathf.Abs(k.DamageMult(-1) - 1f) < 0.001f);
                 Check("restart plays the 'ready' voice line", Snds(Snd.Ready) - readyF5 == 1);
+                Check("F5 clears Soul too (it was " + soulsPre + ")", soulsPre > 0 && k.souls == 0 && g.hud.SoulShown == "0");
                 Log("F5: level " + g.progress.level + ", dmg x" + F(g.progress.DamageMult(-1)) + ", enemies " + Enemy.All.Count + ", minotaur " + (g.minotaur != null) + ", knight at " + V(k.transform.position));
                 Check("F5 restarts at level 1 with no upgrades", g.progress.level == 1 && Mathf.Abs(g.progress.DamageMult(-1) - 1f) < 0.001f && g.minotaur != null);
                 k.aimOverride = null;

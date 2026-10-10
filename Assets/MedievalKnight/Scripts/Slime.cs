@@ -18,9 +18,11 @@ namespace MedievalKnight
         static readonly float[] BaseArmor = { 0f, 0f, 30f };
         static readonly float[] BaseDamage = { 8f, 13f, 19f };
         static readonly float[] Exp = { 10f, 24f, 48f };
+        static readonly int[] Souls = { 1, 3, 6 };
         static readonly float[] Sizes = { 0.95f, 1.3f, 1.7f };
 
         public static float ExpFor(int kind) { return Exp[kind]; }
+        public static int SoulsFor(int kind) { return Souls[kind]; }
 
         enum St { Wait, Squash, Hop, Land }
         St state = St.Wait;
@@ -47,7 +49,8 @@ namespace MedievalKnight
             size = Sizes[k];
             color = Colors[k];
             radius = 0.5f * size; height = 0.75f * size; mass = size * size;
-            expReward = Exp[k];
+            expReward = Exp[k] * Game.I.EnemyExpScale;           // scaled by the party level at the moment it appears
+            soulReward = Souls[k];
             damage = BaseDamage[k] * Game.I.EnemyDamageScale;
             InitStats(BaseHp[k] * Game.I.EnemyHpScale, BaseArmor[k] * Game.I.EnemyHpScale);
 

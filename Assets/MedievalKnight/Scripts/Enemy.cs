@@ -12,6 +12,7 @@ namespace MedievalKnight
         public string label = "Enemy";
         public float hp, maxHp, armor, maxArmor;
         public float radius = 0.6f, height = 1.2f, expReward, mass = 1f;
+        public int soulReward;                   // Soul points for every living knight when it dies
         public bool solid;                       // the knight cannot walk through it
         public bool Dead { get; protected set; }
         public int netId;                        // the same number on every machine in an online game
