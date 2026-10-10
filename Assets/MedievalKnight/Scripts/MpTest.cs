@@ -644,6 +644,15 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- the host conducts
 
+        // Slime packs only come when somebody walks through open country, so a test that needs slimes parks some.
+        void EnsureSlimes(int n)
+        {
+            int have = 0;
+            foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) have++;
+            for (int i = have; i < n; i++)
+                Slime.Spawn(0, new Vector3(-16.5f + (i % 5) * 0.4f, 0f, -16.5f + (i / 5) * 0.4f), g.transform);
+        }
+
         void ParkSlimes()
         {
             Vector3 corner = new Vector3(-16.5f, 0f, -16.5f);
@@ -718,6 +727,12 @@ namespace MedievalKnight
             ParkSlimes();
 
             // ------------------------------------------------ 1. everybody sees everybody
+            // everybody walks out of town into the meadow; the first slime packs come 2.5 s later
+            {
+                string[] first = Targets("all").ToArray();
+                for (int i = 0; i < first.Length; i++) yield return Tp(first[i], -3f + i * 2f, -8f, -3f + i * 2f, 0f);
+                yield return W(5.5f);
+            }
             yield return Sum();
             Ck(Eq("n") && S("H", "n") == (n + 1).ToString(), "every process counts " + (n + 1) + " players");
             Ck(Eq("names"), "every process has the same player list");
@@ -738,6 +753,7 @@ namespace MedievalKnight
                 Ck(Near("x" + pid, 0.15f) && Near("z" + pid, 0.15f), "player " + pid + " (" + peers[i] + ") stands at the same place on every screen");
             }
 
+            g.packsOff = true;                                        // from here on the test decides which slimes exist (EnsureSlimes)
             // the four far corners of the 380 m map: positions travel as centimetres in an i16 and must arrive exactly
             {
                 float[] fx = { 186f, -70f, 186f, 20f }, fz = { -186f, 186f, 186f, -186f };
@@ -837,6 +853,8 @@ namespace MedievalKnight
             // ------------------------------------------------ 4. a client kills a slime: EXP for everybody, a sword drops, another client takes it
             {
                 yield return Cmd("all", "settle");
+                EnsureSlimes(3);
+                yield return W(0.5f);
                 Slime sl = null;
                 foreach (Enemy e in Enemy.All) { Slime s = e as Slime; if (s != null && !s.Dead && (sl == null || s.kind > sl.kind)) sl = s; }
                 Check("a slime is alive to be killed", sl != null);
@@ -1077,7 +1095,7 @@ namespace MedievalKnight
                 yield return W(2.5f);
                 yield return Sum();
                 Ck(did && Eq("lvl") && S("H", "lvl") == "1" && Eq("own") && S("H", "own") == "1", "F5 on the host restarts everybody at level 1 with only the Iron Sword");
-                Ck(Eq("en") && N("H", "en") >= 4 && Eq("mino") && S("H", "mino") == "alive" && Eq("pkall") && Eq("wave"), "after the restart every screen has the new wave, the Minotaur and no pickups");
+                Ck(Eq("en") && N("H", "en") >= 1 && Eq("mino") && S("H", "mino") == "alive" && Eq("pkall") && Eq("wave"), "after the restart every screen has the Minotaur (no slimes: everybody is back in town) and no pickups");
                 yield return Cmd("all", "shot", "after_host_restart");
             }
 

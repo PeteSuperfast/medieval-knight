@@ -11,6 +11,8 @@ namespace MedievalKnight
     {
         public const float BaseHp = 520f, BaseArmor = 120f, ExpReward = 250f, AggroRange = 12.5f;
         public const int SoulReward = 50;
+        public const float LeashRange = 40f;
+        float leashT;
         const float SweepRange = 4.7f, SweepHalfArc = 110f, SmashRadius = 2.4f, LaneLength = 15f, LaneWidth = 2.6f;
         const float SweepDamage = 26f, SmashDamage = 38f, ChargeDamage = 30f;
 
@@ -293,6 +295,24 @@ namespace MedievalKnight
             // come from the host, and nothing below may start a state or hurt anybody.
             bool sim = !puppet;
             if (puppet) PuppetMove();
+
+            // leash: he never wanders off. Too far from the lair (40 m), or nobody alive within 45 m, for 5 s: back home, healed
+            if (sim)
+            {
+                Vector3 home = MapLayout.Lair;
+                float fromHome = FlatDist(transform.position, home);
+                bool anyNear = false;
+                var plist = Game.I.players;
+                for (int i = 0; i < plist.Count; i++)
+                    if (!plist[i].Dead && FlatDist(transform.position, plist[i].Pos) <= 45f) { anyNear = true; break; }
+                if (fromHome > LeashRange || (!anyNear && fromHome > 2f)) leashT += dt; else leashT = 0f;
+                if (leashT >= 5f)
+                {
+                    leashT = 0f;
+                    ResetToLair(home);
+                    return;
+                }
+            }
             Knight k = Target();
             if (k == null) return;
             var ps = Game.I.players;

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
@@ -72,6 +73,15 @@ namespace MedievalKnight
             yield return null; yield return null; yield return null;
             SetMouse(pos, false);
             yield return null;
+        }
+
+        // Packs only come when a knight walks through open country, so tests that need slimes put some in the parking corner.
+        void EnsureSlimes(int n)
+        {
+            int have = 0;
+            foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) have++;
+            for (int i = have; i < n; i++)
+                Slime.Spawn(0, new Vector3(-15.5f + (i % 5) * 0.4f, 0f, -15.5f + (i / 5) * 0.4f), g.transform);
         }
 
         // Slimes chase from 17 m away; the long dummy / sword tests need them out of the way in the south-west corner.
@@ -173,6 +183,26 @@ namespace MedievalKnight
             g.foodOverride = 0;                                         // no random food: the food test decides when some falls
             yield return W(1.3f);
 
+            // ------------------------------------------------ the knight starts in town, which is safe: the first pack comes when he leaves it
+            {
+                int inTown = 0;
+                foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) inTown++;
+                yield return W(3.5f);
+                int stillNone = 0;
+                foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) stillNone++;
+                Check("town is a safe zone: no slimes appear while the knight stands in town (" + inTown + " at start, " + stillNone + " after 3.5 s)", inTown == 0 && stillNone == 0);
+                k.transform.position = new Vector3(2f, 0f, -5f); g.SnapCamera();
+                float tw = Time.realtimeSinceStartup;
+                int got = 0;
+                while (got < 3 && Time.realtimeSinceStartup - tw < 12f)
+                {
+                    yield return null;
+                    got = 0;
+                    foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) got++;
+                }
+                Log("first pack: " + got + " slimes " + (Time.realtimeSinceStartup - tw).ToString("0.0") + " s after the knight left town");
+            }
+
             // ------------------------------------------------ scene inventory
             int slimes = 0;
             foreach (Enemy e in Enemy.All) if (e is Slime) slimes++;
@@ -254,6 +284,7 @@ namespace MedievalKnight
             }
             k.transform.position = new Vector3(2f, 0f, -5f);          // away from the corner, then put the slimes back in it
             ParkSlimes();
+            g.packsOff = true;                                          // the long tests below need a fixed set of enemies (the spawn rules are tested in their own section)
 
             // ------------------------------------------------ EXP table
             string table = "";
@@ -325,6 +356,96 @@ namespace MedievalKnight
                 k.transform.position = new Vector3(2f, 0f, -5f); g.SnapCamera();
                 ParkSlimes();
                 yield return W(0.3f);
+            }
+
+            // ------------------------------------------------ pack spawning, leash, lair arrow
+            {
+                g.packsOff = false;
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                yield return W(0.4f);
+
+                // in town nothing spawns, even after many seconds
+                k.transform.position = new Vector3(0f, 0f, -150f); g.SnapCamera();
+                yield return W(4.5f);
+                int inTown = 0;
+                foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) inTown++;
+
+                // in the meadow a pack arrives, on a ring round him, never in town / lake / mountain
+                Vector3 kp = new Vector3(0f, 0f, 20f);
+                k.transform.position = kp; g.SnapCamera();
+                float tw = Time.realtimeSinceStartup;
+                int packSize = 0;
+                while (packSize < 4 && Time.realtimeSinceStartup - tw < 10f)
+                {
+                    yield return null;
+                    packSize = 0;
+                    foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) packSize++;
+                }
+                float minD = 1e9f, maxD = 0f; bool zonesOk = true;
+                foreach (Enemy e in Enemy.All)
+                {
+                    if (!(e is Slime) || e.Dead) continue;
+                    Vector3 sp = e.transform.position;
+                    float dd = new Vector2(sp.x - kp.x, sp.z - kp.z).magnitude;
+                    minD = Mathf.Min(minD, dd); maxD = Mathf.Max(maxD, dd);
+                    zonesOk &= MapLayout.SpawnTier(MapLayout.ZoneAt(sp.x, sp.z)) > 0f && MapLayout.Walkable(sp.x, sp.z);
+                }
+                Log("pack: " + packSize + " slimes " + (Time.realtimeSinceStartup - tw).ToString("0.0") + " s after he stood in the meadow, distance " + F(minD) + " .. " + F(maxD) + " m");
+                Check("no slimes in town; in the meadow a pack of 4+ comes within 10 s", inTown == 0 && packSize >= 4);
+                Check("the pack stands 9.5 - 26.5 m from the knight, never in town, lake or mountains", minD >= 9.5f && maxD <= 26.5f && zonesOk);
+
+                // a slime far from everybody (more than 70 m) is removed without a kill
+                Slime far = Nearest<Slime>(kp);
+                bool hadFar = far != null;
+                int kills0 = k.progress.kills;
+                Vector3 farAt = new Vector3(0f, 0f, 95f);
+                if (far != null) { far.Warp(farAt); far.transform.position = farAt; }
+                yield return W(1.6f);
+                Check("a slime more than 70 m from every knight disappears quietly (no kill counted)", hadFar && (far == null || !far.gameObject.activeInHierarchy) && k.progress.kills == kills0);
+
+                // slimes do not chase a knight who stands in town
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                yield return W(0.3f);
+                g.packsOff = true;
+                k.transform.position = new Vector3(0f, 0f, -112f); g.SnapCamera();
+                Slime chaser = Slime.Spawn(0, new Vector3(0f, 0f, -92f), g.transform);
+                yield return W(4.0f);
+                float chaseDist = chaser != null ? new Vector2(chaser.transform.position.x - k.transform.position.x, chaser.transform.position.z - k.transform.position.z).magnitude : 0f;
+                Check("a slime 20 m away does not chase a knight standing in town (distance after 4 s: " + F(chaseDist) + " m)", chaser != null && chaseDist > 12f);
+                if (chaser != null) Destroy(chaser.gameObject);
+
+                // Minotaur leash: dragged 50 m from his lair with nobody near, hurt, he returns healed
+                Minotaur m = g.minotaur;
+                bool leashOk = false;
+                if (m != null)
+                {
+                    k.transform.position = new Vector3(0f, 0f, -5f); g.SnapCamera();
+                    m.transform.position = new Vector3(0f, 0f, 100f);
+                    m.hp = 100f;
+                    float tl = Time.realtimeSinceStartup;
+                    while (Time.realtimeSinceStartup - tl < 9f && (m.transform.position - MapLayout.Lair).magnitude > 1.5f) yield return null;
+                    leashOk = (m.transform.position - MapLayout.Lair).magnitude < 1.5f && m.hp >= m.maxHp - 0.5f;
+                    Log("leash: back at the lair after " + (Time.realtimeSinceStartup - tl).ToString("0.0") + " s, hp " + F(m.hp) + " / " + F(m.maxHp));
+                }
+                Check("the Minotaur returns to his lair with full health when nobody is near him for 5 s", leashOk);
+
+                // arrow to the lair: right distance and direction, hidden inside 30 m of it, boss bar only within 45 m
+                k.transform.position = new Vector3(100f, 0f, 150f); g.SnapCamera();
+                yield return W(0.4f);
+                bool west = g.hud.LairArrowShown && g.hud.LairArrowText.Contains("100") && Mathf.Abs(g.hud.LairArrowAngle - 90f) < 1f;
+                bool bossFar = !g.hud.BossPanelShown;
+                k.transform.position = new Vector3(0f, 0f, 135f); g.SnapCamera();
+                yield return W(0.4f);
+                bool hiddenNear = !g.hud.LairArrowShown && g.hud.BossPanelShown;
+                k.transform.position = new Vector3(0f, 0f, -5f); g.SnapCamera();
+                yield return W(0.4f);
+                Check("lair arrow: 100 m away it points west (" + g.hud.LairArrowText + "), is hidden in the lair, and the boss bar shows only within 45 m", west && bossFar && hiddenNear);
+                Shot("lair_arrow_meadow");
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                for (int i = 0; i < 5; i++) Slime.Spawn(0, new Vector3(-15.5f + i * 0.3f, 0f, -15.5f), g.transform);      // the usual five green slimes for the tests below
+                yield return W(0.3f);
+                g.packsOff = true;
+                ParkSlimes();
             }
 
             // ------------------------------------------------ movement (real key path)
@@ -891,6 +1012,8 @@ namespace MedievalKnight
             {
                 Progress pr = g.progress;
                 float t0 = Time.realtimeSinceStartup;
+                EnsureSlimes(3);
+                yield return W(0.5f);
                 while (Nearest<Slime>(k.transform.position) == null && Time.realtimeSinceStartup - t0 < 8f) yield return null;
                 yield return W(0.7f);
                 Slime sl = Nearest<Slime>(k.transform.position);
@@ -934,7 +1057,9 @@ namespace MedievalKnight
 
                 // drop rolls: the Apple is certain with the override, and appears next to the dead slime
                 float tFood = Time.realtimeSinceStartup;
-                while (Nearest<Slime>(Vector3.zero) == null && Time.realtimeSinceStartup - tFood < 6f) yield return null;   // the next wave
+                EnsureSlimes(2);
+                yield return W(0.5f);
+                while (Nearest<Slime>(Vector3.zero) == null && Time.realtimeSinceStartup - tFood < 6f) yield return null;
                 Slime food = Nearest<Slime>(new Vector3(-16.5f, 0f, -16.5f));
                 int food0 = 0;
                 foreach (Pickup q in Pickup.All) if (q.kind == PickupKind.Food) food0++;

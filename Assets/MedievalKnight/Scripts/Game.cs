@@ -67,10 +67,10 @@ namespace MedievalKnight
         public float EnemyExpScale { get { return 1f + 0.15f * (PartyLevel - 1f); } }
 
         Transform actors;
-        bool waveQueued, started, readyPending, wiped;
+        bool started, readyPending, wiped;
         int nextNetId;
         float leaveAskedAt = -10f;
-        float levelUpOpenAt, waveAt, minoRespawnAt;
+        float levelUpOpenAt, minoRespawnAt;
         float shakeAmp, shakeTime, shakeDur;
         float hitStopUntil;
         Vector3 camFocus;
@@ -524,53 +524,128 @@ namespace MedievalKnight
             dummy.transform.rotation = Quaternion.Euler(0f, 200f, 0f);
 
             minotaur = Minotaur.Spawn(MinotaurHome, actors);
-            wave = 0;
-            waveQueued = true;
-            waveAt = Time.time + 0.2f;
+            wave = 0;                                              // = packs spawned so far (there are no waves any more)
+            packDue.Clear();
+            packCount.Clear();
         }
 
-        void SpawnWave()
+        // ---- slime packs: every living knight outside the town gets a pack of slimes round him when few are near ----
+
+        public const int MaxSlimes = 48;
+        public bool packsOff;                                      // self-test hook: no new packs while a test needs a fixed set of enemies
+        readonly Dictionary<int, float> packDue = new Dictionary<int, float>();
+        readonly Dictionary<int, int> packCount = new Dictionary<int, int>();
+        float nextDirector;
+
+        int PacksOf(int pid) { int n; return packCount.TryGetValue(pid, out n) ? n : 0; }
+
+        void UpdatePacks()
         {
-            waveQueued = false;
-            wave++;
-            // two more slimes per extra player (co-op), at most 16
-            int count = Mathf.Min(Mathf.Min(4 + wave, 10) + 2 * Mathf.Max(0, players.Count - 1), 16);
-            float blue = Mathf.Clamp((wave - 2) * 0.15f, 0f, 0.5f), red = Mathf.Clamp((wave - 5) * 0.12f, 0f, 0.35f);
+            if (Time.time < nextDirector) return;
+            nextDirector = Time.time + 0.25f;
+            if (packsOff) return;                                  // test hook: the whole director sleeps
+
+            // slimes that are far from everybody go away quietly (no EXP, drop or Soul)
+            if (Mathf.FloorToInt(Time.time) != Mathf.FloorToInt(Time.time - 0.25f))
+            {
+                foreach (Enemy e in new List<Enemy>(Enemy.All))
+                {
+                    if (!(e is Slime) || e.Dead || e.Stunned) continue;
+                    bool far = true;
+                    for (int i = 0; i < players.Count && far; i++)
+                        if (FlatDist(e.transform.position, players[i].Pos) <= 70f) far = false;
+                    if (!far) continue;
+                    e.gameObject.SetActive(false);
+                    Destroy(e.gameObject);
+                }
+            }
+
+            int alive = 0;
+            for (int i = 0; i < Enemy.All.Count; i++)
+                if (Enemy.All[i] is Slime && !Enemy.All[i].Dead) alive++;
+            slimesAlive = alive;
+            if (packsOff) return;
+
+            for (int n = 0; n < players.Count; n++)
+            {
+                Knight k = players[n];
+                int pid = k.pid;
+                if (k.Dead) { packCount[pid] = 0; packDue[pid] = -1f; continue; }
+                Vector3 p = k.Pos;
+                bool safe = MapLayout.InTown(p.x, p.z) || MapLayout.SpawnTier(MapLayout.ZoneAt(p.x, p.z)) <= 0f;
+                int near = 0;
+                for (int i = 0; i < Enemy.All.Count; i++)
+                {
+                    Enemy e = Enemy.All[i];
+                    if (e is Slime && !e.Dead && FlatDist(e.transform.position, p) <= 45f) near++;
+                }
+                if (safe || near > 1 || alive >= MaxSlimes) { packDue[pid] = -1f; continue; }
+                float due;
+                if (!packDue.TryGetValue(pid, out due) || due < 0f) { packDue[pid] = Time.time + 2.5f; continue; }
+                if (Time.time < due) continue;
+                packDue[pid] = -1f;
+                alive += SpawnPack(k);
+            }
+        }
+
+        static float FlatDist(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
+        }
+
+        // Returns how many slimes were made. 15-26 m from the knight (the first pack of a life: 10-16 m), never in town,
+        // lake or mountains, never inside something solid.
+        int SpawnPack(Knight anchor)
+        {
+            int pid = anchor.pid;
+            int packs = PacksOf(pid);
+            Vector3 kp = anchor.Pos; kp.y = 0f;
+            int helpers = 0;
+            for (int i = 0; i < players.Count; i++)
+                if (players[i] != anchor && !players[i].Dead && FlatDist(players[i].Pos, kp) <= 45f) helpers++;
+            int alive = 0;
+            for (int i = 0; i < Enemy.All.Count; i++)
+                if (Enemy.All[i] is Slime && !Enemy.All[i].Dead) alive++;
+            int count = Mathf.Min(Mathf.Min(4 + packs, 10) + 2 * helpers, 16);
+            count = Mathf.Min(count, MaxSlimes - alive);
+            float tier = MapLayout.SpawnTier(MapLayout.ZoneAt(kp.x, kp.z));
+            float blue = Mathf.Clamp((packs - 2) * 0.15f * tier, 0f, 0.7f), red = Mathf.Clamp((packs - 5) * 0.12f * tier, 0f, 0.5f);
+            int made = 0;
             for (int i = 0; i < count; i++)
             {
-                // around the knight; with several players each slime picks one of the living ones
-                Knight near = knight;
-                if (players.Count > 1)
-                {
-                    near = players[Random.Range(0, players.Count)];
-                    if (near.Dead) near = NearestKnight(near.Pos);
-                }
-                Vector3 kp = near.Pos; kp.y = 0f;
                 Vector3 p = kp;
-                for (int tries = 0; tries < 20; tries++)
+                bool placed = false;
+                for (int tries = 0; tries < 20 && !placed; tries++)
                 {
                     float ang = Random.Range(0f, Mathf.PI * 2f);
-                    float dist = wave == 1 ? Random.Range(5.5f, 9f) : Random.Range(8f, 13f);
+                    float dist = packs == 0 ? Random.Range(10f, 16f) : Random.Range(15f, 26f);
                     p = kp + new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang)) * dist;
                     p.x = Mathf.Clamp(p.x, -ArenaHalf + 1.5f, ArenaHalf - 1.5f);
                     p.z = Mathf.Clamp(p.z, -ArenaHalf + 1.5f, ArenaHalf - 1.5f);
-                    bool bad = (p - DummyPos).magnitude < 2f;
+                    if (MapLayout.SpawnTier(MapLayout.ZoneAt(p.x, p.z)) <= 0f || !MapLayout.Walkable(p.x, p.z)) continue;
+                    if (FlatDist(p, DummyPos) < 3f) continue;
+                    bool bad = false;
                     for (int n = 0; n < players.Count; n++)
-                    {
-                        Vector3 d = p - players[n].Pos; d.y = 0f;
-                        if (d.magnitude < 4.5f) bad = true;                // never on top of a player
-                    }
-                    if (minotaur != null && (p - minotaur.transform.position).magnitude < 6f) bad = true;
-                    if (wave == 1 && (p - MinotaurHome).magnitude < 30f) bad = true;   // first wave stays away from the lair
-                    if (!MapLayout.Walkable(p.x, p.z)) bad = true;                 // never in the lake or on the mountain
-                    if (!bad) break;
+                        if (FlatDist(p, players[n].Pos) < 4.5f) bad = true;          // never on top of a player
+                    if (bad) continue;
+                    if (minotaur != null && FlatDist(p, minotaur.transform.position) < 6f) continue;
+                    if ((Obstacles.Push(p, 0.7f, Obstacles.Enemies) - p).sqrMagnitude > 0.0001f) continue;
+                    placed = true;
                 }
+                if (!placed) continue;
                 float roll = Random.value;
                 int kind = roll < red ? 2 : roll < red + blue ? 1 : 0;
                 Slime.Spawn(kind, p, actors);
                 Fx.I.Dust(p, 6);
+                made++;
             }
-            if (wave > 1) WorldBanner("Wave " + wave + " - " + count + " slimes", new Color(0.6f, 1f, 0.6f));
+            if (made > 0)
+            {
+                packCount[pid] = packs + 1;
+                wave++;
+            }
+            return made;
         }
 
         // A banner about the shared world: shown here and, when hosting, on every client too.
@@ -984,27 +1059,22 @@ namespace MedievalKnight
             if (knight != null) camFocus = knight.transform.position;
         }
 
-        // Clears the area around a knight who is about to stand up again (single player / host).
+        // Clears the area around a knight who is about to stand up again in town (single player / host): the slimes
+        // within 60 m are removed quietly, the Minotaur (if he somehow is near) goes home.
         public void PushEnemiesFrom(Vector3 home)
         {
-            for (int i = 0; i < Enemy.All.Count; i++)
+            foreach (Enemy e in new List<Enemy>(Enemy.All))
             {
-                Enemy e = Enemy.All[i];
                 if (e.Dead || e is Dummy) continue;
-                Vector3 d = e.transform.position - home; d.y = 0f;
-                if (d.magnitude > 8f) continue;
-                if (e is Minotaur) e.transform.position = MinotaurHome;
-                else
-                {
-                    Vector3 to = home + (d.sqrMagnitude > 0.01f ? d.normalized : Vector3.right) * 9f;
-                    Slime sl = e as Slime;
-                    if (sl != null) sl.Warp(to); else e.transform.position = to;
-                }
+                if (FlatDist(e.transform.position, home) > (e is Minotaur ? 8f : 60f)) continue;
+                if (e is Minotaur) { e.transform.position = MinotaurHome; continue; }
+                e.gameObject.SetActive(false);
+                Destroy(e.gameObject);
             }
         }
 
-        // Co-op: every knight is down at the same moment. The slimes of this wave are removed and the wave starts
-        // again; the Minotaur goes back to his lair with full health.
+        // Co-op: every knight is down at the same moment. All slimes are removed and the packs start from zero
+        // when they stand up in town; the Minotaur goes back to his lair with full health.
         void OnPartyWipe()
         {
             foreach (Enemy e in new List<Enemy>(Enemy.All))
@@ -1013,12 +1083,11 @@ namespace MedievalKnight
                 e.gameObject.SetActive(false);
                 Destroy(e.gameObject);
             }
-            wave = Mathf.Max(0, wave - 1);
-            waveQueued = true;
-            waveAt = Time.time + ReviveDelayCoop + 1.5f;
+            packCount.Clear();
+            packDue.Clear();
             if (minotaur != null && !minotaur.Dead) minotaur.ResetToLair(MinotaurHome);
-            WorldBanner("Everyone is down - the wave starts again", new Color(1f, 0.5f, 0.4f));
-            Debug.Log("WIPE all " + players.Count + " knights down, wave " + (wave + 1) + " restarts");
+            WorldBanner("Everyone is down - back to town", new Color(1f, 0.5f, 0.4f));
+            Debug.Log("WIPE all " + players.Count + " knights down, " + wave + " packs so far");
         }
 
         // Removes every enemy, pickup, effect and floating number.
@@ -1190,15 +1259,7 @@ namespace MedievalKnight
             }
 
             // --- spawning ---
-            slimesAlive = 0;
-            for (int i = 0; i < Enemy.All.Count; i++)
-                if (Enemy.All[i] is Slime && !Enemy.All[i].Dead) slimesAlive++;
-            if (!waveQueued && slimesAlive <= 1)
-            {
-                waveQueued = true;
-                waveAt = Time.time + 2.5f;
-            }
-            if (waveQueued && Time.time >= waveAt) SpawnWave();
+            UpdatePacks();
             if (minotaur == null && Time.time >= minoRespawnAt)
             {
                 minotaur = Minotaur.Spawn(MinotaurHome, actors);

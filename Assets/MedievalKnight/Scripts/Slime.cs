@@ -21,6 +21,8 @@ namespace MedievalKnight
         static readonly int[] Souls = { 1, 3, 6 };
         static readonly float[] Sizes = { 0.95f, 1.3f, 1.7f };
 
+        public const float ChaseRange = 30f;       // slimes notice a knight from this far (the screen shows about 26 x 16 m)
+
         public static float ExpFor(int kind) { return Exp[kind]; }
         public static int SoulsFor(int kind) { return Souls[kind]; }
 
@@ -180,7 +182,7 @@ namespace MedievalKnight
                         stateT += dt / 0.28f;
                         target = new Vector3(1.3f, 0.6f, 1.3f);
                         Vector3 toK = k.Pos - transform.position; toK.y = 0f;
-                        bool chase = !k.Dead && toK.magnitude < 17f;
+                        bool chase = !k.Dead && toK.magnitude < ChaseRange && !MapLayout.InTown(k.Pos.x, k.Pos.z);   // the town is safe
                         if (chase) TurnTowards(toK, 500f, dt);
                         if (stateT >= 1f)
                         {

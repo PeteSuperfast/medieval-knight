@@ -76,6 +76,8 @@ namespace MedievalKnight
         BarUi hpBar, armorBar, staminaBar, expBar, bossBar;
         Text bannerText, actionText, noticeText, controlsText, bossText, levelTitle, levelSub;
         GameObject controlsPanel, bossPanel, levelRoot, invRoot;
+        RectTransform lairArrow;
+        Text lairText;
         public static readonly Color SoulColor = new Color(0.62f, 0.91f, 1f);
         GameObject deathRoot;
         Image deathDim;
@@ -207,6 +209,20 @@ namespace MedievalKnight
             bossText = MakeText("BossText", new Vector2(0.5f, 1), new Vector2(0, -3), new Vector2(360, 20), 14, TextAnchor.MiddleCenter, bossPanel.transform);
             bossText.fontStyle = FontStyle.Bold;
             bossBar = MakeBar(null, new Vector2(0.5f, 1), new Vector2(0, -25), 360, new Color(0.8f, 0.25f, 0.15f), bossPanel.transform);
+
+            // --- an arrow to the Minotaur's lair with the distance, under the banner; hidden when you are already there ---
+            lairArrow = Rect("LairArrow", new Vector2(0.5f, 1), new Vector2(0, -190), new Vector2(44, 44));
+            lairArrow.pivot = new Vector2(0.5f, 0.5f);
+            lairArrow.anchoredPosition = new Vector2(0, -190);
+            Color arrowCol = new Color(1f, 0.62f, 0.25f);
+            Panel("Shaft", new Vector2(0.5f, 0.5f), new Vector2(0, -6), new Vector2(6, 22), arrowCol, lairArrow);
+            Image head = Panel("Head", new Vector2(0.5f, 0.5f), new Vector2(0, 8), new Vector2(15, 15), arrowCol, lairArrow);
+            head.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+            lairText = MakeText("LairText", new Vector2(0.5f, 1), new Vector2(0, -216), new Vector2(240, 22), 16, TextAnchor.MiddleCenter);
+            lairText.fontStyle = FontStyle.Bold;
+            lairText.color = arrowCol;
+            lairArrow.gameObject.SetActive(false);
+            lairText.gameObject.SetActive(false);
 
             // --- banner + last action ---
             bannerText = MakeText("Banner", new Vector2(0.5f, 1), new Vector2(0, -110), new Vector2(800, 50), 30, TextAnchor.MiddleCenter);
@@ -892,6 +908,12 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- update
 
+        // test read-outs
+        public bool LairArrowShown { get { return lairArrow != null && lairArrow.gameObject.activeSelf; } }
+        public string LairArrowText { get { return lairText != null ? lairText.text : ""; } }
+        public float LairArrowAngle { get { return lairArrow != null ? lairArrow.localEulerAngles.z : 0f; } }
+        public bool BossPanelShown { get { return bossPanel != null && bossPanel.activeSelf; } }
+
         void LateUpdate()
         {
             Game g = Game.I;
@@ -941,8 +963,19 @@ namespace MedievalKnight
                 u.cost.text = (s.cooldown / pr.SpeedMult(i)).ToString("0.0") + "s";
             }
 
-            // boss bar
+            // boss bar: only when the Minotaur is within 45 m (the map is big); the arrow to the lair covers the rest
             Minotaur m = g.minotaur;
+            bool bossFar = m != null && !m.Dead && Vector3.Distance(m.transform.position, k.Pos) > 45f;
+            if (bossPanel.activeSelf == bossFar) bossPanel.SetActive(!bossFar);
+            Vector3 toLair = MapLayout.Lair - k.Pos; toLair.y = 0f;
+            bool arrowOn = toLair.magnitude >= 30f && !k.Dead;
+            if (lairArrow.gameObject.activeSelf != arrowOn) { lairArrow.gameObject.SetActive(arrowOn); lairText.gameObject.SetActive(arrowOn); }
+            if (arrowOn)
+            {
+                // the camera never turns: north on the map is the top of the screen
+                lairArrow.localRotation = Quaternion.Euler(0f, 0f, -Mathf.Atan2(toLair.x, toLair.z) * Mathf.Rad2Deg);
+                lairText.text = "Lair  " + Mathf.RoundToInt(toLair.magnitude) + " m";
+            }
             if (m != null && !m.Dead)
             {
                 bossBar.frame.gameObject.SetActive(true);
