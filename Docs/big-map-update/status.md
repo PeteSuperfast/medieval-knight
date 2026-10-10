@@ -7,7 +7,7 @@
 
 ## ตอนนี้อยู่ขั้นไหน
 
-**ขั้นที่ 7 ของขั้นตอนทีม: developer กำลังลงมือทำ** (background) — ยังไม่เสร็จ ยังไม่ได้ zip ขึ้น Drive ยังไม่ได้ push
+**developer ทำครบ A-G แล้ว (04:20 เวลาไทย 2026-10-11)** — build + selftest ผ่าน, mptest ผ่านยกเว้น 1 เช็คเดิมที่พังมาก่อนงานนี้; zip ขึ้น Drive แล้ว; **ยังไม่ได้ push GitHub**; รอปูส้มตรวจรายงานแล้วโพสต์ "💻 Developer:" แท็ก test_disk
 
 | ขั้นตอนทีม | สถานะ |
 | --- | --- |
@@ -17,8 +17,8 @@
 | 4. ตรวจ | เสร็จ — ส่งกลับแก้ 1 รอบ (ขัดกันหนัก) ที่เหลือปูส้มตัดสินเองใน decisions.md |
 | 5. โพสต์สรุป ขออนุมัติ | เสร็จ |
 | 6. อนุมัติ | **เสร็จ — test_disk พิมพ์ "OK" 2026-10-11 02:07** ในห้อง pusom-dev |
-| 7. developer ลงมือ | **กำลังทำ** เริ่ม 02:07 |
-| 8. โพสต์ผล + zip ขึ้น Drive | ยังไม่ถึง |
+| 7. developer ลงมือ | **เสร็จ** (A-G) |
+| 8. โพสต์ผล + zip ขึ้น Drive | zip ขึ้น Drive แล้ว; รอปูส้มโพสต์ผลในห้อง |
 
 ## งานของ developer (7 ขั้นตาม tech.md หัวข้อ 10)
 
@@ -33,11 +33,11 @@
 | D | หน้าต่าง Tab รวมช่องเก็บของ + ค่าสถานะ, รูปดาบ | commit แล้ว (เก็บงานค้างของ agent ก่อนหน้า) build + selftest ผ่าน 0 FAIL; ไอคอนดาบ render จริงจากโมเดล (ไม่ต้องใช้แผน B) | `a866701` |
 | E | แมพ 380 x 380 ม. แบบ chunk + collision (ใหญ่และเสี่ยงสุด) | commit แล้ว: build + selftest ผ่าน 0 FAIL (เพิ่มเช็คแมพ/ชนกำแพง/ทะเลสาบ/ภูเขา/ต้นไม้/เฟรมไทม์ ~4.2 ms ทุกจุด), mptest ผ่านหมดยกเว้นเช็คการเดินเนียนข้อเดิม + เช็คมุมแมพ 4 มุมผ่าน; ฉากสร้าง 55 ms 1,270 chunk mesh 1,304 obstacle | ดู git log |
 | F | ระบบเกิดสไลม์เป็นแพ็ครายคน, leash ของ Minotaur, ลูกศรชี้รัง | commit แล้ว: build + selftest ผ่าน 0 FAIL (เพิ่มเช็คเมืองปลอดภัย / แพ็ค 10-26 ม. / ลบเมื่อไกล 70 ม. / สไลม์ไม่ไล่เข้าเมือง / leash / ลูกศรรัง); mptest ผ่านหมดยกเว้นเช็คการเดินเนียนข้อเดิม (พังเหมือนกันบน 4b146ba) | ดู git log |
-| G | อัปเดต CLAUDE.md ของเกม, zip, copy ขึ้น Drive | ยัง | – |
+| G | อัปเดต CLAUDE.md ของเกม, zip, copy ขึ้น Drive | commit แล้ว: CLAUDE.md เขียนใหม่ตามของจริง, zip `medieval-knight-win64.zip` (38.4 MB, 184 ไฟล์ โครงเดิม MedievalKnight/...) copy ทับใน `G:My DrivePusomGames` แล้ว | ดู git log |
 
-- branch: `main` (นำหน้า `origin/main` 4 commit ยังไม่ได้ push)
+- branch: `main` (นำหน้า `origin/main` หลาย commit ยังไม่ได้ push ตามที่พีทสั่งให้รอ)
 - `wip/big-map-update` (`d3303ef`): โค้ดครึ่งๆ กลางๆ จากรอบที่พีทสั่งหยุด **ไม่ได้ใช้** ยังไม่ได้ลบ
-- ไฟล์ใน `G:\My Drive\PusomGames\` ยังเป็นเวอร์ชันออนไลน์ co-op เดิม (ไม่ถูกแตะจนกว่าทุกขั้นผ่าน)
+- ไฟล์ใน `G:\My Drive\PusomGames\medieval-knight-win64.zip` เป็นเวอร์ชันใหม่ (big-map-update) แล้ว (04:17)
 
 ## ตัดสินอะไรไปแล้ว
 
@@ -73,7 +73,7 @@
 
 ## เหลืออะไร
 
-1. developer ทำขั้น B-G ให้จบ (แต่ละขั้นต้อง build + SelfTest ผ่าน และ mptest ผ่านในขั้นที่แตะเน็ต/แมพ/ศัตรู)
+1. (เสร็จแล้ว) developer ทำขั้น A-G
 2. ปูส้มตรวจรายงานของ developer: ผล build, SelfTest, mptest, จุดที่ทำต่างจากเอกสาร
 3. โพสต์ผลในห้อง pusom-dev ขึ้นต้น "💻 Developer:" แท็ก test_disk
 4. zip เป็น `medieval-knight-win64.zip` ไปทับใน `G:\My Drive\PusomGames\` (developer ทำเมื่อทุกขั้นผ่าน ปูส้มตรวจซ้ำ)
