@@ -40,11 +40,13 @@ namespace MedievalKnight
             public Text key, title, line, detail;
         }
 
+        // one sword slot of the Tab window
         class RowUi
         {
             public RectTransform rt;
-            public Image bg, swatch;
-            public Text key, name, stats, state;
+            public Image border, bg, eqBar;
+            public RawImage icon;
+            public Text key, name, badge, state, qmark;
         }
 
         // one line of the party list: another player's colour, name, level and health
@@ -59,14 +61,20 @@ namespace MedievalKnight
         readonly PartyUi[] party = new PartyUi[Net.MaxPlayers - 1];
         readonly List<Text> tags = new List<Text>();           // name tags above the knights (online)
         GameObject partyRoot;
-        Image partyPanel, levelDim, invDim;
+        Image partyPanel, levelDim, invDim, invFrame;
+        RawImage eqIcon;
+        Text eqName, eqStats, ownedText, charText, charStats, expValue, statHead, skillsText, soulKills, tabHint, tabCornerHint;
+        RectTransform expFill;
+        readonly RectTransform[] statFill = new RectTransform[3];
+        readonly Text[] statNum = new Text[3], statEffect = new Text[3];
+        float lastTabRefresh, sessionShownAt;
         Text netText, invFoot;
 
         Font font;
         Canvas canvas;
         RectTransform root, popupRoot;
         BarUi hpBar, armorBar, staminaBar, expBar, bossBar;
-        Text statsText, bannerText, actionText, noticeText, controlsText, bossText, levelTitle, levelSub, invSlot, invStats;
+        Text bannerText, actionText, noticeText, controlsText, bossText, levelTitle, levelSub;
         GameObject controlsPanel, bossPanel, levelRoot, invRoot;
         public static readonly Color SoulColor = new Color(0.62f, 0.91f, 1f);
         GameObject deathRoot;
@@ -150,6 +158,15 @@ namespace MedievalKnight
             soulText.color = SoulColor;
             soulText.text = "0";
 
+            // "TAB !" next to the Soul row while a stat point waits, and a one-off hint in the lower left corner
+            tabHint = MakeText("TabHint", new Vector2(0, 1), new Vector2(330, -156), new Vector2(66, 24), 16, TextAnchor.MiddleLeft);
+            tabHint.fontStyle = FontStyle.Bold;
+            tabHint.color = new Color(1f, 0.88f, 0.3f);
+            tabHint.text = "TAB !";
+            tabHint.gameObject.SetActive(false);
+            tabCornerHint = MakeText("TabCornerHint", new Vector2(0, 0), new Vector2(16, 16), new Vector2(400, 24), 15, TextAnchor.MiddleLeft);
+            tabCornerHint.text = "Tab = Inventory & Stats";
+
             // thin dividers on the stamina bar every 25 points: one section = one dash
             for (int i = 0; i < staminaTicks.Length; i++)
             {
@@ -161,21 +178,16 @@ namespace MedievalKnight
                 staminaTicks[i] = t;
             }
 
-            // --- upgrade totals, under the bars ---
-            Panel("StatsPanel", new Vector2(0, 1), new Vector2(16, -202), new Vector2(400, 152), PanelCol);
-            statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -208), new Vector2(380, 142), 13, TextAnchor.UpperLeft);
-            statsText.supportRichText = true;
-
-            // --- online: connection line and the other players, under the stats ---
+            // --- online: connection line and the other players, right under the top-left panel ---
             RectTransform pr = Rect("Party", new Vector2(0, 1), Vector2.zero, Vector2.zero);
             partyRoot = pr.gameObject;
-            partyPanel = Panel("PartyPanel", new Vector2(0, 1), new Vector2(16, -360), new Vector2(400, 110), PanelCol, pr);
-            netText = MakeText("NetStatus", new Vector2(0, 1), new Vector2(28, -364), new Vector2(380, 20), 13, TextAnchor.MiddleLeft, pr);
+            partyPanel = Panel("PartyPanel", new Vector2(0, 1), new Vector2(16, -206), new Vector2(400, 110), PanelCol, pr);
+            netText = MakeText("NetStatus", new Vector2(0, 1), new Vector2(28, -210), new Vector2(380, 20), 13, TextAnchor.MiddleLeft, pr);
             netText.color = new Color(0.75f, 0.95f, 0.8f);
             for (int i = 0; i < party.Length; i++)
             {
                 var u = new PartyUi();
-                float y = -388f - i * 26f;
+                float y = -234f - i * 26f;
                 RectTransform row = Rect("PartyRow" + i, new Vector2(0, 1), Vector2.zero, Vector2.zero, pr);
                 u.go = row.gameObject;
                 u.swatch = Panel("Swatch", new Vector2(0, 1), new Vector2(28, y - 2), new Vector2(10, 18), Color.white, row);
@@ -304,6 +316,14 @@ namespace MedievalKnight
             return rt;
         }
 
+        static RectTransform Stretch(Image img, float inset)
+        {
+            RectTransform rt = Stretch(img);
+            rt.offsetMin = new Vector2(inset, inset);
+            rt.offsetMax = new Vector2(-inset, -inset);
+            return rt;
+        }
+
         static void Fill(RectTransform rt)
         {
             rt.anchorMin = Vector2.zero;
@@ -374,7 +394,8 @@ namespace MedievalKnight
             levelRoot.SetActive(false);
         }
 
-        // The I panel: one row per sword (owned or not) and the stat-point totals underneath.
+        // The Tab window: left = the equipped sword and the five sword slots (a picture each), right = character,
+        // stat points, skills, Soul and kills. About 1000 x 520, centred.
         void BuildInventoryPanel()
         {
             RectTransform ir = Rect("Inventory", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
@@ -382,39 +403,124 @@ namespace MedievalKnight
             invRoot = ir.gameObject;
             invDim = Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.04f, 0.6f), ir);
             Fill(invDim.rectTransform);
-            Image frame = Panel("Frame", new Vector2(0.5f, 0.5f), new Vector2(0, 42), new Vector2(836, 446), new Color(0.75f, 0.62f, 0.3f, 1f), ir);
-            RectTransform p = Panel("Bg", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(830, 440), new Color(0.07f, 0.07f, 0.1f, 1f), frame.transform).rectTransform;
+            invFrame = Panel("Frame", new Vector2(0.5f, 0.5f), new Vector2(0, 8), new Vector2(1006, 526), new Color(0.75f, 0.62f, 0.3f, 1f), ir);
+            RectTransform p = Panel("Bg", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1000, 520), new Color(0.07f, 0.07f, 0.1f, 1f), invFrame.transform).rectTransform;
+            Color gray = new Color(0.7f, 0.72f, 0.78f);
+            Vector2 tl = new Vector2(0, 1);
 
-            Text title = MakeText("Title", new Vector2(0.5f, 1), new Vector2(0, -10), new Vector2(800, 34), 26, TextAnchor.MiddleCenter, p);
+            Text title = MakeText("Title", tl, new Vector2(20, -8), new Vector2(700, 34), 24, TextAnchor.MiddleLeft, p);
             title.fontStyle = FontStyle.Bold;
             title.color = new Color(1f, 0.88f, 0.35f);
-            title.text = "KNIGHT  -  WEAPONS & STATS";
-            invSlot = MakeText("Slot", new Vector2(0.5f, 1), new Vector2(0, -46), new Vector2(800, 22), 16, TextAnchor.MiddleCenter, p);
-            invSlot.supportRichText = true;
+            title.text = "KNIGHT  -  INVENTORY & STATS";
+            Text closeHint = MakeText("Close", new Vector2(1, 1), new Vector2(-20, -12), new Vector2(200, 26), 15, TextAnchor.MiddleRight, p);
+            closeHint.color = gray;
+            closeHint.text = "[Tab] close";
 
+            // ---- left: the equipped sword
+            Panel("EquippedBox", tl, new Vector2(16, -50), new Vector2(626, 196), new Color(0.1f, 0.1f, 0.14f, 1f), p);
+            Text eqLabel = MakeText("EqLabel", tl, new Vector2(28, -56), new Vector2(200, 22), 15, TextAnchor.MiddleLeft, p);
+            eqLabel.fontStyle = FontStyle.Bold;
+            eqLabel.color = new Color(0.6f, 1f, 0.55f);
+            eqLabel.text = "EQUIPPED";
+            Image eqFrame = Panel("EqIconFrame", tl, new Vector2(28, -80), new Vector2(160, 160), new Color(0.4f, 1f, 0.45f), p);
+            eqIcon = AddRaw("EqIcon", eqFrame.transform, new Vector2(156, 156));
+            eqName = MakeText("EqName", tl, new Vector2(204, -82), new Vector2(420, 54), 22, TextAnchor.UpperLeft, p);
+            eqName.supportRichText = true;
+            eqStats = MakeText("EqStats", tl, new Vector2(204, -140), new Vector2(430, 80), 16, TextAnchor.UpperLeft, p);
+            eqStats.supportRichText = true;
+            ownedText = MakeText("Owned", tl, new Vector2(500, -56), new Vector2(130, 22), 15, TextAnchor.MiddleRight, p);
+            ownedText.color = gray;
+
+            // ---- left: five sword slots in a row
+            Text swLabel = MakeText("SwordsLabel", tl, new Vector2(16, -254), new Vector2(500, 22), 15, TextAnchor.MiddleLeft, p);
+            swLabel.color = gray;
+            swLabel.text = "SWORDS   (click or press 1-5 to equip)";
             for (int i = 0; i < rows.Length; i++)
             {
                 var r = new RowUi();
-                r.bg = Panel("Row" + (i + 1), new Vector2(0.5f, 1), new Vector2(0, -76 - i * 56), new Vector2(798, 50), Color.white, p);
-                r.rt = r.bg.rectTransform;
-                r.key = MakeText("Key", new Vector2(0, 0.5f), new Vector2(10, 0), new Vector2(44, 40), 22, TextAnchor.MiddleCenter, r.rt);
+                float x = 16 + i * 126;
+                r.border = Panel("Slot" + (i + 1) + "Border", tl, new Vector2(x, -278), new Vector2(118, 190), Color.white, p);
+                r.rt = r.border.rectTransform;
+                r.bg = Panel("Bg", tl, new Vector2(3, -3), new Vector2(112, 184), SlotCol, r.rt);
+                r.key = MakeText("Key", tl, new Vector2(8, -6), new Vector2(40, 22), 16, TextAnchor.MiddleLeft, r.bg.transform);
                 r.key.fontStyle = FontStyle.Bold;
                 r.key.text = "[" + (i + 1) + "]";
-                r.swatch = Panel("Swatch", new Vector2(0, 0.5f), new Vector2(62, 0), new Vector2(12, 36), Color.white, r.rt);
-                r.name = MakeText("Name", new Vector2(0, 1), new Vector2(86, -4), new Vector2(460, 22), 17, TextAnchor.MiddleLeft, r.rt);
+                r.icon = AddRaw("Icon", r.bg.transform, new Vector2(90, 90));
+                r.icon.rectTransform.anchorMin = r.icon.rectTransform.anchorMax = r.icon.rectTransform.pivot = new Vector2(0.5f, 1f);
+                r.icon.rectTransform.anchoredPosition = new Vector2(0f, -24f);
+                r.qmark = MakeText("Q", new Vector2(0.5f, 1), new Vector2(0, -69), new Vector2(100, 56), 46, TextAnchor.MiddleCenter, r.bg.transform);
+                r.qmark.fontStyle = FontStyle.Bold;
+                r.qmark.color = new Color(0.55f, 0.55f, 0.62f);
+                r.qmark.text = "?";
+                r.name = MakeText("Name", new Vector2(0.5f, 0), new Vector2(0, 48), new Vector2(108, 34), 14, TextAnchor.MiddleCenter, r.bg.transform);
                 r.name.fontStyle = FontStyle.Bold;
-                r.name.supportRichText = true;
-                r.stats = MakeText("Stats", new Vector2(0, 1), new Vector2(86, -27), new Vector2(520, 18), 13, TextAnchor.MiddleLeft, r.rt);
-                r.state = MakeText("State", new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(200, 40), 14, TextAnchor.MiddleRight, r.rt);
-                r.state.fontStyle = FontStyle.Bold;
+                r.name.horizontalOverflow = HorizontalWrapMode.Wrap;
+                r.state = MakeText("State", new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(108, 26), 11, TextAnchor.MiddleCenter, r.bg.transform);
+                r.state.horizontalOverflow = HorizontalWrapMode.Wrap;
+                r.badge = MakeText("Plus", new Vector2(1, 1), new Vector2(-6, -14), new Vector2(76, 20), 14, TextAnchor.MiddleRight, r.bg.transform);
+                r.badge.fontStyle = FontStyle.Bold;
+                r.badge.color = new Color(1f, 0.9f, 0.4f);
+                r.eqBar = Panel("EqBar", new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(104, 18), new Color(0.2f, 0.55f, 0.25f, 1f), r.bg.transform);
+                Text eqt = MakeText("Text", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(110, 18), 12, TextAnchor.MiddleCenter, r.eqBar.transform);
+                eqt.fontStyle = FontStyle.Bold;
+                eqt.text = "EQUIPPED  *";
+                r.eqBar.gameObject.SetActive(false);
                 rows[i] = r;
             }
 
-            invStats = MakeText("Points", new Vector2(0.5f, 1), new Vector2(0, -362), new Vector2(798, 44), 14, TextAnchor.UpperLeft, p);
-            invStats.supportRichText = true;
-            invFoot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(800, 20), 13, TextAnchor.MiddleCenter, p);
-            invFoot.color = new Color(0.7f, 0.72f, 0.78f);
+            // ---- right: character
+            float cx = 662;
+            Panel("CharBox", tl, new Vector2(cx - 8, -50), new Vector2(338, 122), new Color(0.1f, 0.1f, 0.14f, 1f), p);
+            Text charHead = MakeText("CharHead", tl, new Vector2(cx, -54), new Vector2(200, 22), 15, TextAnchor.MiddleLeft, p);
+            charHead.fontStyle = FontStyle.Bold;
+            charHead.color = new Color(1f, 0.88f, 0.35f);
+            charHead.text = "CHARACTER";
+            charText = MakeText("CharText", tl, new Vector2(cx, -74), new Vector2(322, 20), 15, TextAnchor.MiddleLeft, p);
+            charText.supportRichText = true;
+            Image expFrame = Panel("ExpBar", tl, new Vector2(cx, -96), new Vector2(322, 18), FrameCol, p);
+            charStats = MakeText("CharStats", tl, new Vector2(cx, -118), new Vector2(322, 54), 14, TextAnchor.UpperLeft, p);
+            charStats.supportRichText = true;
+            expFill = Stretch(Panel("Fill", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.66f, 0.4f, 0.95f), expFrame.transform), 2f);
+            expValue = MakeText("Val", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(320, 20), 12, TextAnchor.MiddleCenter, expFrame.transform);
+
+            // ---- right: stat points
+            Panel("StatBox", tl, new Vector2(cx - 8, -174), new Vector2(338, 136), new Color(0.1f, 0.1f, 0.14f, 1f), p);
+            statHead = MakeText("StatHead", tl, new Vector2(cx, -178), new Vector2(322, 22), 15, TextAnchor.MiddleLeft, p);
+            statHead.supportRichText = true;
+            Attr[] attrs = { Attr.Hp, Attr.Block, Attr.Stamina };
+            for (int a = 0; a < 3; a++)
+            {
+                float y = -204 - a * 34;
+                Text lab = MakeText("Stat" + a, tl, new Vector2(cx, y), new Vector2(80, 20), 14, TextAnchor.MiddleLeft, p);
+                lab.fontStyle = FontStyle.Bold;
+                lab.color = AttrColor(attrs[a]);
+                lab.text = Progress.AttrName(attrs[a]);
+                Image bar = Panel("StatBar" + a, tl, new Vector2(cx + 76, y - 2), new Vector2(190, 16), FrameCol, p);
+                statFill[a] = Stretch(Panel("Fill", Vector2.zero, Vector2.zero, Vector2.zero, AttrColor(attrs[a]), bar.transform), 2f);
+                statNum[a] = MakeText("Num", tl, new Vector2(cx + 272, y), new Vector2(54, 20), 14, TextAnchor.MiddleLeft, p);
+                statEffect[a] = MakeText("Effect", tl, new Vector2(cx + 76, y - 17), new Vector2(250, 16), 11, TextAnchor.MiddleLeft, p);
+                statEffect[a].color = gray;
+            }
+
+            // ---- right: skills, Soul, kills
+            Panel("SkillBox", tl, new Vector2(cx - 8, -316), new Vector2(338, 104), new Color(0.1f, 0.1f, 0.14f, 1f), p);
+            skillsText = MakeText("Skills", tl, new Vector2(cx, -320), new Vector2(326, 98), 13, TextAnchor.UpperLeft, p);
+            skillsText.supportRichText = true;
+            Panel("SoulBox", tl, new Vector2(cx - 8, -426), new Vector2(338, 36), new Color(0.1f, 0.1f, 0.14f, 1f), p);
+            soulKills = MakeText("SoulKills", tl, new Vector2(cx, -432), new Vector2(326, 24), 18, TextAnchor.MiddleLeft, p);
+            soulKills.supportRichText = true;
+
+            invFoot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 10), new Vector2(960, 22), 14, TextAnchor.MiddleCenter, p);
+            invFoot.color = gray;
             invRoot.SetActive(false);
+        }
+
+        RawImage AddRaw(string name, Transform parent, Vector2 size)
+        {
+            RectTransform rt = Rect(name, new Vector2(0.5f, 0.5f), Vector2.zero, size, parent);
+            var raw = rt.gameObject.AddComponent<RawImage>();
+            raw.raycastTarget = false;
+            return raw;
         }
 
         // The YOU DIED screen. Not clickable (nothing under it can be pressed anyway: a dead knight takes no input).
@@ -491,7 +597,7 @@ namespace MedievalKnight
         public void ToggleControls() { showControls = !showControls; }
 
         // The whole in-game HUD is hidden while the start menu is up.
-        public void SetVisible(bool on) { canvas.enabled = on; }
+        public void SetVisible(bool on) { canvas.enabled = on; if (on) sessionShownAt = Time.unscaledTime; }
 
         // Floating text at a world position (damage numbers, BLOCK, +EXP...).
         public void Popup(Vector3 world, string text, Color color, int size)
@@ -612,8 +718,9 @@ namespace MedievalKnight
             invRoot.SetActive(true);
             invOpenedAt = Time.unscaledTime;
             DimFor(invDim, 0.6f);
-            invFoot.text = "1 - 5 or click a row: equip an owned sword          Tab / Esc: close          "
+            invFoot.text = "1-5 / Click: equip          Tab / Esc: close          "
                 + (Net.Multiplayer ? "(online: the game keeps running!)" : "(the game is paused)");
+            lastTabRefresh = -10f;
             RefreshInventory(-1);
         }
 
@@ -621,38 +728,114 @@ namespace MedievalKnight
 
         static string Hex(Color c) { return "#" + ColorUtility.ToHtmlStringRGB(c); }
 
+        static readonly Color RarityCommon = new Color(0.69f, 0.69f, 0.69f), RarityUncommon = new Color(0.37f, 0.81f, 0.42f),
+            RarityRare = new Color(0.85f, 0.29f, 0.29f), RarityLegendary = new Color(1f, 0.79f, 0.24f);
+        static readonly Color SlotCol = new Color(0.12f, 0.12f, 0.17f, 1f);
+
+        static Color RarityColor(string rarity)
+        {
+            return rarity == "Uncommon" ? RarityUncommon : rarity == "Rare" ? RarityRare : rarity == "Legendary" ? RarityLegendary : RarityCommon;
+        }
+
+        // Test read-outs for the Tab window.
+        public Texture IconTexture(int slot) { return rows[slot].icon.texture; }
+        public Color IconTint(int slot) { return rows[slot].icon.color; }
+        public string SlotName(int slot) { return rows[slot].name.text; }
+        public bool SlotEquippedMark(int slot) { return rows[slot].eqBar.gameObject.activeSelf; }
+        public string SlotBadge(int slot) { return rows[slot].badge.text; }
+        public string TabCharacterText { get { return charText.text; } }
+        public string TabSoulText { get { return soulKills.text; } }
+        public Texture EquippedIconTexture { get { return eqIcon.texture; } }
+        public bool TabHintBlinking { get { return tabHint.gameObject.activeSelf; } }
+        public RectTransform TabPanelRect { get { return invFrame.rectTransform; } }
+
+        // Slot colours and the cheap per-frame parts; the heavy text is rebuilt only every 0.2 s (or after an equip).
         void RefreshInventory(int hover)
         {
             Knight k = Game.I.knight;
             Inventory inv = k.inventory;
             Progress pr = k.progress;
-            invSlot.text = "Weapon slot:  <color=" + Hex(k.Weapon.uiColor) + "><b>" + inv.NameOf(inv.equipped) + "</b></color>     Owned " + inv.OwnedCount + " / " + Weapons.All.Length;
+            bool rebuild = Time.unscaledTime - lastTabRefresh > 0.2f;
+            if (rebuild) lastTabRefresh = Time.unscaledTime;
+
             for (int i = 0; i < rows.Length; i++)
             {
                 WeaponDef w = Weapons.All[i];
                 RowUi r = rows[i];
                 bool own = inv.owned[i], eq = inv.equipped == i;
-                r.bg.color = eq ? new Color(0.2f, 0.26f, 0.16f, 1f) : i == hover && own ? new Color(0.2f, 0.2f, 0.3f, 1f) : new Color(0.12f, 0.12f, 0.17f, 1f);
-                r.swatch.color = own ? w.uiColor : new Color(0.3f, 0.3f, 0.34f);
-                Color text = own ? Color.white : new Color(0.5f, 0.5f, 0.55f);
-                r.key.color = text;
-                r.name.color = own ? w.uiColor : text;
-                r.name.text = inv.NameOf(i) + "   <size=12><color=" + Hex(text) + ">" + w.rarity + "  -  " + w.hint + "</color></size>";
-                r.stats.color = text;
-                r.stats.text = "DMG x" + inv.DamageOf(i).ToString("0.00") + w.StatLine().Substring(w.StatLine().IndexOf("   SPEED"));
-                r.state.color = eq ? new Color(0.6f, 1f, 0.5f) : own ? new Color(0.85f, 0.87f, 0.92f) : new Color(0.6f, 0.55f, 0.45f);
-                r.state.text = eq ? "EQUIPPED" : own ? "press " + (i + 1) + " or click" : w.dropHint;
+                Color rc = RarityColor(w.rarity);
+                r.border.color = eq ? new Color(0.4f, 1f, 0.45f) : own ? rc : new Color(rc.r * 0.35f, rc.g * 0.35f, rc.b * 0.35f);
+                r.bg.color = i == hover && own ? new Color(0.2f, 0.2f, 0.3f, 1f) : eq ? new Color(0.14f, 0.2f, 0.16f, 1f) : SlotCol;
+                if (!rebuild) continue;
+                r.key.color = own ? Color.white : new Color(0.55f, 0.55f, 0.6f);
+                r.icon.texture = own ? SwordIcons.Get(i) : SwordIcons.Shadow(i);
+                r.icon.color = Color.white;
+                r.qmark.gameObject.SetActive(!own);
+                r.eqBar.gameObject.SetActive(eq);
+                r.name.color = own ? w.uiColor : new Color(0.55f, 0.55f, 0.6f);
+                r.name.text = own ? w.name : "???";
+                r.badge.text = own && inv.plus[i] > 0 ? (inv.plus[i] >= Weapons.MaxPlus ? "+" + inv.plus[i] + " MAX" : "+" + inv.plus[i]) : "";
+                r.state.color = own ? new Color(0.78f, 0.8f, 0.86f) : new Color(0.7f, 0.62f, 0.45f);
+                r.state.text = eq ? "" : own ? "press " + (i + 1) : w.dropHint;
             }
-            invStats.text =
-                "<b>STAT POINTS</b>    <color=" + Hex(AttrColor(Attr.Hp)) + ">HP " + pr.Points(Attr.Hp) + "/" + Progress.AttrCap + "</color>  (+" + pr.HpBonus.ToString("0") + " max health)"
-                + "     <color=" + Hex(AttrColor(Attr.Block)) + ">BLOCK " + pr.Points(Attr.Block) + "/" + Progress.AttrCap + "</color>  (+" + pr.ArmorBonus.ToString("0") + " armor, shield stops " + (pr.BlockReduction * 100f).ToString("0") + "%)"
-                + "     <color=" + Hex(AttrColor(Attr.Stamina)) + ">STAMINA " + pr.Points(Attr.Stamina) + "/" + Progress.AttrCap + "</color>  (+" + pr.StaminaBonus.ToString("0") + ", regen +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "%)"
-                + "\n<b>NOW</b>    Health " + k.MaxHp.ToString("0") + "   Armor " + k.MaxArmor.ToString("0") + "   Stamina " + k.MaxStamina.ToString("0")
-                + "     |     Sword hit x" + k.DamageMult(-1).ToString("0.00") + "   swing x" + k.SwingSpeed.ToString("0.00")
-                + "   crit " + (k.CritChance(-1) * 100f).ToString("0") + "% x" + k.CritMult(-1).ToString("0.0") + "   reach x" + k.Weapon.reach.ToString("0.00");
+            if (!rebuild) return;
+
+            // equipped sword: big picture + numbers
+            WeaponDef cur = k.Weapon;
+            eqIcon.texture = SwordIcons.Get(cur.id);
+            eqName.text = "<color=" + Hex(cur.uiColor) + "><b>" + inv.NameOf(inv.equipped) + "</b></color>\n<size=14><color=" + Hex(RarityColor(cur.rarity)) + ">" + cur.rarity + "</color></size>";
+            eqStats.text = "DMG x" + inv.DamageOf(cur.id).ToString("0.00") + "   SPD x" + cur.speed.ToString("0.00")
+                + "\nCRIT +" + (cur.critChance * 100f).ToString("0") + "% / +" + cur.critMult.ToString("0.0") + "x   REACH x" + cur.reach.ToString("0.00")
+                + "\n<color=#9aa0b0>" + cur.hint + "</color>";
+            ownedText.text = "Owned " + inv.OwnedCount + " / " + Weapons.All.Length;
+
+            // CHARACTER
+            bool max = pr.IsMax;
+            charText.text = "<b>Lv " + pr.level + " / " + Progress.MaxLevel + "</b>" + (max ? "   <color=#ffd34d>MAX LEVEL</color>" : "");
+            charStats.text = "<b>Health</b> " + k.MaxHp.ToString("0") + "     <b>Armor</b> " + k.MaxArmor.ToString("0") + "     <b>Stamina</b> " + k.MaxStamina.ToString("0")
+                + "\nSword hit x" + k.DamageMult(-1).ToString("0.0") + "    Swing x" + k.SwingSpeed.ToString("0.0")
+                + "\nCrit " + (k.CritChance(-1) * 100f).ToString("0") + "% x" + k.CritMult(-1).ToString("0.0") + "    Reach x" + cur.reach.ToString("0.00");
+            float expFrac = max ? 1f : Mathf.Clamp01(pr.exp / Progress.Need(pr.level));
+            expFill.anchorMax = new Vector2(Mathf.Max(0.0001f, expFrac), 1f);
+            expFill.offsetMax = new Vector2(-2f * expFrac, -2f);
+            expValue.text = max ? "MAX" : Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level);
+
+            // STAT POINTS
+            int spent = pr.Points(Attr.Hp) + pr.Points(Attr.Block) + pr.Points(Attr.Stamina);
+            statHead.text = "<b>STAT POINTS</b>    spent " + spent + " / " + (Progress.MaxLevel - 1)
+                + (pr.statPoints > 0 ? "   <color=#ffe066>(" + pr.statPoints + " unspent)</color>" : "");
+            string[] effect =
+            {
+                "+" + pr.HpBonus.ToString("0") + " max health",
+                "+" + pr.ArmorBonus.ToString("0") + " armor, shield stops " + (pr.BlockReduction * 100f).ToString("0") + "%",
+                "+" + pr.StaminaBonus.ToString("0") + " stamina, regen +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "%"
+            };
+            for (int a = 0; a < 3; a++)
+            {
+                float f = pr.attr[a] / (float)Progress.AttrCap;
+                statFill[a].anchorMax = new Vector2(Mathf.Max(0.0001f, f), 1f);
+                statFill[a].offsetMax = new Vector2(-2f * f, -2f);
+                statNum[a].text = pr.attr[a] + "/" + Progress.AttrCap;
+                statEffect[a].text = effect[a];
+            }
+
+            // SKILLS
+            var sb = new System.Text.StringBuilder(300);
+            sb.Append("<b>SKILLS</b>   (upgrades)\n");
+            for (int i = 0; i < 4; i++)
+            {
+                SkillDef s = Knight.Skills[i];
+                sb.Append(s.key).Append(' ').Append(s.name.PadRight(12))
+                  .Append(" dmg x").Append(k.DamageMult(i).ToString("0.0"))
+                  .Append("  spd x").Append(pr.SpeedMult(i).ToString("0.0"))
+                  .Append("  crit ").Append((k.CritChance(i) * 100f).ToString("0")).Append("%\n");
+            }
+            skillsText.text = sb.ToString();
+
+            soulKills.text = "<color=" + Hex(SoulColor) + "><b>SOUL " + k.souls.ToString("N0") + "</b></color>        Kills " + pr.kills;
         }
 
-        // Returns the sword to equip (index into Weapons.All) or -1. Keys 1..5 or a left click on an owned row.
+        // Returns the sword to equip (index into Weapons.All) or -1. Keys 1..5 or a left click on an owned slot.
         public int InventoryInput()
         {
             if (!invRoot.activeSelf) return -1;
@@ -676,6 +859,7 @@ namespace MedievalKnight
                 pick = -1;
             }
             if (pick == inv.equipped) pick = -1;
+            if (pick >= 0) lastTabRefresh = -10f;                     // show the change in this very frame
             RefreshInventory(hover);
             return pick;
         }
@@ -734,28 +918,13 @@ namespace MedievalKnight
             if (pr.IsMax) UpdateBar(expBar, 1f, 1f, dt, false, "MAX LEVEL");
             else UpdateBar(expBar, pr.exp, Progress.Need(pr.level), dt, false, Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level) + " EXP");
 
-            // upgrade totals (damage and crit include the equipped sword), sword, stat points
-            var sb = new System.Text.StringBuilder(600);
-            sb.Append("<b>DAMAGE</b> <color=#ff6b52>x").Append(k.DamageMult(-1).ToString("0.0"))
-              .Append("</color>   <b>ATK SPEED</b> <color=#ffdb4d>x").Append(pr.SpeedMult(-1).ToString("0.0"))
-              .Append("</color>   <b>CRIT</b> <color=#cc8cff>").Append((k.CritChance(-1) * 100f).ToString("0")).Append("% x").Append(k.CritMult(-1).ToString("0.0")).Append("</color>\n");
-            for (int i = 0; i < 4; i++)
-            {
-                SkillDef s = Knight.Skills[i];
-                sb.Append(s.key).Append(' ').Append(s.name.PadRight(12))
-                  .Append("  dmg x").Append(k.DamageMult(i).ToString("0.0"))
-                  .Append("  spd x").Append(pr.SpeedMult(i).ToString("0.0"))
-                  .Append("  crit ").Append((k.CritChance(i) * 100f).ToString("0")).Append("% x").Append(k.CritMult(i).ToString("0.0")).Append('\n');
-            }
-            sb.Append("<b>SWORD</b> <color=").Append(Hex(k.Weapon.uiColor)).Append('>').Append(k.inventory.NameOf(k.inventory.equipped))
-              .Append("</color>  swing x").Append(k.SwingSpeed.ToString("0.00")).Append("  reach x").Append(k.Weapon.reach.ToString("0.00")).Append("   [Tab]\n");
-            sb.Append("<b>POINTS</b>  <color=").Append(Hex(AttrColor(Attr.Hp))).Append(">HP ").Append(pr.Points(Attr.Hp))
-              .Append("</color>   <color=").Append(Hex(AttrColor(Attr.Block))).Append(">BLOCK ").Append(pr.Points(Attr.Block)).Append(" (").Append((pr.BlockReduction * 100f).ToString("0")).Append("%)")
-              .Append("</color>   <color=").Append(Hex(AttrColor(Attr.Stamina))).Append(">STAMINA ").Append(pr.Points(Attr.Stamina)).Append("</color>");
-            if (pr.statPoints > 0) sb.Append("   <color=#ffe066><b>+").Append(pr.statPoints).Append(" unspent</b></color>");
-            sb.Append('\n');
-            sb.Append("Wave ").Append(g.wave).Append("    Slimes ").Append(g.slimesAlive).Append("    Kills ").Append(pr.kills);
-            statsText.text = sb.ToString();
+            // "TAB !" blinks while there are unspent stat points; the corner hint shows for the first 5 seconds
+            bool blink = pr.statPoints > 0 && !g.PanelOpen && Mathf.Sin(Time.unscaledTime * 7f) > -0.3f;
+            if (tabHint.gameObject.activeSelf != blink) tabHint.gameObject.SetActive(blink);
+            float hintAge = Time.unscaledTime - sessionShownAt;
+            bool hintOn = hintAge < 5f && !g.PanelOpen;
+            if (tabCornerHint.gameObject.activeSelf != hintOn) tabCornerHint.gameObject.SetActive(hintOn);
+            if (hintOn) tabCornerHint.color = new Color(1f, 1f, 1f, Mathf.Clamp01((5f - hintAge) / 1f) * 0.7f);
 
             // skill slots
             for (int i = 0; i < 4; i++)

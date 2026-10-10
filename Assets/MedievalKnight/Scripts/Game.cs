@@ -91,6 +91,7 @@ namespace MedievalKnight
 
             SetupCamera();
             SetupLight();
+            SwordIcons.Build(cam);                     // the Tab window pictures: needs the light, hides its stage layer from the camera
             BuildWorld();
 
             new GameObject("Fx").AddComponent<Fx>().transform.SetParent(transform, false);

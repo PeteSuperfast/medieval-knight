@@ -181,6 +181,20 @@ namespace MedievalKnight
                 + ", pipeline " + (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null ? UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline.name : "none")
                 + ", lit shader " + Prims.Lit(Color.white).shader.name + ", camera pitch " + g.cam.transform.eulerAngles.x.ToString("0"));
             Check("scene has slimes, minotaur and dummy", slimes >= 3 && g.minotaur != null && g.dummy != null);
+            {
+                bool okIcons = true;
+                var seenHash = new System.Collections.Generic.HashSet<int>();
+                string info = "";
+                for (int i = 0; i < Weapons.All.Length; i++)
+                {
+                    Texture2D t = SwordIcons.Get(i);
+                    int px = SwordIcons.NonBackground(i);
+                    okIcons &= t != null && t.width == 128 && t.height == 128 && px > 300 && seenHash.Add(SwordIcons.Hash(i));
+                    info += " " + Weapons.All[i].name + "=" + px + "px";
+                }
+                Log("sword icons made by '" + SwordIcons.Method + "':" + info);
+                Check("the five sword icons exist (128 x 128), are not empty and all look different", okIcons && seenHash.Count == Weapons.All.Length);
+            }
             Shot("start");
             yield return null;
 
@@ -531,6 +545,29 @@ namespace MedievalKnight
                 Check("a duplicate refines the sword to +1 (+5% damage)",
                     inv.plus[firstId] == 1 && Mathf.Abs(inv.DamageOf(firstId) - Weapons.All[firstId].damage * 1.05f) < 0.0001f && g.lastNotice.Contains("refined") && Pickup.All.Count == 0);
                 inv.plus[firstId] = 0;                                  // back to +0 so the table below is measured with the plain stats
+
+                // the Tab window with only two swords owned: pictures for the owned ones, dark cut-outs and "???" for the rest
+                yield return Tap(Key.Tab);
+                yield return W(0.4f);
+                {
+                    bool shapes = true, hidden = true;
+                    string names = "";
+                    for (int i = 0; i < Weapons.All.Length; i++)
+                    {
+                        bool own = inv.owned[i];
+                        names += g.hud.SlotName(i) + " | ";
+                        if (own) shapes &= g.hud.IconTexture(i) == SwordIcons.Get(i) && g.hud.SlotName(i) == Weapons.All[i].name;
+                        else hidden &= g.hud.IconTexture(i) == SwordIcons.Shadow(i) && g.hud.SlotName(i) == "???";
+                    }
+                    Log("tab window slots: " + names + "equipped mark on slot 0=" + g.hud.SlotEquippedMark(0) + ", panel " + g.hud.TabPanelRect.rect.width + "x" + g.hud.TabPanelRect.rect.height);
+                    Check("Tab window: owned swords show their picture, unowned ones a dark cut-out and '???'", shapes && hidden && inv.OwnedCount == 2);
+                    Check("Tab window: the equipped slot is marked and the window is about 1000 x 520",
+                        g.hud.SlotEquippedMark(Weapons.Iron) && !g.hud.SlotEquippedMark(firstId) && g.hud.TabPanelRect.rect.width > 990f && g.hud.TabPanelRect.rect.height > 510f);
+                    Check("Tab window: CHARACTER and SOUL / Kills text are filled in", g.hud.TabCharacterText.Contains("Lv ") && g.hud.TabSoulText.Contains("SOUL") && g.hud.TabSoulText.Contains("Kills"));
+                    Shot("tab_window_two_swords");
+                }
+                yield return Tap(Key.Tab);
+                yield return W(0.3f);
 
                 // the rest are handed out as pickups under his feet (self-test shortcut, not kills)
                 for (int id = 1; id < Weapons.All.Length; id++)
