@@ -20,13 +20,20 @@ namespace MedievalKnight
         public Dummy dummy;
         public Minotaur minotaur;
         public Hud hud;
-        public Progress progress = new Progress();
+        public Progress progress { get { return knight.progress; } }   // level / upgrades / stat points belong to the knight
         public UpgradeOffer[] offers;              // the cards currently on screen
         public int wave, slimesAlive;
         public float inputBlockUntil;              // unscaled time; combat input is ignored until then
+        public int dropOverride = -1;              // self-test hook: -1 = roll normally, 0 = never drop, 1 = always drop
+        public float camZoom = 1f;                 // self-test hook: < 1 moves the camera closer for screenshots
+        public Pickup lastPickup;                  // the most recent sword drop
+        public string lastNotice = "";             // the most recent "picked up ..." line
 
-        public bool Paused { get { return levelUpOpen; } }
-        public bool LevelUpOpen { get { return levelUpOpen; } }
+        // The level-up panel has two steps: 1 = pick an upgrade card, 2 = spend the stat point. 0 = closed.
+        public int LevelStep { get; private set; }
+        public bool LevelUpOpen { get { return LevelStep != 0; } }
+        public bool InventoryOpen { get; private set; }
+        public bool Paused { get { return LevelStep != 0 || InventoryOpen; } }
         public float MinotaurRespawnIn { get { return minoRespawnAt - Time.time; } }
 
         // Monsters get tougher as the knight levels, so the upgrades keep mattering.
@@ -34,7 +41,7 @@ namespace MedievalKnight
         public float EnemyDamageScale { get { return 1f + 0.08f * (progress.level - 1); } }
 
         Transform actors;
-        bool levelUpOpen, waveQueued;
+        bool waveQueued;
         float levelUpOpenAt, waveAt, minoRespawnAt;
         float shakeAmp, shakeTime, shakeDur;
         float hitStopUntil;
@@ -57,6 +64,7 @@ namespace MedievalKnight
             BuildWorld();
 
             new GameObject("Fx").AddComponent<Fx>().transform.SetParent(transform, false);
+            new GameObject("Sfx").AddComponent<Sfx>().transform.SetParent(transform, false);
             actors = Prims.Node(transform, "Actors", Vector3.zero);
 
             knight = new GameObject("Knight").AddComponent<Knight>();
@@ -72,6 +80,11 @@ namespace MedievalKnight
             SelfTest.StartIfRequested(gameObject);
         }
 
+        void Start()
+        {
+            Sfx.I.Play(Snd.Ready);                 // "stand ready" as the game begins
+        }
+
         // ---------------------------------------------------------------- camera / light
 
         void SetupCamera()
@@ -82,8 +95,9 @@ namespace MedievalKnight
                 var go = new GameObject("Main Camera");
                 go.tag = "MainCamera";
                 cam = go.AddComponent<Camera>();
-                go.AddComponent<AudioListener>();
             }
+            // sound needs exactly one listener; the scene's camera normally has it already
+            if (FindObjectsByType<AudioListener>().Length == 0) cam.gameObject.AddComponent<AudioListener>();
             cam.orthographic = false;
             cam.fieldOfView = CamFov;
             cam.nearClipPlane = 0.5f;
@@ -132,7 +146,7 @@ namespace MedievalKnight
         {
             Quaternion rot = Quaternion.Euler(CamPitch, 0f, 0f);
             cam.transform.rotation = rot;
-            cam.transform.position = camFocus + Vector3.up * 1f + Vector3.forward * 0.6f - rot * Vector3.forward * CamDist
+            cam.transform.position = camFocus + Vector3.up * 1f + Vector3.forward * 0.6f - rot * Vector3.forward * CamDist * camZoom
                 + rot * new Vector3(shake.x, shake.y, 0f);
         }
 
@@ -329,6 +343,93 @@ namespace MedievalKnight
                 progress.kills++;
                 GrantExp(e.expReward, e.Center + Vector3.up * 0.8f);
             }
+            RollDrop(e);
+        }
+
+        // ---------------------------------------------------------------- sword drops
+
+        // All drop randomness is here. Slimes: 4% / 10% / 20% (green / blue / red) for one of the three slime swords;
+        // the Minotaur always drops the Horned King's Blade. The dummy drops nothing.
+        void RollDrop(Enemy e)
+        {
+            int id = -1;
+            Slime sl = e as Slime;
+            if (sl != null)
+            {
+                float chance = dropOverride >= 0 ? dropOverride : Weapons.SlimeDropChance[sl.kind];
+                if (Random.value < chance) id = Weapons.SlimeDrop(Random.value);
+            }
+            else if (e is Minotaur)
+            {
+                float chance = dropOverride >= 0 ? dropOverride : Weapons.MinotaurDropChance;
+                if (Random.value < chance) id = Weapons.Boss;
+            }
+            if (id >= 0) SpawnPickup(id, e.transform.position);
+        }
+
+        public Pickup SpawnPickup(int weaponId, Vector3 pos)
+        {
+            lastPickup = Pickup.Spawn(weaponId, pos, actors);
+            WeaponDef w = Weapons.All[weaponId];
+            hud.Popup(lastPickup.transform.position + Vector3.up * 2.4f, w.name + "!", w.uiColor, 24);
+            Debug.Log("DROP " + w.name + " at (" + pos.x.ToString("0.0") + ", " + pos.z.ToString("0.0") + ")");
+            return lastPickup;
+        }
+
+        // A knight who walks over a sword takes it. New sword: goes to the inventory. Duplicate: refines the
+        // owned one (+1, up to +5), and past that it is worth a little EXP.
+        void UpdatePickups()
+        {
+            if (knight.Dead || knight.Airborne) return;
+            for (int i = Pickup.All.Count - 1; i >= 0; i--)
+            {
+                Pickup p = Pickup.All[i];
+                Vector3 d = p.transform.position - knight.transform.position; d.y = 0f;
+                if (p.age < 0.35f || d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
+                Collect(knight, p);
+            }
+        }
+
+        void Collect(Knight k, Pickup p)
+        {
+            WeaponDef w = Weapons.All[p.weaponId];
+            int result = k.inventory.Add(w.id);
+            Vector3 at = p.transform.position;
+            if (result == 0) lastNotice = "Picked up " + w.name + "   -   press I to equip";
+            else if (result == 1) lastNotice = w.name + " refined to +" + k.inventory.plus[w.id] + "   (duplicate: +5% damage)";
+            else
+            {
+                lastNotice = w.name + " is already +" + Weapons.MaxPlus + "   -   duplicate turned into EXP";
+                GrantExp(Weapons.DuplicateExp, at + Vector3.up * 2f);
+            }
+            hud.Notice(lastNotice, w.uiColor);
+            Fx.I.Ring(new Vector3(at.x, 0.06f, at.z), 0.4f, 2.6f, new Color(w.uiColor.r, w.uiColor.g, w.uiColor.b, 0.9f), 0.45f);
+            Fx.I.Burst(at + Vector3.up, 16, w.uiColor, 2f, 7f, Vector3.up, 0.9f, 0.6f, 6f, 0.12f);
+            Debug.Log("PICKUP " + lastNotice);
+            p.gameObject.SetActive(false);
+            Destroy(p.gameObject);
+        }
+
+        // ---------------------------------------------------------------- inventory panel (I)
+
+        public void SetInventory(bool open)
+        {
+            if (open == InventoryOpen || (open && (LevelStep != 0 || knight.Dead))) return;
+            InventoryOpen = open;
+            if (open) hud.ShowInventory();
+            else
+            {
+                hud.HideInventory();
+                inputBlockUntil = Time.unscaledTime + 0.2f;
+            }
+        }
+
+        public void EquipWeapon(int id)
+        {
+            if (!knight.Equip(id)) return;
+            WeaponDef w = knight.Weapon;
+            hud.Notice("Equipped " + knight.inventory.NameOf(id), w.uiColor);
+            Debug.Log("EQUIP " + knight.inventory.NameOf(id) + ": " + w.StatLine());
         }
 
         // All EXP goes through here. Returns the number of levels gained.
@@ -347,26 +448,56 @@ namespace MedievalKnight
             return gained;
         }
 
+        // Step 1: the three upgrade cards. Step 2 (after a card is picked): where the stat point goes.
         void OpenLevelUp()
         {
+            SetInventory(false);
             offers = progress.MakeOffers();
-            if (offers.Length == 0) { progress.pendingChoices = 0; return; }
-            levelUpOpen = true;
-            hud.ShowLevelUp(offers, progress.level - progress.pendingChoices + 1);
+            if (offers.Length > 0)
+            {
+                LevelStep = 1;
+                hud.ShowLevelUp(offers, progress.level - progress.pendingChoices + 1);
+                return;
+            }
+            progress.pendingChoices = Mathf.Max(0, progress.pendingChoices - 1);   // every upgrade is capped
+            OpenStatStep();
+        }
+
+        void OpenStatStep()
+        {
+            if (!progress.CanSpendAny) { CloseLevelUp(); return; }
+            LevelStep = 2;
+            hud.ShowStatChoice(knight);
+        }
+
+        void CloseLevelUp()
+        {
+            LevelStep = 0;
+            hud.HideLevelUp();
+            inputBlockUntil = Time.unscaledTime + 0.2f;
+            levelUpOpenAt = Time.unscaledTime + 0.3f;
         }
 
         public void ChooseUpgrade(int index)
         {
-            if (!levelUpOpen || offers == null || index < 0 || index >= offers.Length) return;
+            if (LevelStep != 1 || offers == null || index < 0 || index >= offers.Length) return;
             UpgradeOffer o = offers[index];
             progress.Apply(o);
             progress.pendingChoices = Mathf.Max(0, progress.pendingChoices - 1);
-            levelUpOpen = false;
-            hud.HideLevelUp();
-            hud.Banner(o.title + ":  " + o.line, Hud.StatColor(o.stat));
-            inputBlockUntil = Time.unscaledTime + 0.2f;
-            levelUpOpenAt = Time.unscaledTime + 0.3f;
             Debug.Log("UPGRADE picked " + (index + 1) + ": " + o.title + " " + o.line);
+            hud.Banner(o.title + ":  " + o.line, Hud.StatColor(o.stat));
+            OpenStatStep();
+        }
+
+        // index 0 / 1 / 2 = HP / BLOCK / STAMINA
+        public void ChooseStat(int index)
+        {
+            if (LevelStep != 2 || index < 0 || index > 2) return;
+            Attr a = (Attr)index;
+            if (!knight.SpendPoint(a)) return;                    // that stat is maxed: the panel stays open
+            Debug.Log("STATPOINT " + Progress.AttrName(a) + " -> " + progress.Points(a) + " (unspent " + progress.statPoints + ")");
+            hud.Banner(Progress.AttrName(a) + " +1", Hud.AttrColor(a));
+            CloseLevelUp();
         }
 
         public void OnKnightRevive()
@@ -399,18 +530,25 @@ namespace MedievalKnight
                 e.gameObject.SetActive(false);
                 Destroy(e.gameObject);
             }
-            progress = new Progress();
+            foreach (Pickup p in new List<Pickup>(Pickup.All))
+            {
+                p.gameObject.SetActive(false);
+                Destroy(p.gameObject);
+            }
+            lastPickup = null;
             offers = null;
-            levelUpOpen = false;
+            LevelStep = 0;
             hud.HideLevelUp();
+            SetInventory(false);
             hud.ClearPopups();
             Fx.I.Clear();
             hitStopUntil = 0f;
             minoRespawnAt = 0f;
-            knight.ResetAll();
+            knight.ResetAll();                                    // level, upgrades, stat points and swords
             SpawnActors();
             camFocus = knight.transform.position;
             hud.Banner("Restart - level 1", Color.white);
+            Sfx.I.Play(Snd.Ready);
         }
 
         // ---------------------------------------------------------------- juice
@@ -432,24 +570,43 @@ namespace MedievalKnight
         {
             if (InputX.Down(KeyCode.Escape)) Application.Quit();
             if (InputX.Down(KeyCode.F1)) hud.ToggleControls();
+            if (InputX.Down(KeyCode.M))
+            {
+                Sfx.I.CycleVolume();
+                hud.Notice("Sound: " + Sfx.I.VolumeLabel, Color.white);
+            }
 
-            if (levelUpOpen)
+            if (LevelStep != 0)
             {
                 Time.timeScale = 0f;
-                int pick = hud.LevelUpInput(offers.Length);
-                if (pick >= 0) ChooseUpgrade(pick);
+                int pick = hud.LevelUpInput(LevelStep == 1 ? offers.Length : 3);
+                if (pick >= 0)
+                {
+                    if (LevelStep == 1) ChooseUpgrade(pick); else ChooseStat(pick);
+                }
                 return;
             }
             if (progress.pendingChoices > 0 && Time.unscaledTime >= levelUpOpenAt && !knight.Dead && !knight.Airborne)
             {
                 OpenLevelUp();
-                if (levelUpOpen) { Time.timeScale = 0f; return; }
+                if (LevelStep != 0) { Time.timeScale = 0f; return; }
+            }
+
+            // I: weapons + stats panel (pauses the game like the level-up panel)
+            if (InputX.Down(KeyCode.I)) SetInventory(!InventoryOpen);
+            if (InventoryOpen)
+            {
+                Time.timeScale = 0f;
+                int pick = hud.InventoryInput();
+                if (pick >= 0) EquipWeapon(pick);
+                return;
             }
 
             Time.timeScale = Time.unscaledTime < hitStopUntil ? 0.03f : 1f;
 
             if (InputX.Down(KeyCode.F5)) { ResetAll(); return; }
             if (InputX.Down(KeyCode.H)) knight.TakeDamage(20f, knight.transform.position + knight.transform.forward, "Test hit");
+            UpdatePickups();
 
             // --- spawning ---
             slimesAlive = 0;

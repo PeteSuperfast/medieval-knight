@@ -4,6 +4,7 @@ using UnityEngine;
 namespace MedievalKnight
 {
     public enum StatKind { Damage, Speed, Crit }
+    public enum Attr { Hp, Block, Stamina }
 
     // One of the three cards offered on level-up.
     public class UpgradeOffer
@@ -25,12 +26,20 @@ namespace MedievalKnight
     //                 crit chance (starts 10%) += 5% per 1.0x     (cap 75%).
     // An upgrade is either for ALL attacks (rolls 0.5 .. 1.0) or for one skill only (rolls 1.0 .. 2.0);
     // a skill uses "all" + its own bonus.
+    //
+    // Every level-up also gives 1 stat point that the player puts into HP, BLOCK or STAMINA (max 6 each):
+    //   HP       +20 max health
+    //   BLOCK    +10 max armor, and a raised shield stops 2% more of a blow (80% -> at most 92%)
+    //   STAMINA  +12 max stamina and +4% stamina regeneration
+    // One Progress belongs to one Knight; the equipped sword is combined with these totals in Knight.RollDamage.
     public class Progress
     {
         public const int MaxLevel = 10;
         public const float ExpBase = 30f, ExpGrowth = 1.5f;
         public const float DamageCap = 10f, SpeedCap = 4f, BasicSpeedCap = 3f, CritMultCap = 10f, CritChanceCap = 0.75f;
         public const float BaseCritChance = 0.10f, BaseCritMult = 1.5f, CritChancePerX = 0.05f;
+        public const int AttrCap = 6;
+        public const float HpPerPoint = 20f, ArmorPerPoint = 10f, BaseBlock = 0.80f, BlockPerPoint = 0.02f, StaminaPerPoint = 12f, RegenPerPoint = 0.04f;
 
         public int level = 1;
         public float exp;                 // EXP inside the current level
@@ -38,6 +47,8 @@ namespace MedievalKnight
         public int pendingChoices;        // level-ups whose upgrade has not been picked yet
         public int kills;
         public readonly float[] dmg = new float[5], spd = new float[5], crit = new float[5];   // [0] = all, [1..4] = skills
+        public int statPoints;            // unspent stat points (1 per level-up)
+        public readonly int[] attr = new int[3];                                               // points in HP / BLOCK / STAMINA
 
         // EXP needed to go from "lvl" to "lvl + 1":  round(30 * 1.5^(lvl-1))
         public static int Need(int lvl) { return Mathf.RoundToInt(ExpBase * Mathf.Pow(ExpGrowth, lvl - 1)); }
@@ -53,16 +64,28 @@ namespace MedievalKnight
         public float CritMult(int skill) { return Mathf.Min(CritMultCap, BaseCritMult + Sum(crit, skill)); }
         public float CritChance(int skill) { return Mathf.Min(CritChanceCap, BaseCritChance + CritChancePerX * Sum(crit, skill)); }
 
-        // Test hook: 0 = roll normally, 1 = never crit, 2 = always crit.
+        // Test hook: 0 = roll normally, 1 = never crit, 2 = always crit. (The roll itself is Knight.RollDamage.)
         public static int ForceCrit;
 
-        public float Roll(int skill, float baseDamage, out bool isCrit)
+        // --- stat points ---
+        public int Points(Attr a) { return attr[(int)a]; }
+        public float HpBonus { get { return HpPerPoint * attr[(int)Attr.Hp]; } }
+        public float ArmorBonus { get { return ArmorPerPoint * attr[(int)Attr.Block]; } }
+        public float BlockReduction { get { return BaseBlock + BlockPerPoint * attr[(int)Attr.Block]; } }      // share of a blocked blow that is stopped
+        public float StaminaBonus { get { return StaminaPerPoint * attr[(int)Attr.Stamina]; } }
+        public float StaminaRegenMult { get { return 1f + RegenPerPoint * attr[(int)Attr.Stamina]; } }
+        public bool CanSpend(Attr a) { return statPoints > 0 && attr[(int)a] < AttrCap; }
+        public bool CanSpendAny { get { return CanSpend(Attr.Hp) || CanSpend(Attr.Block) || CanSpend(Attr.Stamina); } }
+
+        public bool Spend(Attr a)
         {
-            float d = baseDamage * DamageMult(skill);
-            isCrit = ForceCrit == 2 || (ForceCrit == 0 && Random.value < CritChance(skill));
-            if (isCrit) d *= CritMult(skill);
-            return d;
+            if (!CanSpend(a)) return false;
+            attr[(int)a]++;
+            statPoints--;
+            return true;
         }
+
+        public static string AttrName(Attr a) { return a == Attr.Hp ? "HP" : a == Attr.Block ? "BLOCK" : "STAMINA"; }
 
         // Returns how many levels were gained.
         public int AddExp(float amount)
@@ -76,6 +99,7 @@ namespace MedievalKnight
                 exp -= Need(level);
                 level++;
                 pendingChoices++;
+                statPoints++;
                 gained++;
             }
             if (IsMax) exp = 0f;

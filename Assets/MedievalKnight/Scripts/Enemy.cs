@@ -17,7 +17,7 @@ namespace MedievalKnight
 
         // read-out for the HUD / self-test
         public int hits;
-        public float totalDamage, lastDamage;
+        public float totalDamage, lastDamage, lastToArmor, lastToHp;
         public bool lastCrit;
         public string lastHit = "-";
 
@@ -67,6 +67,8 @@ namespace MedievalKnight
             hits++;
             totalDamage += damage;
             lastDamage = damage;
+            lastToArmor = toArmor;
+            lastToHp = toHp;
             lastCrit = crit;
             lastHit = source + " " + Mathf.RoundToInt(damage) + (crit ? " CRIT" : "");
             flash = 1f;
@@ -96,6 +98,8 @@ namespace MedievalKnight
         }
 
         protected virtual Color SparkColor(bool flesh) { return flesh ? new Color(1f, 0.85f, 0.4f) : new Color(0.7f, 0.85f, 1f); }
+        // The sound of a sword blow that this enemy's armor soaked up (the Minotaur's is metal on metal).
+        public virtual Snd ArmorSound { get { return Snd.ArmorImpact; } }
         protected virtual void OnHit(Vector3 from, float damage) { }
         protected abstract void OnDeath(Vector3 away);
 

@@ -40,22 +40,33 @@ namespace MedievalKnight
             public Text key, title, line, detail;
         }
 
+        class RowUi
+        {
+            public RectTransform rt;
+            public Image bg, swatch;
+            public Text key, name, stats, state;
+        }
+
         Font font;
         Canvas canvas;
         RectTransform root, popupRoot;
         BarUi hpBar, armorBar, staminaBar, expBar, bossBar;
-        Text statsText, bannerText, actionText, controlsText, bossText, levelTitle, levelSub;
-        GameObject controlsPanel, bossPanel, levelRoot;
+        Text statsText, bannerText, actionText, noticeText, controlsText, bossText, levelTitle, levelSub, invSlot, invStats;
+        GameObject controlsPanel, bossPanel, levelRoot, invRoot;
         readonly SlotUi[] slots = new SlotUi[4];
         readonly CardUi[] cards = new CardUi[3];
+        readonly RowUi[] rows = new RowUi[Weapons.All.Length];
         bool showControls = true;
-        float bannerTime, actionTime, levelOpenedAt;
-        Color bannerColor, actionColor;
+        float bannerTime, actionTime, noticeTime, levelOpenedAt, invOpenedAt;
+        Color bannerColor, actionColor, noticeColor;
         readonly List<PopupUi> popups = new List<PopupUi>();
         readonly Stack<PopupUi> popupPool = new Stack<PopupUi>();
 
         public bool LevelUpVisible { get { return levelRoot.activeSelf; } }
+        public bool InventoryVisible { get { return invRoot.activeSelf; } }
+        public string NoticeShown { get { return noticeTime > 0f ? noticeText.text : ""; } }
         public RectTransform CardRect(int i) { return cards[i].rt; }
+        public RectTransform RowRect(int i) { return rows[i].rt; }
         public float ScaleFactor { get { return canvas.scaleFactor > 0f ? canvas.scaleFactor : 1f; } }
 
         static readonly Color PanelCol = new Color(0f, 0f, 0f, 0.45f);
@@ -64,6 +75,12 @@ namespace MedievalKnight
         public static Color StatColor(StatKind s)
         {
             return s == StatKind.Damage ? new Color(1f, 0.42f, 0.32f) : s == StatKind.Speed ? new Color(1f, 0.86f, 0.3f) : new Color(0.8f, 0.55f, 1f);
+        }
+
+        // same colours as the three bars
+        public static Color AttrColor(Attr a)
+        {
+            return a == Attr.Hp ? new Color(0.95f, 0.32f, 0.3f) : a == Attr.Block ? new Color(0.55f, 0.74f, 1f) : new Color(1f, 0.82f, 0.28f);
         }
 
         void Awake()
@@ -95,8 +112,8 @@ namespace MedievalKnight
             expBar.label.fontSize = 18;
 
             // --- upgrade totals, under the bars ---
-            Panel("StatsPanel", new Vector2(0, 1), new Vector2(16, -168), new Vector2(400, 122), PanelCol);
-            statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -174), new Vector2(380, 112), 13, TextAnchor.UpperLeft);
+            Panel("StatsPanel", new Vector2(0, 1), new Vector2(16, -168), new Vector2(400, 152), PanelCol);
+            statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -174), new Vector2(380, 142), 13, TextAnchor.UpperLeft);
             statsText.supportRichText = true;
 
             // --- boss bar, top-centre ---
@@ -114,7 +131,7 @@ namespace MedievalKnight
             actionText.text = "";
 
             // --- controls, top-right ---
-            controlsPanel = Panel("ControlsPanel", new Vector2(1, 1), new Vector2(-16, -16), new Vector2(350, 178), PanelCol).gameObject;
+            controlsPanel = Panel("ControlsPanel", new Vector2(1, 1), new Vector2(-16, -16), new Vector2(350, 212), PanelCol).gameObject;
             controlsText = MakeText("Controls", new Vector2(1, 1), new Vector2(-26, -22), new Vector2(330, 200), 14, TextAnchor.UpperLeft);
             controlsText.text =
                 "CONTROLS   (F1 hides this)\n"
@@ -125,13 +142,22 @@ namespace MedievalKnight
                 + "Right Click / Left Shift    Shield block\n"
                 + "Q  Whirlwind          E  Dash Thrust\n"
                 + "R  Shield Bash        F  Ground Slam\n"
-                + "1 / 2 / 3 or Click    Pick a level-up card\n"
+                + "1 / 2 / 3 or Click    Level-up card, then stat point\n"
+                + "I  Weapons + stats (1 - 5 / Click equips)\n"
+                + "Walk over a dropped sword to take it\n"
+                + "M  Sound volume / mute\n"
                 + "H  Test hit     F5  Restart     Esc  Quit";
 
             // --- skill bar, bottom-centre ---
             for (int i = 0; i < 4; i++) slots[i] = MakeSlot(i);
 
             BuildLevelPanel();
+            BuildInventoryPanel();
+
+            // --- pick-up / equip / volume notice: above the last-action line, on top of the panels ---
+            noticeText = MakeText("Notice", new Vector2(0.5f, 0), new Vector2(0, 148), new Vector2(900, 30), 21, TextAnchor.MiddleCenter);
+            noticeText.fontStyle = FontStyle.Bold;
+            noticeText.text = "";
         }
 
         // ---------------------------------------------------------------- builders
@@ -269,7 +295,58 @@ namespace MedievalKnight
             levelRoot.SetActive(false);
         }
 
+        // The I panel: one row per sword (owned or not) and the stat-point totals underneath.
+        void BuildInventoryPanel()
+        {
+            RectTransform ir = Rect("Inventory", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            Fill(ir);
+            invRoot = ir.gameObject;
+            Fill(Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.04f, 0.6f), ir).rectTransform);
+            Image frame = Panel("Frame", new Vector2(0.5f, 0.5f), new Vector2(0, 42), new Vector2(836, 446), new Color(0.75f, 0.62f, 0.3f, 1f), ir);
+            RectTransform p = Panel("Bg", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(830, 440), new Color(0.07f, 0.07f, 0.1f, 1f), frame.transform).rectTransform;
+
+            Text title = MakeText("Title", new Vector2(0.5f, 1), new Vector2(0, -10), new Vector2(800, 34), 26, TextAnchor.MiddleCenter, p);
+            title.fontStyle = FontStyle.Bold;
+            title.color = new Color(1f, 0.88f, 0.35f);
+            title.text = "KNIGHT  -  WEAPONS & STATS";
+            invSlot = MakeText("Slot", new Vector2(0.5f, 1), new Vector2(0, -46), new Vector2(800, 22), 16, TextAnchor.MiddleCenter, p);
+            invSlot.supportRichText = true;
+
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var r = new RowUi();
+                r.bg = Panel("Row" + (i + 1), new Vector2(0.5f, 1), new Vector2(0, -76 - i * 56), new Vector2(798, 50), Color.white, p);
+                r.rt = r.bg.rectTransform;
+                r.key = MakeText("Key", new Vector2(0, 0.5f), new Vector2(10, 0), new Vector2(44, 40), 22, TextAnchor.MiddleCenter, r.rt);
+                r.key.fontStyle = FontStyle.Bold;
+                r.key.text = "[" + (i + 1) + "]";
+                r.swatch = Panel("Swatch", new Vector2(0, 0.5f), new Vector2(62, 0), new Vector2(12, 36), Color.white, r.rt);
+                r.name = MakeText("Name", new Vector2(0, 1), new Vector2(86, -4), new Vector2(460, 22), 17, TextAnchor.MiddleLeft, r.rt);
+                r.name.fontStyle = FontStyle.Bold;
+                r.name.supportRichText = true;
+                r.stats = MakeText("Stats", new Vector2(0, 1), new Vector2(86, -27), new Vector2(520, 18), 13, TextAnchor.MiddleLeft, r.rt);
+                r.state = MakeText("State", new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(200, 40), 14, TextAnchor.MiddleRight, r.rt);
+                r.state.fontStyle = FontStyle.Bold;
+                rows[i] = r;
+            }
+
+            invStats = MakeText("Points", new Vector2(0.5f, 1), new Vector2(0, -362), new Vector2(798, 44), 14, TextAnchor.UpperLeft, p);
+            invStats.supportRichText = true;
+            Text foot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(800, 20), 13, TextAnchor.MiddleCenter, p);
+            foot.color = new Color(0.7f, 0.72f, 0.78f);
+            foot.text = "1 - 5 or click a row: equip an owned sword          I: close          (the game is paused)";
+            invRoot.SetActive(false);
+        }
+
         // ---------------------------------------------------------------- public API
+
+        // Longer-lived line for things the player should not miss: sword picked up, equipped, sound volume.
+        public void Notice(string text, Color color)
+        {
+            noticeText.text = text;
+            noticeColor = color;
+            noticeTime = 3.5f;
+        }
 
         public void Banner(string text, Color color)
         {
@@ -338,7 +415,124 @@ namespace MedievalKnight
             }
         }
 
+        // Step 2 of the level-up panel: the same three cards now stand for HP / BLOCK / STAMINA.
+        public void ShowStatChoice(Knight k)
+        {
+            Progress pr = k.progress;
+            levelRoot.SetActive(true);
+            levelOpenedAt = Time.unscaledTime;
+            bannerTime = 0f; bannerText.text = "";
+            levelTitle.text = "STAT POINT" + (pr.statPoints > 1 ? "   (" + pr.statPoints + " to spend)" : "");
+            levelSub.text = "Spend 1 stat point   (keys 1 / 2 / 3 or click a card)";
+            for (int i = 0; i < 3; i++)
+            {
+                Attr a = (Attr)i;
+                int n = pr.Points(a);
+                bool maxed = n >= Progress.AttrCap;
+                Color col = maxed ? new Color(0.45f, 0.45f, 0.5f) : AttrColor(a);
+                CardUi c = cards[i];
+                c.rt.gameObject.SetActive(true);
+                c.rt.localScale = Vector3.one;
+                c.border.color = col;
+                c.title.text = Progress.AttrName(a);
+                c.line.color = col;
+                string pts = "\nPoints  " + n + " > " + (n + 1) + "   (max " + Progress.AttrCap + ")";
+                if (maxed)
+                {
+                    c.line.text = "MAXED";
+                    c.detail.text = "Points  " + n + " / " + Progress.AttrCap;
+                }
+                else if (a == Attr.Hp)
+                {
+                    c.line.text = "+" + Progress.HpPerPoint.ToString("0") + " Max Health";
+                    c.detail.text = "Max health  " + k.MaxHp.ToString("0") + " > " + (k.MaxHp + Progress.HpPerPoint).ToString("0") + pts;
+                }
+                else if (a == Attr.Block)
+                {
+                    c.line.text = "+2% Block  +" + Progress.ArmorPerPoint.ToString("0") + " Armor";
+                    c.detail.text = "Shield stops  " + (pr.BlockReduction * 100f).ToString("0") + "% > " + ((pr.BlockReduction + Progress.BlockPerPoint) * 100f).ToString("0") + "%"
+                        + "\nMax armor  " + k.MaxArmor.ToString("0") + " > " + (k.MaxArmor + Progress.ArmorPerPoint).ToString("0") + pts;
+                }
+                else
+                {
+                    c.line.text = "+" + Progress.StaminaPerPoint.ToString("0") + " Max Stamina";
+                    c.detail.text = "Max stamina  " + k.MaxStamina.ToString("0") + " > " + (k.MaxStamina + Progress.StaminaPerPoint).ToString("0")
+                        + "\nRegen  +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "% > +" + ((pr.StaminaRegenMult - 1f + Progress.RegenPerPoint) * 100f).ToString("0") + "%" + pts;
+                }
+            }
+        }
+
         public void HideLevelUp() { levelRoot.SetActive(false); }
+
+        public void ShowInventory()
+        {
+            invRoot.SetActive(true);
+            invOpenedAt = Time.unscaledTime;
+            RefreshInventory(-1);
+        }
+
+        public void HideInventory() { invRoot.SetActive(false); }
+
+        static string Hex(Color c) { return "#" + ColorUtility.ToHtmlStringRGB(c); }
+
+        void RefreshInventory(int hover)
+        {
+            Knight k = Game.I.knight;
+            Inventory inv = k.inventory;
+            Progress pr = k.progress;
+            invSlot.text = "Weapon slot:  <color=" + Hex(k.Weapon.uiColor) + "><b>" + inv.NameOf(inv.equipped) + "</b></color>     Owned " + inv.OwnedCount + " / " + Weapons.All.Length;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                WeaponDef w = Weapons.All[i];
+                RowUi r = rows[i];
+                bool own = inv.owned[i], eq = inv.equipped == i;
+                r.bg.color = eq ? new Color(0.2f, 0.26f, 0.16f, 1f) : i == hover && own ? new Color(0.2f, 0.2f, 0.3f, 1f) : new Color(0.12f, 0.12f, 0.17f, 1f);
+                r.swatch.color = own ? w.uiColor : new Color(0.3f, 0.3f, 0.34f);
+                Color text = own ? Color.white : new Color(0.5f, 0.5f, 0.55f);
+                r.key.color = text;
+                r.name.color = own ? w.uiColor : text;
+                r.name.text = inv.NameOf(i) + "   <size=12><color=" + Hex(text) + ">" + w.rarity + "  -  " + w.hint + "</color></size>";
+                r.stats.color = text;
+                r.stats.text = "DMG x" + inv.DamageOf(i).ToString("0.00") + w.StatLine().Substring(w.StatLine().IndexOf("   SPEED"));
+                r.state.color = eq ? new Color(0.6f, 1f, 0.5f) : own ? new Color(0.85f, 0.87f, 0.92f) : new Color(0.6f, 0.55f, 0.45f);
+                r.state.text = eq ? "EQUIPPED" : own ? "press " + (i + 1) + " or click" : w.dropHint;
+            }
+            invStats.text =
+                "<b>STAT POINTS</b>    <color=" + Hex(AttrColor(Attr.Hp)) + ">HP " + pr.Points(Attr.Hp) + "/" + Progress.AttrCap + "</color>  (+" + pr.HpBonus.ToString("0") + " max health)"
+                + "     <color=" + Hex(AttrColor(Attr.Block)) + ">BLOCK " + pr.Points(Attr.Block) + "/" + Progress.AttrCap + "</color>  (+" + pr.ArmorBonus.ToString("0") + " armor, shield stops " + (pr.BlockReduction * 100f).ToString("0") + "%)"
+                + "     <color=" + Hex(AttrColor(Attr.Stamina)) + ">STAMINA " + pr.Points(Attr.Stamina) + "/" + Progress.AttrCap + "</color>  (+" + pr.StaminaBonus.ToString("0") + ", regen +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "%)"
+                + "\n<b>NOW</b>    Health " + k.MaxHp.ToString("0") + "   Armor " + k.MaxArmor.ToString("0") + "   Stamina " + k.MaxStamina.ToString("0")
+                + "     |     Sword hit x" + k.DamageMult(-1).ToString("0.00") + "   swing x" + k.SwingSpeed.ToString("0.00")
+                + "   crit " + (k.CritChance(-1) * 100f).ToString("0") + "% x" + k.CritMult(-1).ToString("0.0") + "   reach x" + k.Weapon.reach.ToString("0.00");
+        }
+
+        // Returns the sword to equip (index into Weapons.All) or -1. Keys 1..5 or a left click on an owned row.
+        public int InventoryInput()
+        {
+            if (!invRoot.activeSelf) return -1;
+            Inventory inv = Game.I.knight.inventory;
+            int pick = -1;
+            KeyCode[] keys = { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5 };
+            for (int i = 0; i < rows.Length && i < keys.Length; i++)
+                if (InputX.Down(keys[i])) pick = i;
+
+            int hover = -1;
+            if (InputX.HasMouse)
+            {
+                Vector2 m = InputX.MousePos;
+                for (int i = 0; i < rows.Length; i++)
+                    if (RectTransformUtility.RectangleContainsScreenPoint(rows[i].rt, m, null)) hover = i;
+            }
+            if (pick < 0 && hover >= 0 && Time.unscaledTime - invOpenedAt > 0.2f && InputX.MouseDown(0)) pick = hover;
+            if (pick >= 0 && !inv.owned[pick])
+            {
+                Notice(Weapons.All[pick].name + " not found yet  -  " + Weapons.All[pick].dropHint, new Color(1f, 0.6f, 0.5f));
+                pick = -1;
+            }
+            if (pick == inv.equipped) pick = -1;
+            RefreshInventory(hover);
+            return pick;
+        }
 
         // Returns the picked card (0..2) or -1. Keys 1/2/3 or a left click on a card.
         public int LevelUpInput(int count)
@@ -377,25 +571,32 @@ namespace MedievalKnight
             Progress pr = g.progress;
 
             UpdateBar(hpBar, k.hp, k.MaxHp, dt, false, null);
-            UpdateBar(armorBar, k.armor, Knight.MaxArmor, dt, false, null);
-            UpdateBar(staminaBar, k.stamina, Knight.MaxStamina, dt, Time.unscaledTime - k.StaminaDeniedTime < 0.35f, null);
+            UpdateBar(armorBar, k.armor, k.MaxArmor, dt, false, null);
+            UpdateBar(staminaBar, k.stamina, k.MaxStamina, dt, Time.unscaledTime - k.StaminaDeniedTime < 0.35f, null);
             expBar.label.text = "LV " + pr.level;
             if (pr.IsMax) UpdateBar(expBar, 1f, 1f, dt, false, "MAX LEVEL");
             else UpdateBar(expBar, pr.exp, Progress.Need(pr.level), dt, false, Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level) + " EXP");
 
-            // upgrade totals
-            var sb = new System.Text.StringBuilder(400);
-            sb.Append("<b>DAMAGE</b> <color=#ff6b52>x").Append(pr.DamageMult(-1).ToString("0.0"))
+            // upgrade totals (damage and crit include the equipped sword), sword, stat points
+            var sb = new System.Text.StringBuilder(600);
+            sb.Append("<b>DAMAGE</b> <color=#ff6b52>x").Append(k.DamageMult(-1).ToString("0.0"))
               .Append("</color>   <b>ATK SPEED</b> <color=#ffdb4d>x").Append(pr.SpeedMult(-1).ToString("0.0"))
-              .Append("</color>   <b>CRIT</b> <color=#cc8cff>").Append((pr.CritChance(-1) * 100f).ToString("0")).Append("% x").Append(pr.CritMult(-1).ToString("0.0")).Append("</color>\n");
+              .Append("</color>   <b>CRIT</b> <color=#cc8cff>").Append((k.CritChance(-1) * 100f).ToString("0")).Append("% x").Append(k.CritMult(-1).ToString("0.0")).Append("</color>\n");
             for (int i = 0; i < 4; i++)
             {
                 SkillDef s = Knight.Skills[i];
                 sb.Append(s.key).Append(' ').Append(s.name.PadRight(12))
-                  .Append("  dmg x").Append(pr.DamageMult(i).ToString("0.0"))
+                  .Append("  dmg x").Append(k.DamageMult(i).ToString("0.0"))
                   .Append("  spd x").Append(pr.SpeedMult(i).ToString("0.0"))
-                  .Append("  crit ").Append((pr.CritChance(i) * 100f).ToString("0")).Append("% x").Append(pr.CritMult(i).ToString("0.0")).Append('\n');
+                  .Append("  crit ").Append((k.CritChance(i) * 100f).ToString("0")).Append("% x").Append(k.CritMult(i).ToString("0.0")).Append('\n');
             }
+            sb.Append("<b>SWORD</b> <color=").Append(Hex(k.Weapon.uiColor)).Append('>').Append(k.inventory.NameOf(k.inventory.equipped))
+              .Append("</color>  swing x").Append(k.SwingSpeed.ToString("0.00")).Append("  reach x").Append(k.Weapon.reach.ToString("0.00")).Append("   [I]\n");
+            sb.Append("<b>POINTS</b>  <color=").Append(Hex(AttrColor(Attr.Hp))).Append(">HP ").Append(pr.Points(Attr.Hp))
+              .Append("</color>   <color=").Append(Hex(AttrColor(Attr.Block))).Append(">BLOCK ").Append(pr.Points(Attr.Block)).Append(" (").Append((pr.BlockReduction * 100f).ToString("0")).Append("%)")
+              .Append("</color>   <color=").Append(Hex(AttrColor(Attr.Stamina))).Append(">STAMINA ").Append(pr.Points(Attr.Stamina)).Append("</color>");
+            if (pr.statPoints > 0) sb.Append("   <color=#ffe066><b>+").Append(pr.statPoints).Append(" unspent</b></color>");
+            sb.Append('\n');
             sb.Append("Wave ").Append(g.wave).Append("    Slimes ").Append(g.slimesAlive).Append("    Kills ").Append(pr.kills);
             statsText.text = sb.ToString();
 
@@ -430,8 +631,9 @@ namespace MedievalKnight
                 bossText.text = "Minotaur returns in " + Mathf.Max(0, Mathf.CeilToInt(g.MinotaurRespawnIn)) + "s";
             }
 
-            if (controlsPanel.activeSelf != showControls) controlsPanel.SetActive(showControls);
-            if (controlsText.gameObject.activeSelf != showControls) controlsText.gameObject.SetActive(showControls);
+            bool controlsOn = showControls && !g.Paused;          // out of the way of the level-up / weapon panels
+            if (controlsPanel.activeSelf != controlsOn) controlsPanel.SetActive(controlsOn);
+            if (controlsText.gameObject.activeSelf != controlsOn) controlsText.gameObject.SetActive(controlsOn);
 
             if (bannerTime > 0f)
             {
@@ -452,6 +654,15 @@ namespace MedievalKnight
                 actionText.color = c;
             }
             else if (actionText.text.Length > 0) actionText.text = "";
+
+            if (noticeTime > 0f)
+            {
+                noticeTime -= dt;
+                Color c = noticeColor;
+                c.a = Mathf.Clamp01(noticeTime / 0.5f);
+                noticeText.color = c;
+            }
+            else if (noticeText.text.Length > 0) noticeText.text = "";
 
             float scale = ScaleFactor;
             for (int i = popups.Count - 1; i >= 0; i--)

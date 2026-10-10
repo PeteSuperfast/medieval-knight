@@ -150,6 +150,8 @@ namespace MedievalKnight
 
         protected override Color SparkColor(bool flesh) { return flesh ? new Color(1f, 0.4f, 0.25f) : new Color(1f, 0.85f, 0.4f); }
 
+        public override Snd ArmorSound { get { return Snd.Clash; } }       // the sword rings off his bracers and axe
+
         protected override void OnHit(Vector3 from, float damage)
         {
             if (State == S.Idle) Begin(S.Chase);

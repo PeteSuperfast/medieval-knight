@@ -36,9 +36,12 @@ namespace MedievalKnight
 
     // The player: top-down movement, health / armor / stamina, shield block, the 5-step sword combo
     // (4 slashes + thrust) and the four active skills. He always faces the mouse cursor.
+    // Everything that belongs to one player lives on this object: level / upgrades / stat points (progress)
+    // and the owned + equipped swords (inventory).
     public class Knight : MonoBehaviour
     {
-        public const float BaseHp = 100f, HpPerLevel = 10f, MaxArmor = 60f, MaxStamina = 100f;
+        public const float BaseHp = 100f, HpPerLevel = 10f, BaseArmor = 60f, BaseStamina = 100f, StaminaRegen = 26f, BlockCost = 15f;
+        public const float MinSwingSpeed = 0.4f, MaxSwingSpeed = 4f;
         const float MoveSpeed = 6.2f;
         const float RestYaw = 55f, RestPitch = -25f, RestHand = 0.36f;
         const int ComboRequest = 100, SkillRequest = 200;
@@ -86,7 +89,9 @@ namespace MedievalKnight
         };
         const float WhirlRadius = 3.2f, DashLength = 6f, BashReach = 2.9f, BashArc = 60f, BashStun = 2.0f, SlamRadius = 3.6f, SlamRange = 7f;
 
-        public float hp = BaseHp, armor = MaxArmor, stamina = MaxStamina;
+        public Progress progress = new Progress();
+        public readonly Inventory inventory = new Inventory();
+        public float hp = BaseHp, armor = BaseArmor, stamina = BaseStamina;
         public readonly float[] cd = new float[4], cdMax = new float[4];
         public bool IsAttacking { get; private set; }      // busy with a basic attack or a skill
         public bool IsBlocking { get; private set; }
@@ -96,14 +101,37 @@ namespace MedievalKnight
         public float StaminaDeniedTime { get; private set; }
         public string LastAction { get; private set; }
         public int LastHitCount { get; private set; }
-        public float MaxHp { get { return BaseHp + HpPerLevel * (Game.I.progress.level - 1); } }
+        public float MaxHp { get { return BaseHp + HpPerLevel * (progress.level - 1) + progress.HpBonus; } }
+        public float MaxArmor { get { return BaseArmor + progress.ArmorBonus; } }
+        public float MaxStamina { get { return BaseStamina + progress.StaminaBonus; } }
         public Vector3 Forward { get { return transform.forward; } }
+        public WeaponDef Weapon { get { return inventory.Weapon; } }
+        public Transform SwordModel { get { return swordModel; } }
+
+        // --- combat numbers: level-up totals (Progress) combined with the equipped sword ---
+        // skill: -1 = basic sword attack, 0..3 = Q / E / R / F. Shield Bash (2) does not use the sword.
+        static bool UsesSword(int skill) { return skill != 2; }
+        public float DamageMult(int skill) { return progress.DamageMult(skill) * (UsesSword(skill) ? inventory.Damage : 1f); }
+        public float CritChance(int skill) { return Mathf.Min(Progress.CritChanceCap, progress.CritChance(skill) + (UsesSword(skill) ? Weapon.critChance : 0f)); }
+        public float CritMult(int skill) { return Mathf.Min(Progress.CritMultCap, progress.CritMult(skill) + (UsesSword(skill) ? Weapon.critMult : 0f)); }
+        public float SwingSpeed { get { return Mathf.Clamp(progress.BasicSpeed() * Weapon.speed, MinSwingSpeed, MaxSwingSpeed); } }
+        public float Reach(AttackDef a) { return a.reach * Weapon.reach; }
+        public float SwingCost(AttackDef a) { return a.stamina / SwingSpeed; }      // faster swings cost less each, a slow heavy sword costs more
+
+        // The one place where the knight's damage is rolled (multipliers, crit chance, crit multiplier).
+        public float RollDamage(int skill, float baseDamage, out bool isCrit)
+        {
+            float d = baseDamage * DamageMult(skill);
+            isCrit = Progress.ForceCrit == 2 || (Progress.ForceCrit == 0 && Random.value < CritChance(skill));
+            if (isCrit) d *= CritMult(skill);
+            return d;
+        }
 
         // self-test hooks: aim at a world point / walk in a direction without real input devices
         public Vector3? aimOverride;
         public Vector2? moveOverride;
 
-        Transform rig, chest, legL, legR, swordPivot, swordNode, armR, shieldNode;
+        Transform rig, chest, legL, legR, swordPivot, swordNode, swordModel, armR, shieldNode;
         Tint tint;
         float swYaw = RestYaw, swPitch = RestPitch, swHand = RestHand;
         float rigLean, rigHop, rigSpin, jumpY, walkPhase, hurtTint;
@@ -133,7 +161,6 @@ namespace MedievalKnight
             Material gold = Prims.Lit(new Color(0.96f, 0.78f, 0.22f), 0.7f, 0.8f);
             Material leather = Prims.Lit(new Color(0.35f, 0.22f, 0.12f));
             Material black = Prims.Lit(new Color(0.06f, 0.06f, 0.08f));
-            Material blade = Prims.Lit(new Color(0.9f, 0.93f, 0.98f), 0.85f, 0.9f);
 
             rig = Prims.Node(transform, "Rig", Vector3.zero);
 
@@ -164,11 +191,8 @@ namespace MedievalKnight
             armR = Prims.Box(swordPivot, "ArmR", new Vector3(0f, 0f, 0.2f), new Vector3(0.17f, 0.17f, 0.4f), darkSteel);
             swordNode = Prims.Node(swordPivot, "Sword", new Vector3(0f, 0f, RestHand));
             Prims.Part(swordNode, "Gauntlet", Prims.Ball(6), Vector3.zero, new Vector3(0.24f, 0.24f, 0.24f), steel);
-            Prims.Box(swordNode, "Grip", new Vector3(0f, 0f, 0.02f), new Vector3(0.06f, 0.06f, 0.3f), leather);
-            Prims.Part(swordNode, "Pommel", Prims.Ball(6), new Vector3(0f, 0f, -0.16f), new Vector3(0.13f, 0.13f, 0.13f), gold);
-            Prims.Box(swordNode, "Guard", new Vector3(0f, 0f, 0.2f), new Vector3(0.46f, 0.08f, 0.09f), gold);
-            Prims.Box(swordNode, "Blade", new Vector3(0f, 0f, 0.86f), new Vector3(0.13f, 0.04f, 1.25f), blade);
-            Prims.Part(swordNode, "Tip", Prims.Lathe("swordTip", 4, 0.5f, 0f, 0f, 1f), new Vector3(0f, 0f, 1.48f), new Vector3(0.13f, 0.22f, 0.045f), blade).Rot(90f, 0f, 0f);
+            swordModel = Weapons.BuildModel(swordNode, Weapon);       // the equipped sword; replaced by Equip()
+            swordModel.name = Weapon.name;
 
             // shield arm
             shieldNode = Prims.Node(rig, "Shield", ShieldRestPos);
@@ -183,9 +207,48 @@ namespace MedievalKnight
             tint = new Tint(rig);
         }
 
+        // ---------------------------------------------------------------- weapon slot / stat points
+
+        // Puts an owned sword into the weapon slot and swaps the model in the knight's hand.
+        public bool Equip(int id)
+        {
+            if (id < 0 || id >= Weapons.All.Length || !inventory.owned[id]) return false;
+            inventory.equipped = id;
+            RebuildSword();
+            return true;
+        }
+
+        void RebuildSword()
+        {
+            tint.Set(Color.white, 0f);
+            if (swordModel != null)
+            {
+                swordModel.gameObject.SetActive(false);
+                swordModel.SetParent(null);                 // Destroy is delayed; the new Tint must not see the old parts
+                Destroy(swordModel.gameObject);
+            }
+            swordModel = Weapons.BuildModel(swordNode, Weapon);
+            swordModel.name = Weapon.name;
+            tint = new Tint(rig);
+        }
+
+        // Spends one stat point; the new maximum is filled in right away.
+        public bool SpendPoint(Attr a)
+        {
+            if (!progress.Spend(a)) return false;
+            if (a == Attr.Hp) hp = Mathf.Min(MaxHp, hp + Progress.HpPerPoint);
+            else if (a == Attr.Block) armor = Mathf.Min(MaxArmor, armor + Progress.ArmorPerPoint);
+            else stamina = Mathf.Min(MaxStamina, stamina + Progress.StaminaPerPoint);
+            return true;
+        }
+
+        // F5: back to level 1, no upgrades, no stat points, only the starting sword.
         public void ResetAll()
         {
             StopAllCoroutines();
+            progress = new Progress();
+            inventory.Reset();
+            RebuildSword();
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
             Dead = false; IsAttacking = false; IsBlocking = false; Airborne = false;
             invuln = false; lockFacing = false; whirl = false; shieldPush = false;
@@ -218,7 +281,7 @@ namespace MedievalKnight
             if (!Dead)
             {
                 if (!IsBlocking && Time.time - lastSpendTime > 0.6f)
-                    stamina = Mathf.Min(MaxStamina, stamina + 26f * dt);
+                    stamina = Mathf.Min(MaxStamina, stamina + StaminaRegen * progress.StaminaRegenMult * dt);
                 if (Time.time - lastDamageTime > 4f)
                     armor = Mathf.Min(MaxArmor, armor + 8f * dt);
             }
@@ -371,8 +434,8 @@ namespace MedievalKnight
                 index = comboIndex;
             }
             AttackDef a = Attacks[index];
-            float speed = Game.I.progress.BasicSpeed();
-            float cost = a.stamina / speed;                             // faster swings cost less each
+            float speed = SwingSpeed;
+            float cost = SwingCost(a);
             if (stamina < cost) { Deny(a.name); return; }
             stamina -= cost;
             lastSpendTime = Time.time;
@@ -393,9 +456,10 @@ namespace MedievalKnight
             if (stamina < s.stamina) { Deny(s.name); return false; }
             stamina -= s.stamina;
             lastSpendTime = Time.time;
-            cdMax[i] = cd[i] = s.cooldown / Game.I.progress.SpeedMult(i);
+            cdMax[i] = cd[i] = s.cooldown / progress.SpeedMult(i);
             LastAction = s.name;
             Game.I.hud.Action(s.key + "  " + s.name, s.color);
+            Sfx.I.Grunt(true);
             switch (i)
             {
                 case 0: StartCoroutine(Whirlwind(s)); break;
@@ -413,7 +477,8 @@ namespace MedievalKnight
             float knock, float stun, string source, HashSet<Enemy> once = null)
         {
             int n = 0;
-            Progress pr = Game.I.progress;
+            bool flesh = false, armored = false;
+            Snd armorSnd = Snd.ArmorImpact;
             for (int i = Enemy.All.Count - 1; i >= 0; i--)
             {
                 if (i >= Enemy.All.Count) continue;
@@ -429,12 +494,27 @@ namespace MedievalKnight
                 }
                 if (once != null && !once.Add(e)) continue;
                 bool crit;
-                float dmg = pr.Roll(skill, baseDamage, out crit);
+                float dmg = RollDamage(skill, baseDamage, out crit);
                 e.TakeHit(dmg, pierce, origin, crit, knock, stun, source);
+                if (e.lastToArmor > e.lastToHp) { armored = true; armorSnd = e.ArmorSound; }   // the armor took most of it
+                else flesh = true;
                 n++;
             }
             LastHitCount = n;
+            // one sound per kind for the whole swing, however many enemies it went through
+            if (skill == 2) { if (n > 0) Sfx.I.Play(Snd.ArmorImpact, 1f, 0.8f); }              // the shield, not the blade
+            else
+            {
+                if (flesh) Sfx.I.Play(Snd.Slice);
+                if (armored) Sfx.I.Play(armorSnd);
+            }
             return n;
+        }
+
+        // The whoosh of the equipped sword: heavier (slower) swords sound lower.
+        void SwingSound(float volume = 1f)
+        {
+            Sfx.I.Play(Snd.Swing, volume, Mathf.Lerp(0.82f, 1.18f, Mathf.InverseLerp(0.7f, 1.4f, Weapon.speed)));
         }
 
         Vector3 Ground(float y) { return new Vector3(transform.position.x, y, transform.position.z); }
@@ -464,6 +544,8 @@ namespace MedievalKnight
             // 2) strike
             dir = transform.forward;
             SpawnAttackFx(a);
+            SwingSound();
+            Sfx.I.Grunt(a.damage >= 16f);                             // chop / spin / thrust always, light slashes sometimes
             if (a.lunge > 2.5f) Fx.I.Dust(transform.position, 5);
             bool hitDone = false;
             for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.strikeTime)
@@ -512,29 +594,30 @@ namespace MedievalKnight
         {
             float yaw = transform.eulerAngles.y;
             Vector3 pos = Ground(1.05f);
-            Color c = a.fxColor; c.a = 0.9f;
+            Color c = Color.Lerp(a.fxColor, Weapon.uiColor, Weapon.id == Weapons.Iron ? 0f : 0.45f); c.a = 0.9f;
+            float reach = Reach(a);
             switch (a.kind)
             {
                 case AttackKind.Thrust:
-                    Fx.I.Streak(pos + transform.forward * 0.6f, yaw, a.reach - 0.3f, 0.45f, c, 0.2f);
+                    Fx.I.Streak(pos + transform.forward * 0.6f, yaw, reach - 0.3f, 0.45f, c, 0.2f);
                     Fx.I.Burst(pos + transform.forward * 1.2f, 7, new Color(0.75f, 0.92f, 1f), 6f, 13f, transform.forward, 0.15f, 0.18f, 0f, 0.08f);
                     break;
                 case AttackKind.Spin:
-                    Fx.I.Arc(pos, yaw, 1.1f, a.reach, 360f, 0f, c, 0.36f, 0.1f, -500f, transform);
+                    Fx.I.Arc(pos, yaw, 1.1f, reach, 360f, 0f, c, 0.36f, 0.1f, -500f, transform);
                     Fx.I.Dust(transform.position, 10);
                     break;
                 case AttackKind.Chop:
-                    Fx.I.Streak(pos + transform.forward * 0.5f, yaw, a.reach - 0.2f, 0.8f, c, 0.22f);
+                    Fx.I.Streak(pos + transform.forward * 0.5f, yaw, reach - 0.2f, 0.8f, c, 0.22f);
                     break;
                 default:
-                    Fx.I.Arc(pos, yaw, 1.0f, a.reach, a.yawWind, a.yawStrike, c, 0.22f, 0.12f);
+                    Fx.I.Arc(pos, yaw, 1.0f, reach, a.yawWind, a.yawStrike, c, 0.22f, 0.12f);
                     break;
             }
         }
 
         void DoHit(AttackDef a, Vector3 dir)
         {
-            int n = HitArea(transform.position, dir, a.reach, a.halfArc, -1, a.damage, a.pierce, a.knock, 0f, a.name);
+            int n = HitArea(transform.position, dir, Reach(a), a.halfArc, -1, a.damage, a.pierce, a.knock, 0f, a.name);
             if (n == 0) return;
             Game.I.Shake(a.shake, 0.16f);
             Game.I.HitStop(a.damage >= 16f ? 0.075f : 0.05f);
@@ -556,6 +639,7 @@ namespace MedievalKnight
                 if (ticks < 3 && t >= 0.06f + ticks * 0.32f)
                 {
                     ticks++;
+                    SwingSound();
                     Fx.I.Arc(Ground(1.0f), Random.Range(0f, 360f), 1.2f, WhirlRadius, 360f, 0f, c, 0.3f, 0.08f, -700f, transform);
                     Fx.I.Dust(transform.position, 5);
                     if (HitArea(transform.position, transform.forward, WhirlRadius, 180f, 0, s.damage, 0f, 3f, 0f, s.name) > 0)
@@ -587,6 +671,7 @@ namespace MedievalKnight
             Color c = s.color; c.a = 0.9f;
             Fx.I.Streak(Ground(1.0f), transform.eulerAngles.y, DashLength + 2.2f, 0.9f, c, 0.35f);
             Fx.I.Dust(transform.position, 8);
+            SwingSound();
             var once = new HashSet<Enemy>();
             int total = 0;
             const float dur = 0.16f;
@@ -668,6 +753,7 @@ namespace MedievalKnight
 
             Airborne = true; invuln = true;
             Fx.I.Dust(from, 10);
+            SwingSound(0.8f);
             for (float t = 0; t < 1f; t += Time.deltaTime / 0.45f)
             {
                 Vector3 p = Vector3.Lerp(from, to, t);
@@ -708,7 +794,7 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- taking damage
 
-        // Armor absorbs first. A raised shield facing the blow cuts it by 80% for 15 stamina.
+        // Armor absorbs first. A raised shield facing the blow cuts it by 80% (+2% per BLOCK point) for 15 stamina.
         public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f)
         {
             if (Dead || Invulnerable) return;
@@ -719,12 +805,13 @@ namespace MedievalKnight
 
             if (IsBlocking && Vector3.Angle(transform.forward, srcDir) < 75f)
             {
-                if (stamina >= 15f)
+                if (stamina >= BlockCost)
                 {
                     blocked = true;
-                    stamina -= 15f;
+                    stamina -= BlockCost;
                     lastSpendTime = Time.time;
-                    damage *= 0.2f;
+                    damage *= 1f - progress.BlockReduction;
+                    Sfx.I.Play(Snd.Clash);
                     Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
                     Fx.I.Burst(chestPos + srcDir * 0.6f, 12, new Color(1f, 0.92f, 0.6f), 3f, 8f, srcDir + Vector3.up * 0.4f, 0.7f, 0.25f, 5f, 0.1f);
                 }
@@ -748,6 +835,7 @@ namespace MedievalKnight
             if (!blocked)
             {
                 hurtTint = 1f;
+                if (toArmor >= 0.5f && toArmor >= toHp) Sfx.I.Play(Snd.ArmorImpact, 0.8f);     // the blow landed on his plate
                 Fx.I.Burst(chestPos, 8, toHp > 0.5f ? new Color(1f, 0.3f, 0.25f) : new Color(0.7f, 0.85f, 1f), 2f, 6f, -srcDir + Vector3.up * 0.5f, 0.7f, 0.3f, 8f, 0.1f);
             }
             Game.I.Shake(blocked ? 0.08f : 0.18f, 0.18f);
@@ -781,6 +869,7 @@ namespace MedievalKnight
             transform.position = SpawnPoint;
             invulnUntil = Time.time + 2.5f;
             Dead = false;
+            Sfx.I.Play(Snd.Ready);
             Fx.I.Ring(Ground(0.06f), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
         }
     }
