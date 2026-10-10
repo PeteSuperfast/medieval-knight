@@ -111,10 +111,11 @@ namespace MedievalKnight
             yield return null;
         }
 
-        static void SetMouse(Vector2 pos, bool left)
+        static void SetMouse(Vector2 pos, bool left, bool right = false)
         {
             var st = new MouseState { position = pos };
             if (left) st = st.WithButton(MouseButton.Left, true);
+            if (right) st = st.WithButton(MouseButton.Right, true);
             InputSystem.QueueStateEvent(Mouse.current, st);
         }
 
@@ -281,9 +282,9 @@ namespace MedievalKnight
                 yield return WaitIdle(2f);
                 float took = Time.time - t0;
                 if (i == 0) sideSlashTime = took;
-                Log("attack " + (i + 1) + " " + a.name + ": stamina " + F(s0) + " -> " + F(k.stamina) + " (cost " + a.stamina + "), dummy armor " + F(ar0) + " -> " + F(d.armor)
+                Log("attack " + (i + 1) + " " + a.name + ": stamina " + F(s0) + " -> " + F(k.stamina) + ", dummy armor " + F(ar0) + " -> " + F(d.armor)
                     + ", hp " + F(hp0) + " -> " + F(d.hp) + ", hits +" + (d.hits - h0) + ", last " + d.lastHit + ", duration " + F(took) + "s");
-                Check("attack " + (i + 1) + " hits the dummy for base damage " + a.damage, d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - a.damage) < 0.01f);
+                Check("attack " + (i + 1) + " hits the dummy for base damage " + a.damage + " and costs no stamina", d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - a.damage) < 0.01f && k.stamina >= s0 - 0.01f);
                 if (Snds(Snd.Swing) - sw0 == 1 && noSoundYet) swingSounds++;
                 if (i == 0) firstHitSound = Snds(Snd.ArmorImpact) - ai0 == 1 && Snds(Snd.Slice) == sl0;
                 Log("  sounds: swing +" + (Snds(Snd.Swing) - sw0) + " (silent during wind-up: " + noSoundYet + "), armor_impact +" + (Snds(Snd.ArmorImpact) - ai0)
@@ -336,18 +337,18 @@ namespace MedievalKnight
             // ------------------------------------------------ block
             {
                 Heal();
-                Keys(Key.LeftShift);
+                SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, true);       // right mouse button held = shield up
                 yield return W(0.3f);
                 float a0 = k.armor, s0 = k.stamina;
                 int cl0 = Snds(Snd.Clash), ai0 = Snds(Snd.ArmorImpact);
                 k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest");
                 Log("block: blocking=" + k.IsBlocking + " armor " + F(a0) + " -> " + F(k.armor) + ", stamina " + F(s0) + " -> " + F(k.stamina)
                     + ", sword_clash +" + (Snds(Snd.Clash) - cl0) + ", armor_impact +" + (Snds(Snd.ArmorImpact) - ai0));
-                Check("frontal block cuts 20 damage to 4 and costs 15 stamina", k.IsBlocking && Mathf.Abs(a0 - k.armor - 4f) < 0.01f && Mathf.Abs(s0 - k.stamina - 15f) < 0.6f);
+                Check("frontal block (right mouse button) cuts 20 damage to 4 and costs no stamina", k.IsBlocking && Mathf.Abs(a0 - k.armor - 4f) < 0.01f && Mathf.Abs(s0 - k.stamina) < 0.6f);
                 Check("a successful block plays sword_clash (and nothing else)", Snds(Snd.Clash) - cl0 == 1 && Snds(Snd.ArmorImpact) == ai0);
                 yield return W(0.1f);
                 Shot("block");
-                Keys();
+                SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, false);
                 yield return W(0.2f);
                 Heal();
                 float a1 = k.armor, h1 = k.hp;
@@ -361,6 +362,107 @@ namespace MedievalKnight
                 k.TakeDamage(12f, k.transform.position + k.Forward * 2f, "selftest");
                 Check("an unblocked blow on the knight's armor plays armor_impact", Snds(Snd.ArmorImpact) - ai1 == 1 && Snds(Snd.Clash) == cl1);
                 Heal();
+            }
+
+            // ------------------------------------------------ run (Left Shift), dash (Space), Space no longer swings
+            {
+                ParkSlimes();
+                Heal(); d.ResetAll();
+                k.moveOverride = null;
+                k.aimOverride = new Vector3(0f, 0f, 8f);
+                yield return W(1.0f);                                   // dash cooldown, regen
+                Vector3 home = new Vector3(9f, 0f, -10f);                  // 26 m from the parked slimes (they chase within 17 m)
+
+                // walk 0.5 s, then run 0.5 s over the same ground
+                k.transform.position = home; yield return W(0.2f);
+                Keys(Key.D); yield return W(0.5f); Keys(); yield return null;
+                float walkDist = (k.transform.position - home).magnitude;
+                k.transform.position = home; Heal(); yield return W(0.2f);
+                float stRun0 = k.stamina;
+                Keys(Key.D, Key.LeftShift); yield return W(0.5f);
+                bool wasRunning = k.Running;
+                Keys(); yield return null;
+                float runDist = (k.transform.position - home).magnitude;
+                Log("run: walk 0.5 s = " + F(walkDist) + " m, run 0.5 s = " + F(runDist) + " m (x" + F(runDist / Mathf.Max(0.01f, walkDist)) + "), stamina " + F(stRun0) + " -> " + F(k.stamina) + ", running=" + wasRunning);
+                Check("Left Shift runs about 1.5x faster and costs no stamina", wasRunning && runDist / walkDist > 1.35f && runDist / walkDist < 1.65f && k.stamina >= stRun0 - 0.01f);
+
+                {
+                    int want = Mathf.FloorToInt(k.MaxStamina / Knight.DashCost) - 1;
+                    bool placed = g.hud.StaminaTicksShown == want && want >= 1;
+                    for (int i = 0; i < want && placed; i++)
+                        placed &= Mathf.Abs(g.hud.StaminaTickX(i) - (3f + 282f * (i + 1) * Knight.DashCost / k.MaxStamina)) < 1.5f;
+                    Check("the stamina bar has a divider every 25 points (" + g.hud.StaminaTicksShown + " dividers for max " + F(k.MaxStamina) + ")", placed);
+                }
+
+                // dash: 6 m, -25 stamina, 0.5 s untouchable, 0.8 s cooldown
+                k.transform.position = home; Heal(); yield return W(1.0f);
+                k.aimOverride = home + new Vector3(0f, 0f, 8f);       // looking north
+                Vector3 q0 = k.transform.position;
+                float stD0 = k.stamina; int sw0 = Snds(Snd.Swing), acts0 = k.ActionsSeen;
+                float tDash = Time.time;
+                Keys(Key.D, Key.Space);
+                yield return null; yield return null; yield return null;
+                Keys();
+                float stAfter = k.stamina;
+                yield return W(0.12f);
+                bool dashing = k.Dashing;
+                yield return W(0.2f);
+                float dashDist = (k.transform.position - q0).magnitude;
+                float hpD = k.hp, arD = k.armor;
+                int dodge0 = k.DodgeCount;
+                k.TakeDamage(30f, k.transform.position + Vector3.forward * 2f, "selftest dash");
+                bool unhurt = Mathf.Approximately(k.hp, hpD) && Mathf.Approximately(k.armor, arD);
+                int popups = k.DodgeCount - dodge0;
+                Log("dash: " + F(dashDist) + " m sideways, stamina " + F(stD0) + " -> " + F(stAfter) + ", dashing=" + dashing + ", " + F(Time.time - tDash) + " s in, blow ignored=" + unhurt + " (DODGE popup " + popups + "), swing sound +" + (Snds(Snd.Swing) - sw0));
+                Check("Space dashes ~6 m in the pressed direction and costs 25 stamina", dashDist > 5.4f && dashDist < 6.6f && Mathf.Abs(stD0 - stAfter - Knight.DashCost) < 1.5f && k.ActionsSeen == acts0 + 1);
+                Check("a blow during the dash does no damage and shows DODGE", dashing && unhurt && popups == 1);
+                float tPass = Time.time - tDash;
+                // second Space inside the 0.8 s cooldown is refused
+                Vector3 qMid = k.transform.position; float stMid = k.stamina;
+                yield return Tap(Key.Space);
+                Check("a second dash inside the 0.8 s cooldown is refused", Mathf.Abs(k.stamina - stMid) < 3f && (k.transform.position - qMid).magnitude < 0.5f && k.ActionsSeen == acts0 + 1);
+                // after 0.55 s the protection is over
+                while (Time.time - tDash < 0.56f) yield return null;
+                float hpE = k.hp, arE = k.armor;
+                k.TakeDamage(10f, k.transform.position + Vector3.forward * 2f, "selftest after dash");
+                Check("0.5 s after the dash the knight can be hurt again", !k.Dashing && (k.hp < hpE - 0.01f || k.armor < arE - 0.01f));
+                Heal(); yield return W(1.0f);
+
+                // no direction held: a hop backwards (away from the cursor)
+                k.transform.position = home; k.aimOverride = home + new Vector3(0f, 0f, 8f); yield return W(0.3f);
+                Vector3 b0 = k.transform.position;
+                yield return Tap(Key.Space);
+                yield return W(0.35f);
+                Vector3 bd = k.transform.position - b0;
+                Log("dash without direction: moved (" + F(bd.x) + ", " + F(bd.z) + ")");
+                Check("a dash with no direction moves backwards from the cursor", bd.z < -5f && Mathf.Abs(bd.x) < 0.8f);
+
+                // not enough stamina: refused, the bar flashes red
+                Heal(); yield return W(1.0f);
+                k.stamina = 10f;
+                Vector3 n0 = k.transform.position; int acts1 = k.ActionsSeen;
+                yield return Tap(Key.Space);
+                yield return W(0.2f);
+                Check("a dash with less than 25 stamina is refused", (k.transform.position - n0).magnitude < 0.5f && k.ActionsSeen == acts1 && Time.unscaledTime - k.StaminaDeniedTime < 0.6f);
+                Heal(); yield return W(1.0f);
+
+                // Space does not swing; a dash cuts a swing short
+                int comboBefore = k.ActionsSeen;
+                k.aimOverride = home + new Vector3(0f, 0f, 8f);
+                k.DebugAttack(1);                                       // Overhead Chop: slow enough to catch
+                yield return W(0.08f);
+                bool swinging = k.IsAttacking;
+                yield return Tap(Key.Space);
+                yield return null;
+                Check("a dash cancels a sword swing in progress", swinging && !k.IsAttacking && k.Dashing);
+                yield return W(0.9f);
+                int actsB = k.ActionsSeen;
+                yield return Tap(Key.Space);
+                yield return W(0.3f);
+                Check("Space only dashes: it never starts a sword attack", k.LastAction == "Dash" && k.ActionsSeen == actsB + 1);
+                Heal(); yield return W(1.0f);
+                k.transform.position = new Vector3(2f, 0f, -5f);
+                k.aimOverride = d.transform.position;
             }
 
             // ------------------------------------------------ sword drop, pickup, inventory panel, the five swords
@@ -436,10 +538,10 @@ namespace MedievalKnight
                 Check("all five swords are owned after collecting the pickups", inv.OwnedCount == 5 && Pickup.All.Count == 0);
                 g.camZoom = 1f;
 
-                // --- the I panel: open, equip by key, equip by click, close ---
-                yield return Tap(Key.I);
+                // --- the Tab window: open, equip by key, equip by click, close ---
+                yield return Tap(Key.Tab);
                 yield return W(0.3f);
-                Check("I opens the weapon panel and pauses the game", g.InventoryOpen && g.hud.InventoryVisible && Time.timeScale == 0f);
+                Check("Tab opens the inventory window and pauses the game", g.InventoryOpen && g.hud.InventoryVisible && Time.timeScale == 0f);
                 Shot("inventory_panel");
                 yield return null;
                 yield return Tap(Key.Digit2);
@@ -455,9 +557,18 @@ namespace MedievalKnight
                 yield return null;
                 Log("panel: after key 2 -> " + (byKey ? "Swift Rapier" : "?") + ", after click on row 3 at " + rowPos + " -> " + k.Weapon.name + " (model " + k.SwordModel.name + ")");
                 Check("clicking row 3 equips the Iron Greatsword and swaps the held model", inv.equipped == Weapons.Greatsword && k.SwordModel.name == "Iron Greatsword");
-                yield return Tap(Key.I);
+                yield return Tap(Key.Tab);
                 yield return W(0.3f);
-                Check("I closes the panel and the game resumes", !g.InventoryOpen && !g.hud.InventoryVisible && Time.timeScale > 0f);
+                Check("Tab closes the window and the game resumes", !g.InventoryOpen && !g.hud.InventoryVisible && Time.timeScale > 0f);
+
+                // Esc with the window open closes only the window: no "Press Esc again" notice, and the next Esc does not leave
+                yield return Tap(Key.Tab);
+                yield return W(0.25f);
+                bool openedAgain = g.InventoryOpen;
+                yield return Tap(Key.Escape);
+                yield return W(0.25f);
+                Check("Esc closes the open Tab window and does not start the 'Esc again' leave prompt",
+                    openedAgain && !g.InventoryOpen && !g.hud.InventoryVisible && Time.timeScale > 0f && !g.hud.NoticeShown.Contains("Esc again") && g.InSession);
 
                 // --- every sword on the dummy: model, plain hit, forced crit, swing time, stamina, crit chance ---
                 float ironTime = 0f;
@@ -500,7 +611,7 @@ namespace MedievalKnight
                     for (int n = 0; n < Rolls; n++) { bool c; k.RollDamage(-1, 10f, out c); if (c) crits++; }
                     float chance = crits / (float)Rolls;
 
-                    float wantPlain = slash.damage * w.damage, wantCrit = wantPlain * (Progress.BaseCritMult + w.critMult), wantCost = slash.stamina / w.speed;
+                    float wantPlain = slash.damage * w.damage, wantCrit = wantPlain * (Progress.BaseCritMult + w.critMult), wantCost = 0f;                         // stamina is for the dash only
                     float wantChance = Progress.BaseCritChance + w.critChance, speedSeen = ironTime / took;
                     Log("sword " + (id + 1) + " " + w.name + " [" + w.rarity + "]: model '" + k.SwordModel.name + "' " + parts + " parts, hand-to-tip " + F(tipDist[id]) + " m"
                         + " | hit " + F(plain) + " (want " + F(wantPlain) + ") | crit hit " + F(critHit) + " (want " + F(wantCrit) + ")"
@@ -539,10 +650,10 @@ namespace MedievalKnight
 
                 // back to the Iron Sword through the panel (key 1), so the older checks below see base numbers
                 yield return W(0.4f);
-                yield return Tap(Key.I);
+                yield return Tap(Key.Tab);
                 yield return W(0.25f);
                 yield return Tap(Key.Digit1);
-                yield return Tap(Key.I);
+                yield return Tap(Key.Tab);
                 yield return W(0.3f);
                 Check("key 1 in the panel re-equips the Iron Sword", inv.equipped == Weapons.Iron && k.SwordModel.name == "Iron Sword" && !g.InventoryOpen);
                 d.ResetAll(); Heal(); StandNear(d, 1.3f);
@@ -815,14 +926,14 @@ namespace MedievalKnight
                     // and the better block is what a real blocked blow uses
                     Heal();
                     k.aimOverride = k.transform.position + Vector3.right * 3f;
-                    Keys(Key.LeftShift);
+                    SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, true);
                     yield return W(0.4f);
                     float ab = k.armor;
                     k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest");
                     float wantLoss = 20f * (1f - pr.BlockReduction);
                     Log("block with " + pr.Points(Attr.Block) + " BLOCK point(s): blocking=" + k.IsBlocking + ", 20 damage -> armor " + F(ab) + " -> " + F(k.armor) + " (want -" + F(wantLoss) + ", was -4.00 with no points)");
                     Check("a blocked 20 damage blow now costs less armor than the base 4 (20 x (1 - block%))", k.IsBlocking && wantLoss < 3.61f && Mathf.Abs(ab - k.armor - wantLoss) < 0.01f);
-                    Keys();
+                    SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, false);
                     yield return W(0.2f);
                     Heal();
                 }
@@ -879,7 +990,7 @@ namespace MedievalKnight
                         yield return Tap(Key.Digit3);
                         Log("stat point by key 3 (STAMINA): max stamina " + F(ms0) + " -> " + F(k.MaxStamina) + ", regen x" + F(rg0) + " -> x" + F(pr.StaminaRegenMult)
                             + ", STAMINA points " + pr.Points(Attr.Stamina));
-                        Check("key 3 puts the point into STAMINA: +12 max stamina, +4% regen",
+                        Check("key 3 puts the point into STAMINA: +15 max stamina, +5% regen",
                             g.LevelStep != 2 && pr.Points(Attr.Stamina) == sp0 + 1 && Mathf.Abs(k.MaxStamina - ms0 - Progress.StaminaPerPoint) < 0.001f
                             && Mathf.Abs(pr.StaminaRegenMult - rg0 - Progress.RegenPerPoint) < 0.0001f);
                     }
@@ -892,7 +1003,7 @@ namespace MedievalKnight
                 Check("all 9 stat points are spent and add up",
                     pr.statPoints == 0 && pr.Points(Attr.Hp) + pr.Points(Attr.Block) + pr.Points(Attr.Stamina) == 9
                     && Mathf.Abs(k.MaxHp - (100f + 90f + 20f * pr.Points(Attr.Hp))) < 0.001f && Mathf.Abs(k.MaxArmor - (60f + 10f * pr.Points(Attr.Block))) < 0.001f
-                    && Mathf.Abs(k.MaxStamina - (100f + 12f * pr.Points(Attr.Stamina))) < 0.001f);
+                    && Mathf.Abs(k.MaxStamina - (100f + Progress.StaminaPerPoint * pr.Points(Attr.Stamina))) < 0.001f);
                 {
                     // the cap, on a scratch Progress: 6 points per stat, the 7th is refused
                     var scratch = new Progress { statPoints = 10 };

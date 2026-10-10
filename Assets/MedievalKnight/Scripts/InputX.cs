@@ -48,6 +48,7 @@ namespace MedievalKnight
                 case KeyCode.F5: return Key.F5;
                 case KeyCode.Space: return Key.Space;
                 case KeyCode.LeftShift: return Key.LeftShift;
+                case KeyCode.RightShift: return Key.RightShift;
                 case KeyCode.Alpha1: return Key.Digit1;
                 case KeyCode.Alpha2: return Key.Digit2;
                 case KeyCode.Alpha3: return Key.Digit3;

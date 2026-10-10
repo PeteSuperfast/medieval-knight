@@ -68,6 +68,9 @@ namespace MedievalKnight
         BarUi hpBar, armorBar, staminaBar, expBar, bossBar;
         Text statsText, bannerText, actionText, noticeText, controlsText, bossText, levelTitle, levelSub, invSlot, invStats;
         GameObject controlsPanel, bossPanel, levelRoot, invRoot;
+        readonly Image[] staminaTicks = new Image[10];
+        float lastStamina, tickFlashAt = -10f;
+        int tickFlash = -1;
         readonly SlotUi[] slots = new SlotUi[4];
         readonly CardUi[] cards = new CardUi[3];
         readonly RowUi[] rows = new RowUi[Weapons.All.Length];
@@ -126,6 +129,17 @@ namespace MedievalKnight
             expBar.label.color = new Color(1f, 0.9f, 0.45f);
             expBar.label.fontSize = 18;
 
+            // thin dividers on the stamina bar every 25 points: one section = one dash
+            for (int i = 0; i < staminaTicks.Length; i++)
+            {
+                Image t = Panel("Tick" + (i + 1), Vector2.zero, Vector2.zero, new Vector2(2f, -8f), new Color(0f, 0f, 0f, 0.7f), staminaBar.frame.transform);
+                RectTransform tr = t.rectTransform;
+                tr.pivot = new Vector2(0.5f, 0.5f);
+                tr.anchorMin = new Vector2(0f, 0f);
+                tr.anchorMax = new Vector2(0f, 1f);
+                staminaTicks[i] = t;
+            }
+
             // --- upgrade totals, under the bars ---
             Panel("StatsPanel", new Vector2(0, 1), new Vector2(16, -168), new Vector2(400, 152), PanelCol);
             statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -174), new Vector2(380, 142), 13, TextAnchor.UpperLeft);
@@ -170,19 +184,21 @@ namespace MedievalKnight
             actionText.text = "";
 
             // --- controls, top-right ---
-            controlsPanel = Panel("ControlsPanel", new Vector2(1, 1), new Vector2(-16, -16), new Vector2(350, 212), PanelCol).gameObject;
-            controlsText = MakeText("Controls", new Vector2(1, 1), new Vector2(-26, -22), new Vector2(330, 200), 14, TextAnchor.UpperLeft);
+            controlsPanel = Panel("ControlsPanel", new Vector2(1, 1), new Vector2(-16, -16), new Vector2(390, 246), PanelCol).gameObject;
+            controlsText = MakeText("Controls", new Vector2(1, 1), new Vector2(-26, -22), new Vector2(370, 232), 14, TextAnchor.UpperLeft);
             controlsText.text =
                 "CONTROLS   (F1 hides this)\n"
                 + "WASD / Arrows    Move\n"
                 + "Mouse    Aim - the knight faces the cursor\n"
-                + "Left Click / J / Space    Sword combo\n"
+                + "Left Click / J    Sword combo\n"
                 + "     Side > Chop > Rising > Spin > Thrust\n"
-                + "Right Click / Left Shift    Shield block\n"
+                + "Left Shift (hold)    Run\n"
+                + "Space    Dash - dodge, 0.5 s untouchable (25 stamina)\n"
+                + "Right Click (hold)    Shield block\n"
                 + "Q  Whirlwind          E  Dash Thrust\n"
                 + "R  Shield Bash        F  Ground Slam\n"
                 + "1 / 2 / 3 or Click    Level-up card, then stat point\n"
-                + "I  Weapons + stats (1 - 5 / Click equips)\n"
+                + "Tab  Inventory + stats (1 - 5 / Click equips)\n"
                 + "Walk over a dropped sword to take it\n"
                 + "M  Sound volume / mute\n"
                 + "H  Test hit   F5  Restart (online: host)   Esc  Menu";
@@ -527,7 +543,7 @@ namespace MedievalKnight
             invRoot.SetActive(true);
             invOpenedAt = Time.unscaledTime;
             DimFor(invDim, 0.6f);
-            invFoot.text = "1 - 5 or click a row: equip an owned sword          I: close          "
+            invFoot.text = "1 - 5 or click a row: equip an owned sword          Tab / Esc: close          "
                 + (Net.Multiplayer ? "(online: the game keeps running!)" : "(the game is paused)");
             RefreshInventory(-1);
         }
@@ -634,6 +650,7 @@ namespace MedievalKnight
             UpdateBar(hpBar, k.hp, k.MaxHp, dt, false, null);
             UpdateBar(armorBar, k.armor, k.MaxArmor, dt, false, null);
             UpdateBar(staminaBar, k.stamina, k.MaxStamina, dt, Time.unscaledTime - k.StaminaDeniedTime < 0.35f, null);
+            UpdateStaminaTicks(k);
             expBar.label.text = "LV " + pr.level;
             if (pr.IsMax) UpdateBar(expBar, 1f, 1f, dt, false, "MAX LEVEL");
             else UpdateBar(expBar, pr.exp, Progress.Need(pr.level), dt, false, Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level) + " EXP");
@@ -652,7 +669,7 @@ namespace MedievalKnight
                   .Append("  crit ").Append((k.CritChance(i) * 100f).ToString("0")).Append("% x").Append(k.CritMult(i).ToString("0.0")).Append('\n');
             }
             sb.Append("<b>SWORD</b> <color=").Append(Hex(k.Weapon.uiColor)).Append('>').Append(k.inventory.NameOf(k.inventory.equipped))
-              .Append("</color>  swing x").Append(k.SwingSpeed.ToString("0.00")).Append("  reach x").Append(k.Weapon.reach.ToString("0.00")).Append("   [I]\n");
+              .Append("</color>  swing x").Append(k.SwingSpeed.ToString("0.00")).Append("  reach x").Append(k.Weapon.reach.ToString("0.00")).Append("   [Tab]\n");
             sb.Append("<b>POINTS</b>  <color=").Append(Hex(AttrColor(Attr.Hp))).Append(">HP ").Append(pr.Points(Attr.Hp))
               .Append("</color>   <color=").Append(Hex(AttrColor(Attr.Block))).Append(">BLOCK ").Append(pr.Points(Attr.Block)).Append(" (").Append((pr.BlockReduction * 100f).ToString("0")).Append("%)")
               .Append("</color>   <color=").Append(Hex(AttrColor(Attr.Stamina))).Append(">STAMINA ").Append(pr.Points(Attr.Stamina)).Append("</color>");
@@ -671,10 +688,9 @@ namespace MedievalKnight
                 u.cool.offsetMax = new Vector2(-4, 4 + 88f * frac);
                 u.cool.gameObject.SetActive(left > 0f);
                 u.cdText.text = left > 0f ? left.ToString(left < 1f ? "0.0" : "0") : "";
-                bool noStamina = left <= 0f && k.stamina < s.stamina;
-                u.icon.color = left > 0f ? s.color * 0.35f : noStamina ? new Color(0.45f, 0.2f, 0.2f) : s.color * 0.75f;
+                u.icon.color = left > 0f ? s.color * 0.35f : s.color * 0.75f;
                 u.key.color = left > 0f ? new Color(1f, 1f, 1f, 0.35f) : Color.white;
-                u.cost.text = (s.cooldown / pr.SpeedMult(i)).ToString("0.0") + "s   " + (int)s.stamina + " st";
+                u.cost.text = (s.cooldown / pr.SpeedMult(i)).ToString("0.0") + "s";
             }
 
             // boss bar
@@ -746,6 +762,35 @@ namespace MedievalKnight
                 c.a = Mathf.Clamp01((1f - t) * 2.5f);
                 p.text.color = c;
                 p.text.rectTransform.localScale = Vector3.one * (1f + Mathf.Clamp01(1f - t * 6f) * 0.6f);
+            }
+        }
+
+        // Dividers at 25, 50, ... of the maximum (one dash each). The one that was just crossed upwards flashes;
+        // when a dash is refused the next divider shakes.
+        public int StaminaTicksShown { get { int n = 0; foreach (Image t in staminaTicks) if (t.gameObject.activeSelf) n++; return n; } }
+        public float StaminaTickX(int i) { return staminaTicks[i].rectTransform.anchoredPosition.x; }
+
+        void UpdateStaminaTicks(Knight k)
+        {
+            float max = k.MaxStamina;
+            float width = staminaBar.frame.rectTransform.sizeDelta.x;
+            int crossed = Mathf.FloorToInt(k.stamina / Knight.DashCost + 0.0001f);
+            if (crossed > Mathf.FloorToInt(lastStamina / Knight.DashCost + 0.0001f) && crossed >= 1) { tickFlash = crossed - 1; tickFlashAt = Time.unscaledTime; }
+            lastStamina = k.stamina;
+            bool denied = Time.unscaledTime - k.StaminaDeniedTime < 0.35f;
+            int next = Mathf.FloorToInt(k.stamina / Knight.DashCost + 0.0001f);       // the divider that is still out of reach
+            for (int i = 0; i < staminaTicks.Length; i++)
+            {
+                Image t = staminaTicks[i];
+                float at = (i + 1) * Knight.DashCost;
+                bool on = at < max - 0.01f;
+                if (t.gameObject.activeSelf != on) t.gameObject.SetActive(on);
+                if (!on) continue;
+                float x = 3f + (width - 6f) * at / max;
+                if (denied && i == next) x += Mathf.Sin(Time.unscaledTime * 90f) * 3f;
+                t.rectTransform.anchoredPosition = new Vector2(x, 0f);
+                bool flash = i == tickFlash && Time.unscaledTime - tickFlashAt < 0.15f;
+                t.color = flash ? new Color(1f, 0.95f, 0.6f, 1f) : new Color(0f, 0f, 0f, 0.7f);
             }
         }
 

@@ -23,14 +23,13 @@ namespace MedievalKnight
         public float reach = 2.7f, halfArc = 80f;
         public float damage = 10f;
         public float pierce = 0f;               // share of damage that ignores armor
-        public float stamina = 12f;
         public float shake = 0.1f, knock = 3.5f;
     }
 
     public class SkillDef
     {
         public string name, key, hint;
-        public float cooldown, stamina, damage;
+        public float cooldown, damage;
         public Color color;
     }
 
@@ -40,8 +39,10 @@ namespace MedievalKnight
     {
         public Vector2 move;        // walk direction on the ground plane (x = right, y = world +Z)
         public Vector3 aim;         // world point the knight faces and leaps to
-        public bool block;
-        public int request;         // -1 = nothing, Knight.ComboRequest = next sword attack, Knight.SkillRequest + n = skill n
+        public bool block;          // right mouse button held: shield up
+        public bool run;            // Left Shift held
+        public bool dash;           // Space pressed this frame
+        public int request;        // -1 = nothing, Knight.ComboRequest = next sword attack, Knight.SkillRequest + n = skill n
     }
 
     // A player: top-down movement, health / armor / stamina, shield block, the 5-step sword combo
@@ -53,10 +54,13 @@ namespace MedievalKnight
     // for show only and never hit anything here).
     public class Knight : MonoBehaviour
     {
-        public const float BaseHp = 100f, HpPerLevel = 10f, BaseArmor = 60f, BaseStamina = 100f, StaminaRegen = 26f, BlockCost = 15f;
+        public const float BaseHp = 100f, HpPerLevel = 10f, BaseArmor = 60f, BaseStamina = 100f, StaminaRegen = 26f;
         public const float MinSwingSpeed = 0.4f, MaxSwingSpeed = 4f;
         public const int ComboRequest = 100, SkillRequest = 200;
         const float MoveSpeed = 6.2f;
+        public const float RunMult = 1.5f;                  // Left Shift: 6.2 -> 9.3 m/s, costs nothing
+        // Space: dash. Stamina is only used for this: one dash = 25 (one tick on the stamina bar).
+        public const float DashCost = 25f, DashCooldown = 0.8f, DashDistance = 6f, DashMoveTime = 0.20f, DashInvuln = 0.5f;
         const float RestYaw = 55f, RestPitch = -25f, RestHand = 0.36f;
         static readonly Vector3 ShieldRestPos = new Vector3(-0.5f, 1.05f, 0.12f), ShieldBlockPos = new Vector3(-0.05f, 1.12f, 0.55f);
 
@@ -73,42 +77,42 @@ namespace MedievalKnight
 
         public static readonly AttackDef[] Attacks =
         {
-            new AttackDef { name = "Side Slash", damage = 10f, stamina = 12f, fxColor = new Color(1f, 1f, 1f) },
+            new AttackDef { name = "Side Slash", damage = 10f, fxColor = new Color(1f, 1f, 1f) },
 
             new AttackDef { name = "Overhead Chop", kind = AttackKind.Chop, yawWind = 8f, yawStrike = 0f, pitchWind = -118f, pitchStrike = 42f,
                 handWind = 0.3f, handStrike = 0.62f,
                 windupTime = 0.16f, strikeTime = 0.09f, recoverTime = 0.24f, lunge = 3.5f,
                 leanWind = -12f, leanStrike = 18f, hopWind = 0.35f,
                 fxColor = new Color(1f, 0.93f, 0.7f), reach = 3.0f, halfArc = 34f,
-                damage = 16f, stamina = 18f, shake = 0.2f, knock = 4.5f },
+                damage = 16f, shake = 0.2f, knock = 4.5f },
 
             new AttackDef { name = "Rising Slash", yawWind = -115f, yawStrike = 105f, pitchWind = 28f, pitchStrike = -32f,
                 windupTime = 0.10f, strikeTime = 0.10f, recoverTime = 0.2f, lunge = 1.5f,
                 leanWind = 8f, leanStrike = -8f, hopStrike = 0.3f,
                 fxColor = new Color(0.75f, 1f, 0.88f),
-                damage = 12f, stamina = 15f, shake = 0.11f },
+                damage = 12f, shake = 0.11f },
 
             new AttackDef { name = "Spin Slash", kind = AttackKind.Spin, yawWind = 100f, yawStrike = 100f, pitchWind = -5f, pitchStrike = 0f,
                 handWind = 0.4f, handStrike = 0.6f,
                 windupTime = 0.17f, strikeTime = 0.3f, recoverTime = 0.28f, lunge = 0.6f,
                 leanWind = -4f, leanStrike = 0f, hopStrike = 0.15f,
                 fxColor = new Color(1f, 0.82f, 0.95f), reach = 2.9f, halfArc = 180f,
-                damage = 22f, stamina = 28f, shake = 0.22f, knock = 5f },
+                damage = 22f, shake = 0.22f, knock = 5f },
 
             new AttackDef { name = "Thrust", kind = AttackKind.Thrust, yawWind = 4f, yawStrike = 0f, pitchWind = -4f, pitchStrike = 0f,
                 handWind = 0.05f, handStrike = 1.05f,
                 windupTime = 0.13f, strikeTime = 0.07f, recoverTime = 0.22f, lunge = 6f,
                 leanWind = -9f, leanStrike = 14f,
                 fxColor = new Color(0.7f, 0.92f, 1f), reach = 3.7f, halfArc = 18f,
-                damage = 20f, pierce = 0.5f, stamina = 20f, shake = 0.15f, knock = 6f },
+                damage = 20f, pierce = 0.5f, shake = 0.15f, knock = 6f },
         };
 
         public static readonly SkillDef[] Skills =
         {
-            new SkillDef { name = "Whirlwind", key = "Q", hint = "Spin, 3 hits all around", cooldown = 6f, stamina = 25f, damage = 14f, color = new Color(0.45f, 0.85f, 1f) },
-            new SkillDef { name = "Dash Thrust", key = "E", hint = "Dash through enemies", cooldown = 4f, stamina = 20f, damage = 30f, color = new Color(0.6f, 1f, 0.6f) },
-            new SkillDef { name = "Shield Bash", key = "R", hint = "Cone stun + knockback", cooldown = 7f, stamina = 20f, damage = 12f, color = new Color(1f, 0.85f, 0.35f) },
-            new SkillDef { name = "Ground Slam", key = "F", hint = "Leap to cursor, big AoE", cooldown = 10f, stamina = 35f, damage = 45f, color = new Color(1f, 0.5f, 0.3f) },
+            new SkillDef { name = "Whirlwind", key = "Q", hint = "Spin, 3 hits all around", cooldown = 6f, damage = 14f, color = new Color(0.45f, 0.85f, 1f) },
+            new SkillDef { name = "Dash Thrust", key = "E", hint = "Dash through enemies", cooldown = 4f, damage = 30f, color = new Color(0.6f, 1f, 0.6f) },
+            new SkillDef { name = "Shield Bash", key = "R", hint = "Cone stun + knockback", cooldown = 7f, damage = 12f, color = new Color(1f, 0.85f, 0.35f) },
+            new SkillDef { name = "Ground Slam", key = "F", hint = "Leap to cursor, big AoE", cooldown = 10f, damage = 45f, color = new Color(1f, 0.5f, 0.3f) },
         };
         const float WhirlRadius = 3.2f, DashLength = 6f, BashReach = 2.9f, BashArc = 60f, BashStun = 2.0f, SlamRadius = 3.6f, SlamRange = 7f;
 
@@ -125,7 +129,10 @@ namespace MedievalKnight
         public bool IsBlocking { get; private set; }
         public bool Dead { get; private set; }
         public bool Airborne { get; private set; }
-        public bool Invulnerable { get { return invuln || Glowing; } }
+        public bool Invulnerable { get { return invuln || Glowing || Dashing; } }
+        // 0.5 s of invulnerability from the moment of a dash (the body only moves for the first 0.2 s)
+        public bool Dashing { get { return Time.time < dashInvulnUntil; } }
+        public float DashReadyIn { get { return Mathf.Max(0f, dashReadyAt - Time.time); } }
         // just revived, or picking a level-up card online: cannot be hurt, and glows
         public bool Glowing { get { return remote ? netGlow : Time.time < invulnUntil || Time.time < protectUntil; } }
         public float StaminaDeniedTime { get; private set; }
@@ -149,7 +156,6 @@ namespace MedievalKnight
         public float CritMult(int skill) { return Mathf.Min(Progress.CritMultCap, progress.CritMult(skill) + (UsesSword(skill) ? Weapon.critMult : 0f)); }
         public float SwingSpeed { get { return Mathf.Clamp(progress.BasicSpeed() * Weapon.speed, MinSwingSpeed, MaxSwingSpeed); } }
         public float Reach(AttackDef a) { return a.reach * Weapon.reach; }
-        public float SwingCost(AttackDef a) { return a.stamina / SwingSpeed; }      // faster swings cost less each, a slow heavy sword costs more
 
         // The one place where the knight's damage is rolled (multipliers, crit chance, crit multiplier).
         public float RollDamage(int skill, float baseDamage, out bool isCrit)
@@ -169,6 +175,8 @@ namespace MedievalKnight
         float swYaw = RestYaw, swPitch = RestPitch, swHand = RestHand;
         float rigLean, rigHop, rigSpin, jumpY, walkPhase, hurtTint;
         float lastSpendTime = -10f, lastDamageTime = -10f, lastAttackEnd = -10f, invulnUntil, protectUntil;
+        float dashInvulnUntil, dashMoveEnd, dashReadyAt, lastDodgeFx = -10f, lastRunDust;
+        Vector3 dashDir;
         bool invuln, lockFacing, whirl, shieldPush;
         float shieldPushK;
         Vector3 knockVel, aimPoint;
@@ -296,20 +304,34 @@ namespace MedievalKnight
         // F5: back to level 1, no upgrades, no stat points, only the starting sword.
         public void ResetAll()
         {
-            StopAllCoroutines();
+            CancelAction();
             progress = new Progress();
             inventory.Reset();
             RebuildSword();
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
-            Dead = false; IsAttacking = false; IsBlocking = false; Airborne = false;
-            invuln = false; lockFacing = false; whirl = false; shieldPush = false;
-            queued = -1; comboIndex = 0; knockVel = Vector3.zero; hurtTint = 0f;
-            rigLean = 0f; rigHop = 0f; rigSpin = 0f; jumpY = 0f;
+            Dead = false; IsBlocking = false; Airborne = false;
+            comboIndex = 0; knockVel = Vector3.zero; hurtTint = 0f;
+            rigLean = 0f; rigHop = 0f; jumpY = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             for (int i = 0; i < 4; i++) { cd[i] = 0f; cdMax[i] = 0f; }
             invulnUntil = 0f; protectUntil = 0f;
+            dashInvulnUntil = 0f; dashMoveEnd = 0f; dashReadyAt = 0f;
             transform.position = spawnPoint;
             transform.rotation = Quaternion.identity;
+        }
+
+        // Stops whatever the knight is doing (combo, skill, dash) and clears every flag those leave behind.
+        // One place for the three callers: a dash that cancels a swing, death, restart.
+        public void CancelAction()
+        {
+            StopAllCoroutines();
+            ClearActionFlags();
+        }
+
+        void ClearActionFlags()
+        {
+            IsAttacking = false; lockFacing = false; whirl = false; shieldPush = false; invuln = false;
+            queued = -1; rigSpin = 0f;
         }
 
         public void OnLevelUp()
@@ -343,7 +365,7 @@ namespace MedievalKnight
             // --- resources ---
             if (!Dead)
             {
-                if (!IsBlocking && Time.time - lastSpendTime > 0.6f)
+                if (Time.time - lastSpendTime > 0.6f)
                     stamina = Mathf.Min(MaxStamina, stamina + StaminaRegen * progress.StaminaRegenMult * dt);
                 if (Time.time - lastDamageTime > 4f)
                     armor = Mathf.Min(MaxArmor, armor + 8f * dt);
@@ -362,12 +384,14 @@ namespace MedievalKnight
             if (!Dead) inp.move = moveOverride.HasValue ? moveOverride.Value : InputX.Move();
             inp.aim = aimOverride.HasValue ? aimOverride.Value : Game.I.AimPoint();
             if (!canInput) return inp;
-            inp.block = InputX.Held(KeyCode.LeftShift) || InputX.MouseHeld(1);
+            inp.block = InputX.MouseHeld(1);
+            inp.run = InputX.Held(KeyCode.LeftShift) || InputX.Held(KeyCode.RightShift);
+            inp.dash = InputX.Down(KeyCode.Space);
             if (InputX.Down(KeyCode.Q)) inp.request = SkillRequest;
             else if (InputX.Down(KeyCode.E)) inp.request = SkillRequest + 1;
             else if (InputX.Down(KeyCode.R)) inp.request = SkillRequest + 2;
             else if (InputX.Down(KeyCode.F)) inp.request = SkillRequest + 3;
-            else if (InputX.MouseDown(0) || InputX.Down(KeyCode.J) || InputX.Down(KeyCode.Space)) inp.request = ComboRequest;
+            else if (InputX.MouseDown(0) || InputX.Down(KeyCode.J)) inp.request = ComboRequest;
             return inp;
         }
 
@@ -376,8 +400,11 @@ namespace MedievalKnight
         {
             Vector2 mv = inp.move;
             aimPoint = inp.aim;
-            IsBlocking = canInput && !IsAttacking && inp.block;
+            bool dashMoving = Time.time < dashMoveEnd;
+            IsBlocking = canInput && !IsAttacking && inp.block && !dashMoving;      // the shield drops during a dash
 
+            if (canInput && inp.dash) TryDash(inp);
+            dashMoving = Time.time < dashMoveEnd;
             if (canInput)
             {
                 int req = inp.request;
@@ -406,10 +433,15 @@ namespace MedievalKnight
             // --- movement on the XZ plane ---
             float speedMul = whirl ? 0.7f : IsAttacking ? 0.2f : IsBlocking ? 0.4f : 1f;
             if (lockFacing && IsAttacking && !whirl) speedMul = Airborne ? 0f : 0.15f;
+            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Airborne && !Dead && !dashMoving;
+            if (running) speedMul *= RunMult;
+            Running = running;
             Vector3 p = transform.position;
             p.y = 0f;
-            p += new Vector3(mv.x, 0f, mv.y) * MoveSpeed * speedMul * dt;
+            if (dashMoving) p += dashDir * (DashDistance / DashMoveTime) * dt;      // the dash replaces walking
+            else p += new Vector3(mv.x, 0f, mv.y) * MoveSpeed * speedMul * dt;
             p += knockVel * dt;
+            if (running && Time.time - lastRunDust > 0.22f) { lastRunDust = Time.time; Fx.I.Dust(transform.position, 2); }
             knockVel = Vector3.MoveTowards(knockVel, Vector3.zero, 30f * dt);
 
             // solid enemies (dummy, minotaur) push the knight out (not while leaping or dashing through)
@@ -432,7 +464,40 @@ namespace MedievalKnight
             p.y = jumpY;
             transform.position = p;
 
-            Pose(dt, mv.sqrMagnitude > 0.01f && !Airborne);
+            Pose(dt, (mv.sqrMagnitude > 0.01f || dashMoving) && !Airborne);
+        }
+
+        public bool Running { get; private set; }
+        public int DodgeCount { get; private set; }               // blows that passed through a dash (test counter)
+
+        // Space: a 6 m dash in 0.2 s that cannot be hurt for 0.5 s. Costs 25 stamina and has a 0.8 s cooldown.
+        // It cuts any swing or skill short (the skill cooldown is not given back); it cannot be used while leaping.
+        void TryDash(KnightInput inp)
+        {
+            if (Dead || Airborne || Time.time < dashReadyAt) return;
+            if (stamina < DashCost - 0.001f) { Deny("Dash"); return; }
+            if (IsAttacking || queued >= 0) CancelAction();
+            stamina -= DashCost;
+            lastSpendTime = Time.time;
+            dashReadyAt = Time.time + DashCooldown;
+            dashMoveEnd = Time.time + DashMoveTime;
+            dashInvulnUntil = Time.time + DashInvuln;
+            knockVel = Vector3.zero;
+            Vector3 dir = new Vector3(inp.move.x, 0f, inp.move.y);
+            if (dir.sqrMagnitude < 0.01f) dir = -transform.forward;               // no direction held: hop backwards
+            dashDir = dir.normalized;
+            LastAction = "Dash";
+            ActionsSeen++;
+            Net.SendAct(20, 1f, transform.position + dashDir * DashDistance);
+            DashFx(dashDir);
+        }
+
+        void DashFx(Vector3 dir)
+        {
+            float yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
+            Fx.I.Streak(Ground(0.9f), yaw, DashDistance, 0.7f, new Color(0.8f, 0.92f, 1f, 0.85f), 0.25f);
+            Fx.I.Dust(transform.position, 8);
+            Sfx.I.Play(Snd.Swing, 0.7f * Volume, 0.75f);
         }
 
         // Idle / walk / block poses, legs, shield and tint (attacks drive the sword and body themselves).
@@ -477,6 +542,7 @@ namespace MedievalKnight
 
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
             if (Glowing && !Dead) tint.Set(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
+            else if (!remote && Dashing && !Dead) tint.Set(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
             else tint.Set(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
         }
 
@@ -584,6 +650,15 @@ namespace MedievalKnight
         public void PlayRemoteAct(int kind, float speed, Vector3 target)
         {
             if (!remote || Dead) return;
+            if (kind == 20)                                   // dash: the position glides on its own, only the show is replayed
+            {
+                StopAct();
+                Vector3 dd = target - netPos; dd.y = 0f;
+                if (dd.sqrMagnitude > 0.01f) DashFx(dd.normalized);
+                LastAction = "Dash";
+                ActionsSeen++;
+                return;
+            }
             bool skill = kind >= 10;
             int index = skill ? kind - 10 : kind;
             if (index < 0 || index >= (skill ? Skills.Length : Attacks.Length)) return;
@@ -638,6 +713,7 @@ namespace MedievalKnight
         {
             StaminaDeniedTime = Time.unscaledTime;
             Game.I.hud.Banner("Not enough stamina for " + what, new Color(1f, 0.5f, 0.4f));
+            Sfx.I.Play(Snd.ArmorImpact, 0.35f, 0.7f);
         }
 
         void TryStartAttack(int request)
@@ -651,10 +727,6 @@ namespace MedievalKnight
             }
             AttackDef a = Attacks[index];
             float speed = SwingSpeed;
-            float cost = SwingCost(a);
-            if (stamina < cost) { Deny(a.name); return; }
-            stamina -= cost;
-            lastSpendTime = Time.time;
             if (fromCombo) comboIndex = (index + 1) % Attacks.Length;
             LastAction = a.name;
             ActionsSeen++;
@@ -671,9 +743,6 @@ namespace MedievalKnight
                 Game.I.hud.Action(s.name + " not ready (" + cd[i].ToString("0.0") + "s)", new Color(1f, 0.6f, 0.5f));
                 return false;
             }
-            if (stamina < s.stamina) { Deny(s.name); return false; }
-            stamina -= s.stamina;
-            lastSpendTime = Time.time;
             cdMax[i] = cd[i] = s.cooldown / progress.SpeedMult(i);
             LastAction = s.name;
             ActionsSeen++;
@@ -1033,11 +1102,26 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- taking damage
 
-        // Armor absorbs first. A raised shield facing the blow cuts it by 80% (+2% per BLOCK point) for 15 stamina.
+        // Armor absorbs first. A raised shield facing the blow cuts it by 80% (+2% per BLOCK point) for free (no stamina).
         // Always runs on the machine of the player who owns this knight (the host forwards monster hits to it).
         public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f)
         {
-            if (remote || Dead || Invulnerable) return;
+            if (remote || Dead) return;
+            if (Dashing)
+            {
+                // the blow passes through: a small "DODGE" (not on every hit of a flurry)
+                if (Time.time - lastDodgeFx > 0.3f)
+                {
+                    lastDodgeFx = Time.time;
+                    DodgeCount++;
+                    Vector3 cp = transform.position + new Vector3(0f, 2.6f, 0f);
+                    Game.I.hud.Popup(cp, "DODGE", new Color(0.81f, 0.91f, 1f), 22);
+                    Fx.I.Burst(transform.position + Vector3.up * 1.2f, 6, new Color(0.8f, 0.92f, 1f), 2f, 5f, Vector3.up, 0.9f, 0.3f, 0f, 0.08f);
+                    Sfx.I.Play(Snd.Swing, 0.3f, 1.3f);
+                }
+                return;
+            }
+            if (Invulnerable) return;
             LastDamageSource = source;
             Vector3 toSrc = from - transform.position; toSrc.y = 0f;
             Vector3 srcDir = toSrc.sqrMagnitude > 0.0001f ? toSrc.normalized : transform.forward;
@@ -1046,21 +1130,12 @@ namespace MedievalKnight
 
             if (IsBlocking && Vector3.Angle(transform.forward, srcDir) < 75f)
             {
-                if (stamina >= BlockCost)
-                {
-                    blocked = true;
-                    stamina -= BlockCost;
-                    lastSpendTime = Time.time;
-                    damage *= 1f - progress.BlockReduction;
-                    Sfx.I.Play(Snd.Clash);
-                    Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
-                    Fx.I.Burst(chestPos + srcDir * 0.6f, 12, new Color(1f, 0.92f, 0.6f), 3f, 8f, srcDir + Vector3.up * 0.4f, 0.7f, 0.25f, 5f, 0.1f);
-                }
-                else
-                {
-                    StaminaDeniedTime = Time.unscaledTime;
-                    Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "GUARD BROKEN", new Color(1f, 0.5f, 0.4f), 24);
-                }
+                // the shield costs no stamina any more: a frontal blow is always blocked
+                blocked = true;
+                damage *= 1f - progress.BlockReduction;
+                Sfx.I.Play(Snd.Clash);
+                Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
+                Fx.I.Burst(chestPos + srcDir * 0.6f, 12, new Color(1f, 0.92f, 0.6f), 3f, 8f, srcDir + Vector3.up * 0.4f, 0.7f, 0.25f, 5f, 0.1f);
             }
 
             float toArmor = Mathf.Min(armor, damage);
@@ -1105,9 +1180,9 @@ namespace MedievalKnight
         IEnumerator DownRoutine()
         {
             Dead = true;
-            IsAttacking = false; IsBlocking = false; Airborne = false;
-            invuln = false; lockFacing = false; whirl = false; shieldPush = false;
-            queued = -1; rigSpin = 0f; jumpY = 0f;
+            ClearActionFlags();                             // (not CancelAction: that would stop this very coroutine)
+            IsBlocking = false; Airborne = false;
+            jumpY = 0f; dashMoveEnd = 0f; dashInvulnUntil = 0f;
             bool online = Net.Multiplayer;
             Game.I.hud.Banner(online ? "You are down! Back in " + Game.ReviveDelayCoop.ToString("0") + " seconds..." : "Knight down! Reviving...", new Color(1f, 0.5f, 0.4f));
             yield return FallRoutine();

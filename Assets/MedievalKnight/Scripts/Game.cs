@@ -844,7 +844,7 @@ namespace MedievalKnight
             Knight k = knight;
             WeaponDef w = Weapons.All[weaponId];
             int result = k.inventory.Add(w.id);
-            if (result == 0) lastNotice = "Picked up " + w.name + "   -   press I to equip";
+            if (result == 0) lastNotice = "Picked up " + w.name + "   -   press Tab to equip";
             else if (result == 1) lastNotice = w.name + " refined to +" + k.inventory.plus[w.id] + "   (duplicate: +5% damage)";
             else
             {
@@ -865,7 +865,7 @@ namespace MedievalKnight
             Debug.Log("PICKUP by " + (k != null ? k.playerName : "?") + ": " + w.name);
         }
 
-        // ---------------------------------------------------------------- inventory panel (I)
+        // ---------------------------------------------------------------- inventory window (Tab)
 
         public void SetInventory(bool open)
         {
@@ -1076,8 +1076,13 @@ namespace MedievalKnight
 
             if (InputX.Down(KeyCode.Escape))
             {
-                LeaveKey();
-                if (!InSession) return;
+                // Esc closes the Tab window first; it does not count as the "Esc again" that leaves to the menu
+                if (InventoryOpen) SetInventory(false);
+                else
+                {
+                    LeaveKey();
+                    if (!InSession) return;
+                }
             }
             if (InputX.Down(KeyCode.F1)) hud.ToggleControls();
             if (InputX.Down(KeyCode.M))
@@ -1105,10 +1110,10 @@ namespace MedievalKnight
                 if (LevelStep != 0 && !online) { Time.timeScale = 0f; return; }
             }
 
-            // I: weapons + stats panel
+            // Tab: inventory + stats window
             if (LevelStep == 0)
             {
-                if (InputX.Down(KeyCode.I)) SetInventory(!InventoryOpen);
+                if (InputX.Down(KeyCode.Tab)) SetInventory(!InventoryOpen);
                 if (InventoryOpen)
                 {
                     if (!online) Time.timeScale = 0f;

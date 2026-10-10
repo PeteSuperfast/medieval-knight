@@ -378,9 +378,9 @@ namespace MedievalKnight
                 }
 
                 case "block":                                         // seconds: hold the shield up through the real key
-                    InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState(Key.LeftShift));
+                    InputSystem.QueueStateEvent(Mouse.current, new MouseState().WithButton(MouseButton.Right, true));      // right mouse button = shield
                     yield return W(P(a[0]));
-                    InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState());
+                    InputSystem.QueueStateEvent(Mouse.current, new MouseState());
                     yield return null;
                     Reply(id, "ok");
                     break;
@@ -1084,10 +1084,11 @@ namespace MedievalKnight
             yield return null;
         }
 
-        static void SetMouse(Vector2 pos, bool left)
+        static void SetMouse(Vector2 pos, bool left, bool right = false)
         {
             var st = new MouseState { position = pos };
             if (left) st = st.WithButton(MouseButton.Left, true);
+            if (right) st = st.WithButton(MouseButton.Right, true);
             InputSystem.QueueStateEvent(Mouse.current, st);
         }
 
@@ -1200,10 +1201,10 @@ namespace MedievalKnight
                 Keys();
                 yield return null;
                 Check("the knight walks with the real W key after going through the menu (" + (g.knight.transform.position.z - p0.z).ToString("0.0") + " m)", g.knight.transform.position.z - p0.z > 1.5f);
-                yield return Tap(Key.I);
+                yield return Tap(Key.Tab);
                 yield return W(0.2f);
                 Check("single player still pauses for the weapon panel", g.InventoryOpen && Time.timeScale == 0f);
-                yield return Tap(Key.I);
+                yield return Tap(Key.Tab);
                 yield return W(0.3f);
                 Shot("single_player_from_menu");
                 yield return null;

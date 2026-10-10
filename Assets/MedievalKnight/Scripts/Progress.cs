@@ -20,7 +20,7 @@ namespace MedievalKnight
     // "+Nx" is literal: it is added to a multiplier.
     //   Damage  +Nx : damage multiplier (starts x1.0) += N.                       capped at x10
     //   Speed   +Nx : attack-speed multiplier (starts x1.0) += N.                 capped at x4
-    //                 basic attacks animate that much faster (max x3) and cost proportionally less stamina,
+    //                 basic attacks animate that much faster (max x3); stamina is only used by the dash,
     //                 skill cooldowns are divided by it.
     //   Crit    +Nx : crit damage multiplier (starts x1.5) += N  (cap x10) and
     //                 crit chance (starts 10%) += 5% per 1.0x     (cap 75%).
@@ -30,7 +30,7 @@ namespace MedievalKnight
     // Every level-up also gives 1 stat point that the player puts into HP, BLOCK or STAMINA (max 6 each):
     //   HP       +20 max health
     //   BLOCK    +10 max armor, and a raised shield stops 2% more of a blow (80% -> at most 92%)
-    //   STAMINA  +12 max stamina and +4% stamina regeneration
+    //   STAMINA  +15 max stamina (= dash charges) and +5% stamina regeneration
     // One Progress belongs to one Knight; the equipped sword is combined with these totals in Knight.RollDamage.
     public class Progress
     {
@@ -39,7 +39,7 @@ namespace MedievalKnight
         public const float DamageCap = 10f, SpeedCap = 4f, BasicSpeedCap = 3f, CritMultCap = 10f, CritChanceCap = 0.75f;
         public const float BaseCritChance = 0.10f, BaseCritMult = 1.5f, CritChancePerX = 0.05f;
         public const int AttrCap = 6;
-        public const float HpPerPoint = 20f, ArmorPerPoint = 10f, BaseBlock = 0.80f, BlockPerPoint = 0.02f, StaminaPerPoint = 12f, RegenPerPoint = 0.04f;
+        public const float HpPerPoint = 20f, ArmorPerPoint = 10f, BaseBlock = 0.80f, BlockPerPoint = 0.02f, StaminaPerPoint = 15f, RegenPerPoint = 0.05f;
 
         public int level = 1;
         public float exp;                 // EXP inside the current level
