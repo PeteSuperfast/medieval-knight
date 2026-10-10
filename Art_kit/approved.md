@@ -36,3 +36,44 @@
 
 หมายเหตุ: origin = กลางฐาน (ถังนอน = กลางรอยวางบนพื้น, ไม่มี yaw — หมุนเองตอนวางในฉาก), 8 แผ่นไม้แยกชิ้น, ห่วงเหล็ก 2 วงเอียง ~4°, ฝายุบ 3.5 ซม. 4 แผ่น
 material: `MK_barrel_wood` #A1773D, `MK_barrel_groove` #715332, `MK_barrel_iron` #3A3A3A; ต้นฉบับ/เทียบอ้างอิง `Docs/barrel/`
+
+## Fence (รั้วไม้)
+
+เจ้าของอนุมัติ 2026-10-10 (peatengkrub) — `make_fence_straight()` / `make_fence_corner()` ใน `style_kit.py`
+รัน: `blender -b -P Art_kit/style_kit.py -- fence` → `Assets/Models/Props/` + `Art_kit/previews/Fence.png`
+
+| ไฟล์ (`Assets/Models/Props/`) | seed | tris | ขนาด (x y z) |
+| --- | --- | --- | --- |
+| Fence_Straight_2m.fbx | 21 | 160 | 1.99 x 0.23 x 1.10 ม. (เสา 3 ต้น ราง 2 ชั้น หมุดเหล็ก) |
+| Fence_CornerPost.fbx | 34 | 180 | 0.61 x 0.61 x 1.10 ม. (เสา + ราง 2 ชั้น 2 แขน ไปทาง -X และ +Y) |
+
+หมายเหตุ: origin = กลางฐานเสา (รั้วตรง = เสากลาง), ราง/หมุดอยู่ฝั่ง -Y ของรั้วตรง, ไม่มี yaw ใน FBX (เสามุมหมุน -45 องศาเฉพาะภาพ preview)
+material: `MK_fence_wood` #A1773D (หน้ากว้าง/ด้านบน), `MK_fence_side` #715332 (ด้านข้าง/รอยบิ่น), `MK_fence_peg` #3A3A3A; ต้นฉบับ `Docs/fence/`
+
+## Small props (ของเล็กๆ)
+
+เจ้าของอนุมัติ 2026-10-10 (peatengkrub) — `make_mushroom_cluster / make_grass_tuft / make_stepping_stone / make_tree_stump` ใน `style_kit.py`
+รัน: `blender -b -P Art_kit/style_kit.py -- props` → `Assets/Models/Props/` + `Art_kit/previews/Small_props.png`
+
+| ไฟล์ (`Assets/Models/Props/`) | seed | tris | ขนาด (x y z) |
+| --- | --- | --- | --- |
+| Mushroom_Red_Cluster.fbx | 21 | 119 | 0.35 x 0.24 x 0.25 ม. (เห็ด 3 ดอก 25/17/10 ซม.) |
+| Grass_Tuft.fbx | 33 | 70 | 0.21 x 0.16 x 0.20 ม. |
+| Stepping_Stone.fbx | 45 | 40 | 0.35 x 0.31 x 0.06 ม. |
+| Tree_Stump.fbx | 57 | 78 | 0.50 x 0.50 x 0.40 ม. |
+
+หมายเหตุ: origin = กลางฐาน (z=0 = พื้น)
+material: `MK_mushroom_red` #C8483A, `MK_plaster_cream` #D8CCB0, `MK_grass_mid` #6C8535, `MK_grass_light` #8DB04A, `MK_rock_top` #ADABB7, `MK_rock_side` #958A80, `MK_wood_dark` #715332, `MK_wood_light` #A1773D; ต้นฉบับ `Docs/small-props/`
+
+## Round trees (ต้นไม้พุ่มกลม)
+
+เจ้าของอนุมัติ 2026-10-10 (peatengkrub) — `make_round_tree(kind, seed=None)` kind = `slender` / `wide` ใน `style_kit.py`
+รัน: `blender -b -P Art_kit/style_kit.py -- round_trees` → `Assets/Models/` + `Art_kit/previews/Round_trees.png`
+
+| ไฟล์ (`Assets/Models/`) | seed | tris | ขนาด (x y z) |
+| --- | --- | --- | --- |
+| Tree_Round_Slender.fbx (เพรียว 4 พุ่ม) | 3 | 428 | 3.37 x 2.20 x 4.80 ม. |
+| Tree_Round_Wide.fbx (กว้าง 5 พุ่ม) | 8 | 534 | 5.66 x 4.30 x 4.66 ม. |
+
+หมายเหตุ: origin = ฐานลำต้น (ลำต้นเอียง/โค้ง ฐานจมพื้นเล็กน้อย <= 4 ซม.), ลำต้น 6 เหลี่ยม + กิ่ง 5 เหลี่ยม
+material: `MK_wood_dark` #715332, `MK_leaf_light` #A0B85B (หน้าที่หันขึ้น), `MK_leaf_under` #6C8535; ต้นฉบับ `Docs/round-trees/`

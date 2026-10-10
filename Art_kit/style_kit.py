@@ -4,7 +4,13 @@ Use:  blender -b -P Art_kit/style_kit.py -- <asset> [<asset> ...]
       assets: pine   (writes Assets/Models/Tree_Pine.fbx)
               rocks  (writes Assets/Models/Rocks/Rock_{Small,Medium,Large}_{A,B,C}.fbx
                       + Art_kit/previews/Rocks_variants.png)
-              barrels (writes Assets/Models/Props/Barrel_{Upright,Lying}.fbx)
+              barrels (writes Assets/Models/Props/Barrel_{Upright,Lying}.fbx + previews/Barrels.png)
+              fence   (writes Assets/Models/Props/Fence_Straight_2m.fbx, Fence_CornerPost.fbx
+                       + previews/Fence.png)
+              props   (writes Assets/Models/Props/Mushroom_Red_Cluster, Grass_Tuft, Stepping_Stone,
+                       Tree_Stump .fbx + previews/Small_props.png)
+              round_trees (writes Assets/Models/Tree_Round_Slender.fbx, Tree_Round_Wide.fbx
+                       + previews/Round_trees.png)
 From another bpy script:  import style_kit as K; K.reset_scene(); ob = K.make_pine()
                           ob = K.make_rock("medium", seed=123)   # any seed -> new rock
 
@@ -22,6 +28,9 @@ PAL = {
     "wood_dark": "#715332",
     "rock_top": "#ADABB7", "rock_side": "#958A80",
     "barrel_wood": "#A1773D", "barrel_groove": "#715332", "barrel_iron": "#3A3A3A",
+    "fence_wood": "#A1773D", "fence_side": "#715332", "fence_peg": "#3A3A3A",
+    "mushroom_red": "#C8483A", "plaster_cream": "#D8CCB0", "wood_light": "#A1773D",
+    "leaf_under": "#6C8535",
 }
 MATS = {}
 
@@ -435,6 +444,451 @@ def build_barrels():
     print("PREVIEW", os.path.join(prev, "Barrels.png"))
 
 
+# ---------------------------------------------------------------- fence
+FENCE_POST_H = 1.10
+FENCE_RAIL_T = 0.06       # rail thickness
+FENCE_RAIL_H = 0.13       # rail board height
+FENCE_RAIL_Z = (0.35, 0.78)
+FENCE_LEN = 2.0
+FENCE_POST_X = (-0.85, 0.0, 0.85)
+FENCE_HW = 0.06           # post half width (0.12 m square)
+FENCE_CORNER_HW = 0.075
+FENCE_CORNER_ARM = 0.45
+FENCE_SEEDS = {"straight": 21, "corner": 34}  # approved
+_FWOOD, _FSIDE, _FPEG = 0, 1, 2   # material slots (order of mi calls)
+
+
+def _fence_builder(name):
+    b = B(name)
+    b.mi("fence_wood"); b.mi("fence_side"); b.mi("fence_peg")
+    return b
+
+
+def _fence_prism(b, prof, v0, v1, P, M):
+    """Extrude a 2D profile (u,z) from v0 to v1 through mapping P(u,z,v) -> xyz, then matrix M."""
+    n = len(prof)
+    base = len(b.v)
+    for v in (v0, v1):
+        for u, z in prof:
+            b.v.append(tuple(M @ Vector(P(u, z, v))))
+    b.f.append(tuple(base + i for i in range(n))); b.m.append(_FWOOD)
+    b.f.append(tuple(base + n + i for i in range(n - 1, -1, -1))); b.m.append(_FWOOD)
+    for i in range(n):
+        j = (i + 1) % n
+        b.f.append((base + i, base + j, base + n + j, base + n + i)); b.m.append(_FWOOD)
+
+
+def _fence_peg(b, P, M, pu, pz, v0, rng):
+    """Small iron pin: 4-sided frustum sticking out of the rail face (no bottom face)."""
+    a = rng.uniform(0.3, 1.2)
+
+    def ring(r, v):
+        return [tuple(M @ Vector(P(pu + r * math.cos(a + math.pi / 2 * k + math.pi / 4),
+                                   pz + r * math.sin(a + math.pi / 2 * k + math.pi / 4), v))) for k in range(4)]
+    base = len(b.v)
+    b.v += ring(0.032, v0) + ring(0.020, v0 + 0.026)
+    for i in range(4):
+        j = (i + 1) % 4
+        b.f.append((base + i, base + j, base + 4 + j, base + 4 + i)); b.m.append(_FPEG)
+    b.f.append(tuple(base + 4 + i for i in range(4))); b.m.append(_FPEG)
+
+
+def _fence_post(b, rng, x, y, hw):
+    """Square post, slanted top (direction random per post), leaning a degree or two."""
+    zl = FENCE_POST_H - rng.uniform(0.07, 0.11)
+    zh = FENCE_POST_H
+    if rng.random() < 0.5:
+        zl, zh = zh, zl
+    prof = [(-hw, 0.0), (hw, 0.0), (hw * 0.97, zh), (-hw * 0.97, zl)]
+    M = Matrix.Translation((x, y, 0)) @ Matrix.Rotation(rng.uniform(-0.03, 0.03), 4, 'X') \
+        @ Matrix.Rotation(rng.uniform(-0.03, 0.03), 4, 'Y') @ Matrix.Rotation(rng.uniform(-0.12, 0.12), 4, 'Z')
+    _fence_prism(b, prof, -hw, hw, lambda u, z, v: (u, v, z), M)
+
+
+def _fence_rail_profile(rng, u0, u1, h):
+    """Board silhouette with chipped / notched ends (seeded)."""
+    j = lambda s=0.005: rng.uniform(-s, s)
+    return [(u0 + 0.03, j(0.003)), (u1 - 0.02, j(0.003)), (u1 - 0.012, 0.42 * h), (u1, 0.60 * h),
+            (u1 - 0.05 + j(), h + j(0.003)), (u0 + 0.05, h + j(0.003)), (u0, 0.72 * h),
+            (u0 + 0.025, 0.36 * h), (u0 + 0.005, 0.14 * h)]
+
+
+def _fence_paint(ob, wood_normals):
+    """Wood colour on big board faces (+-Y, top, extra normals), dark colour on sides/chips/undersides."""
+    me = ob.data
+    for p in me.polygons:
+        if p.material_index == _FPEG:
+            continue
+        n = p.normal
+        wood = abs(n.y) > 0.72 or n.z > 0.72 or any(n.dot(Vector(w)) > 0.72 for w in wood_normals)
+        p.material_index = _FWOOD if wood else _FSIDE
+    me.update()
+
+
+def make_fence_straight(name="Fence_Straight_2m", seed=FENCE_SEEDS["straight"]):
+    """2 m fence section: 3 posts + 2 uneven rails with iron pegs on the -Y side. 160 tris, ~1.1 m tall.
+    Origin = centre of the base (middle post)."""
+    rng = random.Random(seed)
+    b = _fence_builder(name)
+    for x in FENCE_POST_X:
+        _fence_post(b, rng, x + rng.uniform(-0.01, 0.01), rng.uniform(-0.008, 0.008), FENCE_HW)
+    P = lambda u, z, v: (u, -(FENCE_HW - 0.005) - v, z)
+    for k, zc in enumerate(FENCE_RAIL_Z):
+        zc += rng.uniform(-0.015, 0.015)
+        h = FENCE_RAIL_H + rng.uniform(-0.01, 0.01)
+        u0, u1 = -FENCE_LEN / 2 + rng.uniform(0, 0.02), FENCE_LEN / 2 - rng.uniform(0, 0.02)
+        ang = 0.026 if k == 0 else -0.021
+        M = Matrix.Translation((0, 0, zc - h / 2)) @ Matrix.Rotation(ang, 4, 'Y')
+        _fence_prism(b, _fence_rail_profile(rng, u0, u1, h), 0.0, FENCE_RAIL_T, P, M)
+        for x in FENCE_POST_X:
+            _fence_peg(b, P, M, x + rng.uniform(-0.004, 0.004), h / 2 + rng.uniform(-0.01, 0.01), FENCE_RAIL_T, rng)
+    ob = b.build()
+    _fence_paint(ob, [])
+    return ob
+
+
+def make_fence_corner(name="Fence_CornerPost", seed=FENCE_SEEDS["corner"]):
+    """Corner post with two short rail stubs (toward -X and +Y). 180 tris. Origin = centre of the post base."""
+    rng = random.Random(seed)
+    hw = FENCE_CORNER_HW
+    b = _fence_builder(name)
+    _fence_post(b, rng, 0, 0, hw)
+    L = FENCE_CORNER_ARM
+    mapA = lambda u, z, v: (u, -(hw - 0.005) - v, z)
+    mapB = lambda u, z, v: (hw - 0.005 + v, u, z)
+    for k, zc in enumerate(FENCE_RAIL_Z):
+        for arm, (P, u0, u1) in enumerate(((mapA, -L, hw + 0.02), (mapB, -hw + 0.02, L))):
+            h = FENCE_RAIL_H + rng.uniform(-0.008, 0.008)
+            zz = zc + rng.uniform(-0.012, 0.012)
+            ang = (1 if (k + arm) % 2 == 0 else -1) * rng.uniform(0.02, 0.03)
+            M = Matrix.Translation((0, 0, zz - h / 2)) @ Matrix.Rotation(ang, 4, 'Y' if arm == 0 else 'X')
+            _fence_prism(b, _fence_rail_profile(rng, u0, u1, h), 0.0, FENCE_RAIL_T, P, M)
+            _fence_peg(b, P, M, 0.0, h / 2, FENCE_RAIL_T, rng)
+    ob = b.build()
+    _fence_paint(ob, [(1, 0, 0)])
+    return ob
+
+
+# ---------------------------------------------------------------- small props
+PROPS_SEEDS = {"mushroom": 21, "grass": 33, "stone": 45, "stump": 57}  # approved
+
+
+class _FaceBuilder:
+    """Per-face mesh builder. Every face is oriented away from a reference interior point c."""
+
+    def __init__(self, name):
+        self.name = name; self.v = []; self.f = []; self.m = []; self.mats = []
+
+    def face(self, pts, mat, c):
+        pts = [Vector(p) for p in pts]
+        n = Vector((0, 0, 0))
+        for i in range(len(pts)):
+            a, b = pts[i], pts[(i + 1) % len(pts)]
+            n += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
+        cen = sum(pts, Vector()) / len(pts)
+        if n.dot(cen - Vector(c)) < 0: pts.reverse()
+        base = len(self.v)
+        self.v += [tuple(p) for p in pts]
+        self.f.append(tuple(range(base, base + len(pts))))
+        if mat not in self.mats: self.mats.append(mat)
+        self.m.append(self.mats.index(mat))
+
+    def strip(self, a, b, mat, c):
+        n = len(a)
+        for i in range(n):
+            j = (i + 1) % n
+            self.face([a[i], a[j], b[j], b[i]], mat, c)
+
+    def fan(self, ring, apex, mat, c):
+        n = len(ring)
+        for i in range(n):
+            self.face([ring[i], ring[(i + 1) % n], apex], mat, c)
+
+    def build(self):
+        me = bpy.data.meshes.new(self.name)
+        me.from_pydata(self.v, [], self.f); me.update()
+        for p, mi in zip(me.polygons, self.m):
+            p.material_index = mi; p.use_smooth = False
+        for n in self.mats: me.materials.append(MATS[n])
+        ob = bpy.data.objects.new(self.name, me)
+        bpy.context.scene.collection.objects.link(ob)
+        return ob
+
+
+def _props_ring(n, r, z, rot=0.0, cx=0.0, cy=0.0, rng=None, rj=0.0, rscale=None):
+    out = []
+    for i in range(n):
+        a = rot + 2 * math.pi * i / n
+        rr = (rscale[i % len(rscale)] if rscale else r) * (1 + (rng.uniform(-rj, rj) if rng else 0))
+        out.append(Vector((cx + rr * math.cos(a), cy + rr * math.sin(a), z)))
+    return out
+
+
+def _add_mushroom(b, rng, x, y, h, lean, stem_n, spots):
+    """h = total height (m). Stem n-sided (cream), 6-sided faceted cap (red) with spot triangles (cream)."""
+    rot = rng.uniform(0, 6.28)
+    ang = rng.uniform(0, 6.28)
+    lx, ly = math.cos(ang) * lean, math.sin(ang) * lean
+    sh = 0.62 * h
+    ch = h - sh
+    Rc = 0.40 * h
+    def at(z): return (x + lx * z, y + ly * z)
+    sr0, sr1 = 0.115 * h, 0.085 * h
+    bot = _props_ring(stem_n, sr0, 0.0, rot, x, y, rng, 0.06)
+    top = _props_ring(stem_n, sr1, sh, rot, *at(sh), rng=rng, rj=0.06)
+    cs = Vector((*at(sh * 0.5), sh * 0.5))
+    b.strip(bot, top, "plaster_cream", cs)
+    b.face(bot, "plaster_cream", cs)
+    b.face(top, "plaster_cream", cs)
+    cz = sh - 0.04 * h
+    r0 = _props_ring(6, Rc, cz, rot + 0.3, *at(cz), rng=rng, rj=0.07)
+    z1 = sh + 0.38 * ch
+    r1 = _props_ring(6, Rc * 0.80, z1, rot + 0.3, *at(z1), rng=rng, rj=0.05)
+    apex = Vector((*at(h), h))
+    cc = Vector((*at(sh + 0.3 * ch), sh + 0.3 * ch))
+    b.strip(r0, r1, "mushroom_red", cc)
+    b.fan(r1, apex, "mushroom_red", cc)
+    b.face(r0, "mushroom_red", cc)
+    for kind, idx in spots:
+        if kind == "q":
+            q = [r0[idx], r0[(idx + 1) % 6], r1[(idx + 1) % 6], r1[idx]]
+        else:
+            q = [r1[idx], r1[(idx + 1) % 6], apex]
+        cen = sum(q, Vector()) / len(q)
+        nrm = (q[1] - q[0]).cross(q[2] - q[0])
+        if nrm.dot(cen - cc) < 0: nrm = -nrm
+        nrm.normalize()
+        u = (q[1] - q[0]).normalized()
+        w = nrm.cross(u)
+        s = 0.30 * Rc
+        p = cen + nrm * (0.004 * h / 0.25 + 0.002)
+        tri = [p + u * s, p - u * s * 0.5 + w * s * 0.87, p - u * s * 0.5 - w * s * 0.87]
+        b.face(tri, "plaster_cream", cc)
+
+
+def make_mushroom_cluster(name="Mushroom_Red_Cluster", seed=PROPS_SEEDS["mushroom"]):
+    """3 red-cap mushrooms (25 / 17 / 10 cm). 119 tris. Origin = centre of the base."""
+    rng = random.Random(seed)
+    b = _FaceBuilder(name)
+    _add_mushroom(b, rng, 0.00, 0.00, 0.25, 0.10, 5, [("q", 0), ("q", 2), ("q", 4), ("t", 3)])
+    _add_mushroom(b, rng, 0.15, -0.07, 0.17, -0.18, 5, [("q", 1), ("q", 3), ("q", 5)])
+    _add_mushroom(b, rng, -0.10, -0.12, 0.10, 0.22, 4, [("q", 0), ("q", 3)])
+    return b.build()
+
+
+def make_grass_tuft(name="Grass_Tuft", seed=PROPS_SEEDS["grass"]):
+    """7 leaning blades, ~0.2 m. 70 tris. Origin = centre of the base."""
+    rng = random.Random(seed)
+    b = _FaceBuilder(name)
+    n = 7
+    heights = [0.20, 0.17, 0.19, 0.14, 0.18, 0.15, 0.13]
+    for i in range(n):
+        a = 2 * math.pi * i / n + rng.uniform(-0.25, 0.25)
+        rd = Vector((math.cos(a), math.sin(a), 0))
+        td = Vector((-rd.y, rd.x, 0))
+        base = rd * rng.uniform(0.010, 0.030)
+        h = heights[i]
+        lean = rng.uniform(0.045, 0.085) + (0.2 - h) * 0.2
+        w = 0.060
+        d = 0.022
+        def sect(sc, z, off):
+            c = base + rd * off + Vector((0, 0, z))
+            return [c - td * (w * sc / 2), c + td * (w * sc / 2), c + rd * (d * sc)]
+        s0 = sect(1.0, 0.0, 0.0)
+        s1 = sect(0.62, h * 0.5, lean * 0.28)
+        tip = base + rd * lean + Vector((0, 0, h))
+        cen = base + rd * (lean * 0.15) + Vector((0, 0, h * 0.4))
+        b.strip(s0, s1, "grass_mid", cen)
+        b.fan(s1, tip, "grass_light", cen)
+        b.face(s0, "grass_mid", cen)
+    return b.build()
+
+
+def make_stepping_stone(name="Stepping_Stone", seed=PROPS_SEEDS["stone"]):
+    """Flat 7-sided stone slab ~38 x 31 cm, 5-6 cm tall. 40 tris. Origin = centre of the base."""
+    rng = random.Random(seed)
+    b = _FaceBuilder(name)
+    n = 7
+    angs = [2 * math.pi * i / n + rng.uniform(-0.22, 0.22) for i in range(n)]
+    pts0, pts1, pts2 = [], [], []
+    for a in angs:
+        r = rng.uniform(0.15, 0.19)
+        x, y = r * 1.12 * math.cos(a), r * 0.92 * math.sin(a)
+        pts0.append(Vector((x, y, 0.0)))
+        pts1.append(Vector((x * 0.97, y * 0.97, 0.034 + rng.uniform(-0.004, 0.004))))
+        pts2.append(Vector((x * 0.84, y * 0.84, 0.050 + rng.uniform(-0.006, 0.006) + 0.008 * math.cos(a))))
+    c = Vector((0, 0, 0.02))
+    apex = Vector((0.01, -0.005, 0.058))
+    b.strip(pts0, pts1, "rock_side", c)
+    b.strip(pts1, pts2, "rock_top", c)
+    b.fan(pts2, apex, "rock_top", c)
+    b.face(pts0, "rock_side", c)
+    return b.build()
+
+
+def make_tree_stump(name="Tree_Stump", seed=PROPS_SEEDS["stump"]):
+    """8-sided stump with root flare and a ringed cut face, ~0.4 m tall. 78 tris. Origin = centre of the base."""
+    rng = random.Random(seed)
+    b = _FaceBuilder(name)
+    n = 8
+    rot = 0.2
+    bot = _props_ring(n, 0, 0.0, rot, rng=rng, rj=0.05, rscale=[0.255, 0.205])
+    mid = _props_ring(n, 0.170, 0.11, rot, rng=rng, rj=0.05)
+    top = []
+    for i in range(n):
+        a = rot + 2 * math.pi * i / n
+        r = 0.150 * (1 + rng.uniform(-0.05, 0.05))
+        top.append(Vector((r * math.cos(a), r * math.sin(a), 0.394 + 0.006 * math.cos(a - 0.8))))
+    c = Vector((0, 0, 0.2))
+    b.strip(bot, mid, "wood_dark", c)
+    b.strip(mid, top, "wood_dark", c)
+    b.face(bot, "wood_dark", c)
+    def shrink(ringp, f, dz):
+        return [Vector((p.x * f, p.y * f, p.z + dz)) for p in ringp]
+    r1 = shrink(top, 0.88, -0.003)
+    r2 = shrink(top, 0.58, -0.007)
+    ctr = Vector((0, 0, 0.384))
+    b.strip(top, r1, "wood_dark", c)
+    b.strip(r1, r2, "wood_light", c)
+    b.fan(r2, ctr, "plaster_cream", c)
+    return b.build()
+
+
+# ---------------------------------------------------------------- round trees
+ROUND_TREE_TOP_NZ = 0.3   # leaf faces with normal.z above this get leaf_light, the rest leaf_under
+ROUND_TREE_SEGMENTS = 6   # trunk sides
+# kind -> params. blobs: (centre xyz, radii xyz); branches: (t on trunk, blob index)
+ROUND_TREES = {
+    "slender": dict(name="Tree_Round_Slender", seed=3, trunk_h=3.4, r0=0.22, r1=0.11, lean=(0.45, 0.2), bend=0.22,
+                    branches=[(0.45, 0), (0.65, 1)],
+                    blobs=[((-0.45, 0.10, 2.75), (1.25, 1.15, 0.95)),
+                           ((0.7, -0.1, 3.4), (1.0, 0.95, 0.8)),
+                           ((0.1, 0.25, 4.1), (0.8, 0.78, 0.65)),
+                           ((0.95, 0.4, 2.6), (0.65, 0.6, 0.5))]),
+    "wide": dict(name="Tree_Round_Wide", seed=8, trunk_h=2.3, r0=0.36, r1=0.2, lean=(-0.35, 0.3), bend=-0.2,
+                 branches=[(0.5, 0), (0.7, 1), (0.9, 2)],
+                 blobs=[((-1.5, -0.2, 2.5), (1.5, 1.35, 1.0)),
+                        ((1.4, 0.35, 2.55), (1.45, 1.3, 0.95)),
+                        ((-0.2, 1.0, 3.0), (1.35, 1.2, 0.95)),
+                        ((-0.35, -0.9, 3.3), (1.25, 1.1, 0.9)),
+                        ((-0.1, 0.1, 3.75), (1.1, 1.0, 0.8))]),
+}
+
+
+def _rt_tube(b, pts, radii, n, rng, mat="wood_dark"):
+    """Closed tapered tube along pts (list of Vector)."""
+    base = len(b.v)
+    for k, (p, r) in enumerate(zip(pts, radii)):
+        d = (pts[min(k + 1, len(pts) - 1)] - pts[max(k - 1, 0)]).normalized()
+        ref = Vector((0, 1, 0)) if abs(d.y) < 0.9 else Vector((1, 0, 0))
+        u = d.cross(ref).normalized(); w = d.cross(u).normalized()
+        rot = rng.uniform(0, 1)
+        for i in range(n):
+            a = 2 * math.pi * i / n + rot * 0.3
+            rr = r * rng.uniform(0.9, 1.08)
+            b.v.append(tuple(p + u * (rr * math.cos(a)) + w * (rr * math.sin(a))))
+    m = b.mi(mat)
+    for k in range(len(pts) - 1):
+        for i in range(n):
+            j = (i + 1) % n
+            o, q = base + k * n, base + (k + 1) * n
+            b.f.append((o + i, o + j, q + j, q + i)); b.m.append(m)
+    b.f.append(tuple(base + i for i in range(n - 1, -1, -1))); b.m.append(m)
+    last = base + (len(pts) - 1) * n
+    b.f.append(tuple(last + i for i in range(n))); b.m.append(m)
+
+
+def _rt_blob(b, c, radii, rng, jit=0.12):
+    """Faceted ellipsoid chunk: icosphere(subdiv 2, 80 tris) with per-vertex jitter, random yaw, slight tilt."""
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
+    R = (Matrix.Rotation(rng.uniform(0, 6.28), 3, 'Z') @ Matrix.Rotation(rng.uniform(-.2, .2), 3, 'X')
+         @ Matrix.Rotation(rng.uniform(-.2, .2), 3, 'Y'))
+    idx = {}
+    for v in bm.verts:
+        s = 1 + rng.uniform(-jit, jit)
+        p = Vector((v.co.x * radii[0] * s, v.co.y * radii[1] * s, v.co.z * radii[2] * s))
+        idx[v.index] = len(b.v)
+        b.v.append(tuple(c + R @ p))
+    m = b.mi("leaf_light")
+    for f in bm.faces:
+        b.f.append(tuple(idx[v.index] for v in f.verts)); b.m.append(m)
+    bm.free()
+
+
+def _rt_curve_pt(base, lean, h, bend, t):
+    off = lean * (t * t) + Vector((-lean.y, lean.x)) * (bend * math.sin(t * math.pi))
+    return Vector((base.x + off.x, base.y + off.y, h * t))
+
+
+def make_round_tree(kind, seed=None, name=None):
+    """kind: 'slender' (428 tris, ~4.7 m) | 'wide' (534 tris, ~4.6 m). Bent 6-sided trunk + branches + 4-5 faceted
+    leaf blobs (light on top, #6C8535 underneath). Origin = trunk base. Same (kind, seed) -> same tree."""
+    k = ROUND_TREES[kind]
+    rng = random.Random(k["seed"] if seed is None else seed)
+    b = B(name or k["name"])
+    b.mi("wood_dark"); b.mi("leaf_light"); b.mi("leaf_under")
+    lean = Vector(k["lean"]); trunk_h = k["trunk_h"]; r0, r1 = k["r0"], k["r1"]; bend = k["bend"]; blobs = k["blobs"]
+    N = 4
+    pts = [_rt_curve_pt(Vector((0, 0)), lean, trunk_h, bend, i / N) for i in range(N + 1)]
+    radii = [r0 + (r1 - r0) * i / N for i in range(N + 1)]
+    _rt_tube(b, pts, radii, ROUND_TREE_SEGMENTS, rng)
+    for t, bi in k["branches"]:
+        p = _rt_curve_pt(Vector((0, 0)), lean, trunk_h, bend, t)
+        tgt = Vector(blobs[bi][0]); tgt.z -= blobs[bi][1][2] * 0.25
+        mid = (p + tgt) / 2 + Vector((rng.uniform(-.12, .12), rng.uniform(-.12, .12), 0.12))
+        rb = r1 + (r0 - r1) * (1 - t) * 0.6
+        _rt_tube(b, [p, mid, tgt], [rb * 0.7, rb * 0.5, 0.07], 5, rng)
+    for c, r in blobs:
+        _rt_blob(b, Vector(c), r, rng)
+    ob = b.build()
+    for p in ob.data.polygons:
+        if ob.data.materials[p.material_index].name == "MK_wood_dark": continue
+        p.material_index = b.mats.index("leaf_light" if p.normal.z > ROUND_TREE_TOP_NZ else "leaf_under")
+    return ob
+
+
+# ---------------------------------------------------------------- batches
+def _report(tag, ob):
+    vs = ob.data.vertices
+    ext = [round(max(getattr(v.co, a) for v in vs) - min(getattr(v.co, a) for v in vs), 3) for a in "xyz"]
+    print(tag, ob.name, "tris", sum(len(p.vertices) - 2 for p in ob.data.polygons),
+          "size xyz", ext, "min_z", round(min(v.co.z for v in vs), 3))
+
+
+def _build_set(tag, makers, folder, preview, **lineup):
+    """makers: zero-arg callables returning an object. Export each alone (own scene), then render all together."""
+    for mk in makers:
+        reset_scene()
+        ob = mk()
+        _report(tag, ob)
+        print("EXPORTED", export_fbx(ob, folder=folder))
+    reset_scene()
+    objs = [mk() for mk in makers]
+    prev = os.path.join(ROOT, "Art_kit", "previews")
+    os.makedirs(prev, exist_ok=True)
+    for ob in objs:   # presentation yaw only (never in the FBX): shows both arms of the corner post
+        if ob.name == "Fence_CornerPost": ob.rotation_euler = (0, 0, math.radians(-45))
+    render_lineup(objs, os.path.join(prev, preview), **lineup)
+    print("PREVIEW", os.path.join(prev, preview))
+
+
+def build_fence():
+    _build_set("FENCE", [make_fence_straight, make_fence_corner], os.path.join(MODELS, "Props"), "Fence.png",
+               cell=2.5, cols=2, res=(1024, 768), dist=6.4, target_z=0.5)
+
+
+def build_props():
+    _build_set("PROP", [make_mushroom_cluster, make_grass_tuft, make_stepping_stone, make_tree_stump],
+               os.path.join(MODELS, "Props"), "Small_props.png",
+               cell=0.7, cols=4, res=(1280, 640), dist=4.1, target_z=0.1)
+
+
+def build_round_trees():
+    _build_set("ROUND_TREE", [lambda: make_round_tree("slender"), lambda: make_round_tree("wide")], MODELS,
+               "Round_trees.png", cell=7.0, cols=2, res=(1280, 960), dist=24, target_z=2.3)
+
+
 def export_fbx(ob, name=None, folder=MODELS):
     """Export one object to <folder>/<name>.fbx for Unity (Y up, 1 unit = 1 m, flat faces)."""
     os.makedirs(folder, exist_ok=True)
@@ -448,7 +902,8 @@ def export_fbx(ob, name=None, folder=MODELS):
 
 
 ASSETS = {"pine": make_pine}
-BATCH = {"rocks": lambda: build_rocks(), "barrels": lambda: build_barrels()}  # assets that export their own files
+BATCH = {"rocks": lambda: build_rocks(), "barrels": lambda: build_barrels(), "fence": lambda: build_fence(),
+         "props": lambda: build_props(), "round_trees": lambda: build_round_trees()}  # assets that export their own files
 
 if __name__ == "__main__":
     want = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else list(ASSETS)
