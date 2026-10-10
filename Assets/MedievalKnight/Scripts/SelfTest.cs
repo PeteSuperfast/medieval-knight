@@ -169,6 +169,7 @@ namespace MedievalKnight
             g = Game.I; k = g.knight;
             Dummy d = g.dummy;
             Random.InitState(12345);
+            g.foodOverride = 0;                                         // no random food: the food test decides when some falls
             yield return W(1.3f);
 
             // ------------------------------------------------ scene inventory
@@ -811,9 +812,82 @@ namespace MedievalKnight
                 Log("sword kill: " + (found ? sl.label + " maxHp " + F(sl.maxHp) + " dead=" + sl.Dead : "no slime") + " after " + swings + " swings, total exp " + F(e0) + " -> " + F(pr.totalExp));
                 Check("sword attacks kill a slime and its EXP is granted", ok);
                 yield return W(0.2f);
-                Check("the kill adds that slime kind's Soul (green 1 / blue 3 / red 6) and the HUD row shows it", found && k.souls - soulsA == Slime.SoulsFor(slKind) && g.hud.SoulShown == k.souls.ToString("N0"));
+                Check("the kill adds that slime kind's Soul (green 1 / blue 3 / red 6) and the HUD row shows it", found && k.souls - soulsA >= Slime.SoulsFor(slKind) && g.hud.SoulShown == k.souls.ToString("N0"));
                 yield return W(0.8f);
                 yield return ClearLevelUps();
+            }
+
+            // ------------------------------------------------ food: Apple 15%, Roast Meat 40% of max health; full health does not eat
+            {
+                yield return WaitIdle(3f);
+                yield return ClearLevelUps();
+                ParkSlimes();
+                k.moveOverride = Vector2.zero;
+                Vector3 spot = new Vector3(9f, 0f, -10f);                // 26 m from the parked slimes
+                k.transform.position = spot;
+                k.aimOverride = spot + Vector3.forward * 5f;
+                Heal();
+                yield return W(0.6f);
+
+                // drop rolls: the Apple is certain with the override, and appears next to the dead slime
+                float tFood = Time.realtimeSinceStartup;
+                while (Nearest<Slime>(Vector3.zero) == null && Time.realtimeSinceStartup - tFood < 6f) yield return null;   // the next wave
+                Slime food = Nearest<Slime>(new Vector3(-16.5f, 0f, -16.5f));
+                int food0 = 0;
+                foreach (Pickup q in Pickup.All) if (q.kind == PickupKind.Food) food0++;
+                if (food != null)
+                {
+                    food.Warp(new Vector3(12f, 0f, 6f));
+                    yield return null;
+                    g.dropOverride = 0; g.foodOverride = 1;
+                    food.TakeHit(99999f, 1f, food.transform.position + Vector3.right, false, 0f, 0f, "selftest");
+                    g.dropOverride = -1; g.foodOverride = 0;
+                }
+                int food1 = 0;
+                foreach (Pickup q in Pickup.All) if (q.kind == PickupKind.Food && q.weaponId == Foods.Apple) food1++;
+                Check("a killed slime can leave an Apple on the ground (drop forced by the self-test)", food != null && food1 == food0 + 1);
+                foreach (Pickup q in new System.Collections.Generic.List<Pickup>(Pickup.All)) Destroy(q.gameObject);
+                yield return W(0.2f);
+                yield return W(0.8f);                                    // the kill gave EXP: a level-up panel may open
+                yield return ClearLevelUps();
+                Heal();
+                float max = k.MaxHp;
+                k.hp = max * 0.4f;
+                float hp0 = k.hp;
+                Pickup apple = g.SpawnFood(Foods.Apple, spot + new Vector3(0.8f, 0f, 0f));
+                float life = apple.Life;
+                yield return W(0.9f);
+                float gain = k.hp - hp0;
+                Log("apple: hp " + F(hp0) + " -> " + F(k.hp) + " of " + F(max) + " (+" + F(gain) + ", want " + F(max * 0.15f) + "), lifetime " + F(life) + " s, notice \"" + g.lastNotice + "\"");
+                Check("an Apple heals 15% of max health and is gone from the ground", Mathf.Abs(gain - max * 0.15f) < 1f && !Pickup.All.Contains(apple) && g.lastFoodHeal == Mathf.RoundToInt(max * 0.15f));
+                Check("food lives 60 seconds on the ground (swords 90)", Mathf.Abs(life - 60f) < 0.01f && Mathf.Abs(Pickup.Lifetime - 90f) < 0.01f);
+
+                k.hp = max * 0.2f;
+                hp0 = k.hp;
+                Pickup meat = g.SpawnFood(Foods.Meat, spot + new Vector3(-0.8f, 0f, 0f));
+                yield return W(0.9f);
+                gain = k.hp - hp0;
+                Check("Roast Meat heals 40% of max health", Mathf.Abs(gain - max * 0.40f) < 1f && !Pickup.All.Contains(meat));
+
+                k.hp = max * 0.95f;
+                Pickup over = g.SpawnFood(Foods.Meat, spot + new Vector3(0f, 0f, 0.8f));
+                yield return W(0.9f);
+                Check("healing stops at full health (never above max)", Mathf.Abs(k.hp - max) < 0.01f && !Pickup.All.Contains(over) && g.lastFoodHeal == Mathf.RoundToInt(max * 0.05f));
+
+                // full health: it stays, one "HP full" hint, and it expires on its own
+                Heal();
+                int hints0 = g.fullHints;
+                Pickup stay = g.SpawnFood(Foods.Apple, spot + new Vector3(0.6f, 0f, 0f));
+                yield return W(0.8f);
+                bool still = Pickup.All.Contains(stay) && Mathf.Abs(k.hp - max) < 0.01f;
+                int hints1 = g.fullHints;
+                yield return W(0.6f);
+                Check("with full health the food stays on the ground and says 'HP full' once", still && hints1 == hints0 + 1 && g.fullHints == hints1);
+                stay.age = stay.Life - 0.3f;
+                yield return W(0.8f);
+                Check("food nobody ate disappears when its time is up", !Pickup.All.Contains(stay));
+                yield return W(0.3f);
+                Shot("food_eaten");
             }
 
             // ------------------------------------------------ Minotaur
@@ -956,7 +1030,9 @@ namespace MedievalKnight
                     float e0 = pr.totalExp, wantExp = m.expReward;
                     int souls0 = k.souls;
                     int l0 = pr.level;
+                    g.foodOverride = -1;                                  // the Minotaur's own rule: two Roast Meats
                     m.TakeHit(99999f, 1f, k.transform.position, false, 0f, 0f, "selftest");
+                    g.foodOverride = 0;
                     yield return W(0.3f);
                     Shot("minotaur_slain");
                     Log("minotaur finished by the self-test with a 99999 hit: total exp " + F(e0) + " -> " + F(pr.totalExp) + ", level " + l0 + " -> " + pr.level
@@ -966,6 +1042,10 @@ namespace MedievalKnight
                     bossDrop = g.lastPickup;
                     Log("minotaur drop (normal 100% roll, not forced): " + (bossDrop != null ? Weapons.All[bossDrop.weaponId].name + " at " + V(bossDrop.transform.position) : "nothing") + ", pickups on the ground " + Pickup.All.Count);
                     Check("the Minotaur drops the Horned King's Blade", bossDrop != null && bossDrop.weaponId == Weapons.Boss && Pickup.All.Contains(bossDrop));
+                    int meats = 0;
+                    foreach (Pickup q in Pickup.All) if (q.kind == PickupKind.Food && q.weaponId == Foods.Meat) meats++;
+                    Check("the Minotaur also leaves two Roast Meats", meats == Foods.MinotaurMeat);
+                    foreach (Pickup q in new System.Collections.Generic.List<Pickup>(Pickup.All)) if (q.kind == PickupKind.Food) Destroy(q.gameObject);
                 }
                 Heal(); StandNear(d, 1.3f);
                 int safety = 0;

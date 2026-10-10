@@ -32,6 +32,8 @@ namespace MedievalKnight
         public int wave, slimesAlive;
         public float inputBlockUntil;              // unscaled time; combat input is ignored until then
         public int dropOverride = -1;              // self-test hook: -1 = roll normally, 0 = never drop, 1 = always drop
+        public int foodOverride = -1;              // self-test hook for food: -1 = roll normally, 0 = never, 1 = a slime always drops an Apple
+        public int lastFoodHeal, fullHints;        // test read-outs: the last health a food gave, "HP full" hints shown
         public float camZoom = 1f;                 // self-test hook: < 1 moves the camera closer for screenshots
         public Pickup lastPickup;                  // the most recent sword drop
         public string lastNotice = "";             // the most recent "picked up ..." line
@@ -272,7 +274,7 @@ namespace MedievalKnight
             for (int i = 0; i < Pickup.All.Count && i < 255; i++)
             {
                 Pickup p = Pickup.All[i];
-                w.U16(p.netId).U8(p.weaponId).U8(p.owner < 0 ? 255 : p.owner).Pos(p.transform.position.x).Pos(p.transform.position.z);
+                w.U16(p.netId).U8((int)p.kind).U8(p.weaponId).U8(p.owner < 0 ? 255 : p.owner).Pos(p.transform.position.x).Pos(p.transform.position.z);
             }
             return w;
         }
@@ -326,10 +328,14 @@ namespace MedievalKnight
             int npk = r.U8();
             for (int i = 0; i < npk; i++)
             {
-                int id = r.U16(), weapon = r.U8(), owner = r.U8();
+                int id = r.U16(), pkind = r.U8(), weapon = r.U8(), owner = r.U8();
                 float x = r.Pos(), z = r.Pos();
                 seenIds.Add(id);
-                if (weapon < Weapons.All.Length && Pickup.Find(id) == null) SpawnPickup(weapon, new Vector3(x, 0f, z), owner == 255 ? -1 : owner, id);
+                if (Pickup.Find(id) == null)
+                {
+                    if (pkind == (int)PickupKind.Food) { if (weapon < Foods.All.Length) SpawnFood(weapon, new Vector3(x, 0f, z), id); }
+                    else if (weapon < Weapons.All.Length) SpawnPickup(weapon, new Vector3(x, 0f, z), owner == 255 ? -1 : owner, id);
+                }
             }
             for (int i = Pickup.All.Count - 1; i >= 0; i--)
             {
@@ -356,8 +362,8 @@ namespace MedievalKnight
             return e;
         }
 
-        // Client: the host says a sword was collected.
-        public void OnPickupTaken(int id, int pid, int weaponId, Vector3 at)
+        // Client: the host says a sword (kind 0) or a food (kind 1) was collected.
+        public void OnPickupTaken(int id, int pid, int kind, int itemId, Vector3 at)
         {
             Pickup p = Pickup.Find(id);
             bool seen = p != null && !p.hidden;
@@ -366,6 +372,14 @@ namespace MedievalKnight
                 p.gameObject.SetActive(false);
                 Destroy(p.gameObject);
             }
+            if (kind == (int)PickupKind.Food)
+            {
+                if (itemId >= Foods.All.Length) return;
+                if (pid == Net.LocalPid) CollectFood(itemId, at);
+                else OtherAteFood(PlayerByPid(pid), itemId, at);
+                return;
+            }
+            int weaponId = itemId;
             if (weaponId >= Weapons.All.Length) return;
             if (pid == Net.LocalPid) CollectLocal(weaponId, at);
             else OtherCollected(PlayerByPid(pid), weaponId, at, seen);
@@ -794,6 +808,46 @@ namespace MedievalKnight
                 }
             }
             if (id >= 0) SpawnPickup(id, e.transform.position);
+
+            // food: its own rolls, apart from the sword. Apple 14 / 16 / 18%, Roast Meat 0 / 3 / 8% (green / blue / red);
+            // the Minotaur always leaves two Roast Meats. The dummy drops nothing.
+            if (foodOverride == 0) return;
+            Vector3 at = e.transform.position;
+            if (sl != null)
+            {
+                bool force = foodOverride == 1;
+                if (force || Random.value < Foods.AppleChance[sl.kind]) SpawnFood(Foods.Apple, at + FoodOffset());
+                if (!force && Random.value < Foods.MeatChance[sl.kind]) SpawnFood(Foods.Meat, at + FoodOffset());
+            }
+            else if (e is Minotaur)
+            {
+                for (int i = 0; i < Foods.MinotaurMeat; i++)
+                    SpawnFood(Foods.Meat, at + new Vector3(Mathf.Sin(i * 3.14159f + 0.8f), 0f, Mathf.Cos(i * 3.14159f + 0.8f)) * 2.6f);
+            }
+        }
+
+        static Vector3 FoodOffset() { return new Vector3(Random.Range(-0.9f, 0.9f), 0f, Random.Range(-0.9f, 0.9f)); }
+
+        // Food lying on the ground: whoever with less than full health walks over it first eats it.
+        public Pickup SpawnFood(int foodId, Vector3 pos, int netId = 0)
+        {
+            int count = 0;
+            Pickup oldest = null;
+            for (int i = 0; i < Pickup.All.Count; i++)
+            {
+                Pickup q = Pickup.All[i];
+                if (q.kind != PickupKind.Food) continue;
+                count++;
+                if (oldest == null || q.age > oldest.age) oldest = q;
+            }
+            if (count >= Foods.MaxOnGround && oldest != null && Net.Authority)
+            {
+                oldest.gameObject.SetActive(false);
+                Destroy(oldest.gameObject);
+            }
+            Pickup p = Pickup.Spawn(foodId, pos, actors, -1, netId != 0 ? netId : NewNetId(), PickupKind.Food);
+            Debug.Log("DROP " + Foods.All[foodId].name + " at (" + pos.x.ToString("0.0") + ", " + pos.z.ToString("0.0") + ")");
+            return p;
         }
 
         // owner: -1 = whoever walks over it first, otherwise the pid of the only player who can take it.
@@ -821,6 +875,7 @@ namespace MedievalKnight
                 {
                     Knight k = players[n];
                     if (k.Dead || k.Airborne || (p.owner >= 0 && p.owner != k.pid)) continue;
+                    if (p.kind == PickupKind.Food && k.hp >= k.MaxHp - 0.5f) continue;     // food is for those who need it
                     Vector3 d = p.transform.position - k.Pos; d.y = 0f;
                     if (d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
                     Collect(k, p);
@@ -833,12 +888,58 @@ namespace MedievalKnight
         {
             Vector3 at = p.transform.position;
             int weaponId = p.weaponId, id = p.netId;
+            PickupKind kind = p.kind;
             bool seen = !p.hidden;
             p.gameObject.SetActive(false);
             Destroy(p.gameObject);
-            if (!k.remote) CollectLocal(weaponId, at);
+            if (kind == PickupKind.Food)
+            {
+                if (!k.remote) CollectFood(weaponId, at);
+                else OtherAteFood(k, weaponId, at);
+            }
+            else if (!k.remote) CollectLocal(weaponId, at);
             else OtherCollected(k, weaponId, at, seen);
-            if (Net.IsHost) Net.BroadcastPickupTaken(id, k.pid, weaponId, at);
+            if (Net.IsHost) Net.BroadcastPickupTaken(id, k.pid, (int)kind, weaponId, at);
+        }
+
+        // The local knight ate something: health back (a share of his maximum), a green "+N", sparkle.
+        public void CollectFood(int foodId, Vector3 at)
+        {
+            Knight k = knight;
+            FoodDef f = Foods.All[foodId];
+            int got = Mathf.RoundToInt(k.Heal(f.healFrac * k.MaxHp));
+            lastNotice = f.name + "   +" + got + " HP";
+            lastFoodHeal = got;
+            hud.Popup(k.transform.position + new Vector3(0f, 2.7f, 0f), "+" + got, new Color(0.37f, 0.88f, 0.54f), 22);
+            Fx.I.Ring(new Vector3(k.transform.position.x, 0.06f, k.transform.position.z), 0.4f, 2.2f, new Color(f.color.r, f.color.g, f.color.b, 0.9f), 0.45f);
+            Fx.I.Burst(k.transform.position + Vector3.up, 12, f.color, 1.5f, 4f, Vector3.up, 0.9f, 0.6f, -1f, 0.1f);
+            Sfx.I.Play(Snd.Ready, 0.3f);
+            Debug.Log("EAT " + f.name + " +" + got + " HP");
+        }
+
+        // Another player ate something: a small flash and his "+N" above him.
+        public void OtherAteFood(Knight k, int foodId, Vector3 at)
+        {
+            FoodDef f = Foods.All[foodId];
+            Fx.I.Ring(new Vector3(at.x, 0.06f, at.z), 0.3f, 1.6f, new Color(f.color.r, f.color.g, f.color.b, 0.7f), 0.4f);
+            if (k != null) hud.Popup(k.transform.position + new Vector3(0f, 2.7f, 0f), "+" + Mathf.RoundToInt(f.healFrac * k.MaxHp), new Color(0.37f, 0.88f, 0.54f), 18);
+            Debug.Log("EAT by " + (k != null ? k.playerName : "?") + ": " + f.name);
+        }
+
+        // A hint once per food: the local knight stands next to it but his health is full (the food stays).
+        void FoodFullHints()
+        {
+            if (knight == null || knight.Dead || knight.hp < knight.MaxHp - 0.5f) return;
+            for (int i = 0; i < Pickup.All.Count; i++)
+            {
+                Pickup p = Pickup.All[i];
+                if (p.kind != PickupKind.Food || p.fullShown) continue;
+                Vector3 d = p.transform.position - knight.transform.position; d.y = 0f;
+                if (d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
+                p.fullShown = true;
+                hud.Popup(knight.transform.position + new Vector3(0f, 2.7f, 0f), "HP full", new Color(0.75f, 0.75f, 0.78f), 16);
+                fullHints++;
+            }
         }
 
         // The local knight got a sword. New sword: goes to the inventory. Duplicate: refines the owned one
@@ -1164,6 +1265,7 @@ namespace MedievalKnight
             if (InputX.Down(KeyCode.F5) && RequestReset()) return;
             if (InputX.Down(KeyCode.H) && !PanelOpen) knight.TakeDamage(20f, knight.transform.position + knight.transform.forward, "Test hit");
 
+            FoodFullHints();
             if (Net.Authority) SimulateWorld();
         }
 

@@ -200,27 +200,61 @@ namespace MedievalKnight
         }
     }
 
-    // A sword lying in the arena: it floats, turns and glows in its rarity colour until a knight walks over it.
+    public enum PickupKind : byte { Sword = 0, Food = 1 }
+
+    // One kind of food: heals a share of the knight's maximum health (a flat number would be useless at level 25).
+    public class FoodDef
+    {
+        public int id;
+        public string name;
+        public float healFrac;
+        public Color color;
+    }
+
+    public static class Foods
+    {
+        public const int Apple = 0, Meat = 1;
+        public const int MaxOnGround = 40;                // beyond this the oldest one is removed
+        public static readonly FoodDef[] All =
+        {
+            new FoodDef { id = Apple, name = "Apple", healFrac = 0.15f, color = new Color(0.55f, 0.9f, 0.4f) },
+            new FoodDef { id = Meat, name = "Roast Meat", healFrac = 0.40f, color = new Color(1f, 0.65f, 0.3f) },
+        };
+        // chance per kill of a green / blue / red slime (rolled on its own, apart from the sword drop)
+        public static readonly float[] AppleChance = { 0.14f, 0.16f, 0.18f };
+        public static readonly float[] MeatChance = { 0f, 0.03f, 0.08f };
+        public const int MinotaurMeat = 2;                // the boss always drops this many
+    }
+
+    // Something lying in the arena: a sword (floats, turns and glows in its rarity colour, 90 s) or food (a small
+    // turning item with a ring, 60 s). A knight who walks over it takes it. "weaponId" is the item id of either
+    // kind: an index into Weapons.All for a sword, into Foods.All for food.
     public class Pickup : MonoBehaviour
     {
         public static readonly List<Pickup> All = new List<Pickup>();
-        public const float CollectRadius = 1.25f, Lifetime = 90f;
+        public const float CollectRadius = 1.25f, Lifetime = 90f, FoodLifetime = 60f;
 
+        public PickupKind kind;
         public int weaponId;
         public int netId;                 // the same number on every machine in an online game
         public int owner = -1;            // -1: anyone can take it; otherwise only the player with this pid (co-op boss sword)
         public bool hidden;               // somebody else's personal drop: it exists for the rules but is not shown here
+        public bool fullShown;            // the "HP full" hint was already shown for this food
         public float age;
         Transform spin, ring, beam;
         Color color;
 
-        public static Pickup Spawn(int weaponId, Vector3 pos, Transform parent, int owner = -1, int netId = 0)
+        public float Life { get { return kind == PickupKind.Food ? FoodLifetime : Lifetime; } }
+
+        public static Pickup Spawn(int weaponId, Vector3 pos, Transform parent, int owner = -1, int netId = 0, PickupKind kind = PickupKind.Sword)
         {
-            var go = new GameObject("Pickup " + Weapons.All[weaponId].name);
+            string label = kind == PickupKind.Food ? Foods.All[weaponId].name : Weapons.All[weaponId].name;
+            var go = new GameObject("Pickup " + label);
             go.transform.SetParent(parent, false);
             float lim = Game.ArenaHalf - 1f;
             go.transform.position = new Vector3(Mathf.Clamp(pos.x, -lim, lim), 0f, Mathf.Clamp(pos.z, -lim, lim));
             var p = go.AddComponent<Pickup>();
+            p.kind = kind;
             p.owner = owner;
             p.netId = netId;
             p.hidden = owner >= 0 && owner != Net.LocalPid;
@@ -237,6 +271,7 @@ namespace MedievalKnight
         void Setup(int id)
         {
             weaponId = id;
+            if (kind == PickupKind.Food) { SetupFood(Foods.All[id]); return; }
             WeaponDef w = Weapons.All[id];
             color = w.uiColor;
             if (hidden) return;
@@ -253,6 +288,39 @@ namespace MedievalKnight
             Fx.I.Burst(transform.position + Vector3.up, 14, color, 2f, 6f, Vector3.up, 0.8f, 0.6f, 8f, 0.12f);
         }
 
+        // Food: about half a metre, hovering at 0.6 m and turning slowly. No light beam (a sword has one), so the two
+        // are not mixed up from far away.
+        void SetupFood(FoodDef f)
+        {
+            color = f.color;
+            spin = Prims.Node(transform, "Spin", new Vector3(0f, 0.6f, 0f));
+            Transform m = Prims.Node(spin, "Food", Vector3.zero);
+            m.localScale = Vector3.one * 1.35f;
+            if (f.id == Foods.Apple)
+            {
+                Material red = Prims.Lit(new Color(0.82f, 0.12f, 0.1f), 0.7f);
+                Prims.Part(m, "Apple", Prims.Ball(8), Vector3.zero, new Vector3(0.36f, 0.32f, 0.36f), red);
+                Prims.Part(m, "Dent", Prims.Ball(6), new Vector3(0f, 0.15f, 0f), new Vector3(0.14f, 0.07f, 0.14f), Prims.Lit(new Color(0.55f, 0.07f, 0.06f)));
+                Prims.Box(m, "Stem", new Vector3(0f, 0.2f, 0f), new Vector3(0.04f, 0.12f, 0.04f), Prims.Lit(new Color(0.36f, 0.22f, 0.1f)));
+                Prims.Box(m, "Leaf", new Vector3(0.07f, 0.24f, 0f), new Vector3(0.14f, 0.025f, 0.07f), Prims.Lit(new Color(0.25f, 0.65f, 0.2f))).Rot(0f, 0f, 20f);
+            }
+            else
+            {
+                Material meat = Prims.Lit(new Color(0.74f, 0.42f, 0.16f), 0.5f);
+                Material bone = Prims.Lit(new Color(0.95f, 0.93f, 0.85f), 0.4f);
+                Transform leg = Prims.Node(m, "Leg", Vector3.zero);
+                leg.localRotation = Quaternion.Euler(0f, 0f, 18f);
+                Prims.Part(leg, "Meat", Prims.Ball(8), new Vector3(-0.08f, 0f, 0f), new Vector3(0.46f, 0.34f, 0.34f), meat);
+                Prims.Part(leg, "Crust", Prims.Ball(6), new Vector3(-0.1f, 0.1f, 0f), new Vector3(0.3f, 0.12f, 0.26f), Prims.Lit(new Color(0.5f, 0.26f, 0.08f)));
+                Prims.Box(leg, "Bone", new Vector3(0.27f, 0f, 0f), new Vector3(0.28f, 0.07f, 0.07f), bone);
+                Prims.Part(leg, "KnobA", Prims.Ball(6), new Vector3(0.43f, 0.06f, 0f), new Vector3(0.12f, 0.12f, 0.12f), bone);
+                Prims.Part(leg, "KnobB", Prims.Ball(6), new Vector3(0.43f, -0.06f, 0f), new Vector3(0.12f, 0.12f, 0.12f), bone);
+            }
+            ring = Fx.I.MakeDecal(Prims.Arc(0.4f, 0.55f, 0f, 360f), "PickupRing");
+            ring.gameObject.SetActive(true);
+            Fx.I.Ring(new Vector3(transform.position.x, 0.06f, transform.position.z), 0.2f, 1.4f, new Color(color.r, color.g, color.b, 0.8f), 0.4f);
+        }
+
         void OnEnable() { All.Add(this); }
         void OnDisable() { All.Remove(this); }
         void OnDestroy() { if (ring != null) Destroy(ring.gameObject); }
@@ -261,21 +329,25 @@ namespace MedievalKnight
         {
             float dt = Time.deltaTime;
             age += dt;
+            float life = Life;
             if (hidden)
             {
-                if (age >= Lifetime && Net.Authority) Destroy(gameObject);
+                if (age >= life && Net.Authority) Destroy(gameObject);
                 return;
             }
-            spin.localRotation = Quaternion.Euler(0f, age * 110f, 0f);
-            spin.localPosition = new Vector3(0f, 1.1f + Mathf.Sin(age * 2.6f) * 0.12f, 0f);
+            bool food = kind == PickupKind.Food;
+            spin.localRotation = Quaternion.Euler(0f, age * (food ? 70f : 110f), 0f);
+            float baseY = food ? 0.6f : 1.1f;
+            spin.localPosition = new Vector3(0f, baseY + Mathf.Sin(age * 2.6f) * (food ? 0.08f : 0.12f), 0f);
             float pulse = 0.5f + 0.5f * Mathf.Sin(age * 5f);
             ring.position = new Vector3(transform.position.x, 0.05f, transform.position.z);
             ring.localScale = Vector3.one * (1f + 0.12f * pulse);
-            bool fading = age > Lifetime - 8f;                                     // blinks before it disappears
+            bool fading = age > life - 8f;                                         // blinks before it disappears
             bool show = !fading || Mathf.Sin(age * 18f) > -0.2f;
             Fx.I.SetDecal(ring, new Color(color.r, color.g, color.b, show ? 0.55f + 0.3f * pulse : 0.1f));
-            if (beam.gameObject.activeSelf != show) beam.gameObject.SetActive(show);
-            if (age >= Lifetime && Net.Authority) Destroy(gameObject);   // on a client the host's list removes it
+            if (food) { if (spin.gameObject.activeSelf != show) spin.gameObject.SetActive(show); }
+            else if (beam.gameObject.activeSelf != show) beam.gameObject.SetActive(show);
+            if (age >= life && Net.Authority) Destroy(gameObject);   // on a client the host's list removes it
         }
     }
 }

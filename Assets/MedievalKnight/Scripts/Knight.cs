@@ -337,6 +337,15 @@ namespace MedievalKnight
             queued = -1; rigSpin = 0f;
         }
 
+        // Food: health only (not armor / stamina). Returns the health actually gained.
+        public float Heal(float amount)
+        {
+            if (Dead || amount <= 0f) return 0f;
+            float before = hp;
+            hp = Mathf.Min(MaxHp, hp + amount);
+            return hp - before;
+        }
+
         // Dying: level, EXP, upgrade cards and stat points start over. Swords, Soul and the kill count stay.
         // Health / armor / stamina come back full for the new (level 1) maximums.
         public void ResetProgress()

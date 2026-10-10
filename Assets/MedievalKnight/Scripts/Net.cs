@@ -30,7 +30,7 @@ namespace MedievalKnight
         EnemyHit,       // host: an enemy was hit / killed (numbers, sparks, who did it, health left)
         KnightHit,      // host to one client: a monster hit your knight (the client applies block / armor itself)
         Exp,            // host to one client: EXP from a kill, and whether the kill counts as yours
-        PickupTaken,    // host: a sword was collected by pid
+        PickupTaken,    // host: a sword or food was collected by pid (kind, item)
         Banner,         // host: a line about the shared world (wave, Minotaur, wipe)
         Reset,          // host pressed F5: everybody restarts at level 1
         Test            // text relayed between the test scripts (MpTest.cs); the game itself never sends it
@@ -899,9 +899,9 @@ namespace MedievalKnight
 
                 case Msg.PickupTaken:
                 {
-                    int id = r.U16(), pid = r.U8(), weapon = r.U8();
+                    int id = r.U16(), pid = r.U8(), kind = r.U8(), item = r.U8();
                     Vector3 at = r.Vec();
-                    g.OnPickupTaken(id, pid, weapon, at);
+                    g.OnPickupTaken(id, pid, kind, item, at);
                     break;
                 }
 
@@ -981,9 +981,9 @@ namespace MedievalKnight
             c.Send(m);
         }
 
-        public static void BroadcastPickupTaken(int id, int pid, int weaponId, Vector3 at)
+        public static void BroadcastPickupTaken(int id, int pid, int kind, int item, Vector3 at)
         {
-            if (IsHost) ToAll(new NetW(Msg.PickupTaken).U16(id).U8(pid).U8(weaponId).Vec(at).Done(), null);
+            if (IsHost) ToAll(new NetW(Msg.PickupTaken).U16(id).U8(pid).U8(kind).U8(item).Vec(at).Done(), null);
         }
 
         public static void BroadcastBanner(string text, Color color)

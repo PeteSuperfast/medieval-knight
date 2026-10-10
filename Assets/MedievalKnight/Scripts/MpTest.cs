@@ -332,7 +332,7 @@ namespace MedievalKnight
             for (int i = 0; i < me.inventory.owned.Length; i++) if (me.inventory.owned[i]) own |= 1 << i;
             string mstates = "";
             foreach (string s in minoStates) mstates += s + ",";
-            sb.Append(";lvl=").Append(me.progress.level).Append(";texp=").Append(F1(me.progress.totalExp)).Append(";kills=").Append(me.progress.kills).Append(";souls=").Append(me.souls)
+            sb.Append(";lvl=").Append(me.progress.level).Append(";texp=").Append(F1(me.progress.totalExp)).Append(";kills=").Append(me.progress.kills).Append(";souls=").Append(me.souls).Append(";fh=").Append(g.lastFoodHeal).Append(";hints=").Append(g.fullHints).Append(";mhp=").Append(F1(me.MaxHp))
               .Append(";own=").Append(own).Append(";ts=").Append(F2(Time.timeScale)).Append(";snap=").Append(Net.SnapshotsReceived)
               .Append(";panel=").Append(g.LevelStep).Append(";tags=").Append(g.hud.NameTagsShown).Append(";rows=").Append(g.hud.PartyRowsShown)
               .Append(";wave=").Append(g.wave).Append(";ping=").Append(Net.PingMs)
@@ -413,6 +413,12 @@ namespace MedievalKnight
                 case "autolevel":
                     autoLevel = a[0] == "1";
                     Reply(id, "ok");
+                    break;
+
+                case "hp":                                            // fraction of the maximum: autoheal off, health set
+                    autoHeal = false;
+                    k.hp = k.MaxHp * P(a[0]);
+                    Reply(id, "hp=" + F1(k.hp));
                     break;
 
                 case "autoheal":
@@ -695,6 +701,7 @@ namespace MedievalKnight
             Check("hosting: session running and listening on port " + Net.Port, g.InSession && Net.IsHost);
             if (!g.InSession) { Shot("not_hosting"); Log("menu says: " + g.menu.Message); yield return W(0.5f); Finish(); Application.Quit(); yield break; }
             g.dropOverride = 0;                                       // no random sword drops: the test decides when one falls
+            g.foodOverride = 0;                                       // ... and no random food
             g.knight.aimOverride = g.knight.transform.position + Vector3.forward * 5f;
             g.knight.moveOverride = Vector2.zero;
             Shot("host_alone");
@@ -991,6 +998,54 @@ namespace MedievalKnight
                 Ck(Eq("lv" + pidC) && S("H", "lv" + pidC) == "1" && N(C, "lvl") == 1f && lvC0 > 1f,
                     C + " fell from level " + lvC0 + " and is back at level 1 on every screen");
                 Check(C + " kept his Soul through death (" + soulsC0 + " -> " + N(C, "souls") + ")", soulsC0 > 0f && Mathf.Abs(N(C, "souls") - soulsC0) < 0.01f);
+            }
+
+            // ------------------------------------------------ 8b. food: the one who needs it eats it, a full-health player does not
+            if (n >= 2)
+            {
+                g.foodOverride = 0;
+                ParkSlimes();
+                Vector3 spot = new Vector3(10f, 0f, -4f);
+                yield return Tp(A, spot.x - 0.3f, spot.z, spot.x, spot.z + 5f);
+                yield return Tp(B, spot.x + 0.3f, spot.z, spot.x, spot.z + 5f);
+                for (int i = 0; i < peers.Length; i++) if (peers[i] != A && peers[i] != B) yield return Tp(peers[i], -6f + i, 6f, -6f, 12f);
+                ParkSlimes();
+                yield return Cmd(A, "autoheal", "0");
+                yield return Cmd(A, "hp", "0.5");
+                yield return W(0.5f);
+                yield return Sum();
+                float maxA = N(A, "mhp");
+                g.SpawnFood(Foods.Apple, spot);
+                yield return W(1.2f);
+                yield return Sum();
+                float wantApple = Mathf.Round(Foods.All[Foods.Apple].healFrac * maxA);
+                Ck(Eq("pkall") && S("H", "pkall") == "0", "an Apple on the ground was eaten once: it is gone on every screen");
+                Check(A + " (half health) ate the Apple: +" + S(A, "fh") + " HP (15% of his max " + F1(maxA) + " = " + F1(wantApple) + ")", Mathf.Abs(N(A, "fh") - wantApple) < 0.6f && N(B, "fh") == 0f);
+                Check(B + " (full health) did not eat it and has no heal recorded", N(B, "fh") == 0f && N(B, "hp" + pidB) > 0f);
+
+                yield return Cmd(A, "hp", "0.3");
+                yield return W(0.3f);
+                yield return Sum();
+                g.SpawnFood(Foods.Meat, spot);
+                yield return W(1.2f);
+                yield return Sum();
+                float wantMeat = Mathf.Round(Foods.All[Foods.Meat].healFrac * maxA);
+                Check(A + " ate Roast Meat: +" + S(A, "fh") + " HP (40% of his max = " + F1(wantMeat) + ")", Mathf.Abs(N(A, "fh") - wantMeat) < 0.6f && Eq("pkall") && S("H", "pkall") == "0");
+
+                // a food lying next to a full-health player stays, shows "HP full" once, and goes away after 60 seconds
+                yield return Cmd(A, "autoheal", "1");
+                yield return Tp(A, -6f, 6f, -6f, 12f);
+                yield return W(0.4f);
+                float hintsB0 = N(B, "hints");
+                Pickup left = g.SpawnFood(Foods.Apple, spot + new Vector3(0.2f, 0f, 0f));
+                yield return W(1.2f);
+                yield return Sum();
+                Check("food next to a full-health player stays on the ground (" + S("H", "pkall") + " on the host), " + B + " got the 'HP full' hint, lifetime " + left.Life + " s",
+                    left != null && N("H", "pkall") == 1f && N(B, "hints") == hintsB0 + 1f && Mathf.Abs(left.Life - 60f) < 0.01f);
+                left.age = left.Life + 0.1f;                              // jump to its end of life
+                yield return W(1.0f);
+                yield return Sum();
+                Ck(Eq("pkall") && S("H", "pkall") == "0", "the uneaten food expires and is gone on every screen");
             }
 
             // ------------------------------------------------ 9. F5: refused for a client, the host restarts everybody
