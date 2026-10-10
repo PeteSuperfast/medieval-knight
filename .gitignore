@@ -117,3 +117,6 @@ player.log
 /selftest/
 /mptest*/
 /medieval-knight-win64.zip
+
+# Map reference images (untrusted downloads, one is a stock photo) - visual reference only, never commit
+/_reference/map/
