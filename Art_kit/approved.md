@@ -23,3 +23,16 @@
 | Rock_Large_A / B / C (กลุ่ม 2-3 ก้อน) | 21 / 58 / 90 | 212 / 216 / 138 (500) | 2.31 / 2.74 / 2.66 ม. | ~2-3 x 2-3.7 ม. |
 
 หมายเหตุ: ความสูงสุ่ม ±15% ตาม seed, ฐานจมพื้น 12% ของความสูงรวม (origin z=0 = ระดับพื้น), origin xy = กลางฐาน, material 2 ช่อง `MK_rock_top` (#ADABB7 หน้าที่หันขึ้น) / `MK_rock_side` (#958A80)
+
+## Barrel (ถังไม้ 8 เหลี่ยม)
+
+เจ้าของอนุมัติ 2026-10-10 (peatengkrub) หลังปรับแผ่นไม้ต่ำสูง + ห่วงเอียง — `make_barrel(name, seed, lying)` ใน `style_kit.py`
+รัน: `blender -b -P Art_kit/style_kit.py -- barrels` → `Assets/Models/Props/` + `Art_kit/previews/Barrels.png`
+
+| ไฟล์ (`Assets/Models/Props/`) | seed | tris | ขนาด |
+| --- | --- | --- | --- |
+| Barrel_Upright.fbx (ตั้ง) | 5 | 324 (งบ 400) | สูง 0.90 ม. กว้างกลาง ~0.67 ม. กว้างปาก/ฐาน ~0.56 ม. |
+| Barrel_Lying.fbx (นอน ด้านแบนวางพื้น) | 9 | 324 (งบ 400) | สูงจากพื้น 0.67 ม. ยาว 0.90 ม. |
+
+หมายเหตุ: origin = กลางฐาน (ถังนอน = กลางรอยวางบนพื้น, ไม่มี yaw — หมุนเองตอนวางในฉาก), 8 แผ่นไม้แยกชิ้น, ห่วงเหล็ก 2 วงเอียง ~4°, ฝายุบ 3.5 ซม. 4 แผ่น
+material: `MK_barrel_wood` #A1773D, `MK_barrel_groove` #715332, `MK_barrel_iron` #3A3A3A; ต้นฉบับ/เทียบอ้างอิง `Docs/barrel/`

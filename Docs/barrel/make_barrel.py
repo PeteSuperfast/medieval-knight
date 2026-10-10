@@ -19,7 +19,10 @@ THICK = 0.030       # stave thickness
 TAPER = 0.15        # ends are 15% narrower
 HOOP_Z = (0.13, 0.77)
 HOOP_H = 0.04
-HOOP_OUT = 0.012    # hoop sticks out past the highest stave
+HOOP_OUT = 0.018    # hoop sticks out past the highest stave (a bit more so the tilted hoop still clears the staves)
+RELIEF_MAX = 0.022  # per-stave outward relief, was 0.010 (v1)
+TOP_DROP_MAX = 0.030  # per-stave top height variation, was 0.012 (v1); stays above the lid (lid is 0.035 down)
+HOOP_TILT_DEG = 4.0  # each hoop tilted a little, in opposite directions on top / bottom
 LID_DROP = 0.035
 T225 = math.tan(math.radians(22.5))
 C225 = math.cos(math.radians(22.5))
@@ -84,8 +87,8 @@ def make_barrel(name, seed=5):
     max_relief = 0.0
     for i in range(8):
         th = math.radians(45 * i)
-        relief = rng.uniform(0.0, 0.010)
-        top = H - rng.uniform(0.0, 0.012)
+        relief = rng.uniform(0.0, RELIEF_MAX)
+        top = H - rng.uniform(0.0, TOP_DROP_MAX)
         max_relief = max(max_relief, relief)
         zl = (0.0, H / 2, top)
         vs = []
@@ -127,7 +130,8 @@ def make_barrel(name, seed=5):
         add(vs, fcs, G)
 
     # iron hoops: octagonal prism poking out past the staves
-    for hz in HOOP_Z:
+    from mathutils import Euler
+    for hi, hz in enumerate(HOOP_Z):
         z0, z1 = hz - HOOP_H / 2, hz + HOOP_H / 2
         r0 = (A_MID + 0.010 + HOOP_OUT) * f(z0) + 0.0
         r1 = (A_MID + 0.010 + HOOP_OUT) * f(z1) + 0.0
@@ -136,6 +140,10 @@ def make_barrel(name, seed=5):
         r1 = max(r1, (A_MID + max_relief) * f(z1) + HOOP_OUT * 0.9)
         vs = [pol(math.radians(45 * i + 22.5), 0, r0 / C225, z0) for i in range(8)] + \
              [pol(math.radians(45 * i + 22.5), 0, r1 / C225, z1) for i in range(8)]
+        # tilt the hoop about its own centre: tilt axis direction differs per hoop
+        sgn = 1 if hi == 0 else -1
+        rot = Euler((math.radians(HOOP_TILT_DEG) * sgn, math.radians(HOOP_TILT_DEG * 0.6) * -sgn, 0)).to_matrix()
+        vs = [tuple(rot @ Vector((x, y, z - hz)) + Vector((0, 0, hz))) for x, y, z in vs]
         fcs = [tuple(range(7, -1, -1)), tuple(8 + i for i in range(8))]
         for i in range(8):
             j = (i + 1) % 8

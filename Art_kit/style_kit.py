@@ -4,6 +4,7 @@ Use:  blender -b -P Art_kit/style_kit.py -- <asset> [<asset> ...]
       assets: pine   (writes Assets/Models/Tree_Pine.fbx)
               rocks  (writes Assets/Models/Rocks/Rock_{Small,Medium,Large}_{A,B,C}.fbx
                       + Art_kit/previews/Rocks_variants.png)
+              barrels (writes Assets/Models/Props/Barrel_{Upright,Lying}.fbx)
 From another bpy script:  import style_kit as K; K.reset_scene(); ob = K.make_pine()
                           ob = K.make_rock("medium", seed=123)   # any seed -> new rock
 
@@ -11,7 +12,7 @@ Palette comes from Docs/style.md. Flat colour materials, flat shading, no textur
 Origin of every asset = centre of its base, Z up, 1 unit = 1 m.
 """
 import bpy, bmesh, math, os, random, sys
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Euler
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS = os.path.join(ROOT, "Assets", "Models")
@@ -20,6 +21,7 @@ PAL = {
     "grass_light": "#8DB04A", "grass_mid": "#6C8535", "pine_dark": "#465820", "leaf_light": "#A0B85B",
     "wood_dark": "#715332",
     "rock_top": "#ADABB7", "rock_side": "#958A80",
+    "barrel_wood": "#A1773D", "barrel_groove": "#715332", "barrel_iron": "#3A3A3A",
 }
 MATS = {}
 
@@ -221,7 +223,7 @@ def rock_name(kind, i):
     return "Rock_%s_%s" % (kind.capitalize(), ROCK_VARIANTS[i])
 
 
-def render_lineup(objs, path, cell=4.5, cols=3, res=(1280, 960)):
+def render_lineup(objs, path, cell=4.5, cols=3, res=(1280, 960), dist=None, target_z=0.8):
     """Spread objects on a grass plate and render with the kit's light / sky / camera
     (warm sun, #B6C4DE -> #D5BFC3 sky, 32 deg elevation, 50 mm)."""
     sc = bpy.context.scene
@@ -242,8 +244,8 @@ def render_lineup(objs, path, cell=4.5, cols=3, res=(1280, 960)):
     sun.rotation_euler = Vector((12, 8, -8)).to_track_quat('-Z', 'Y').to_euler()
     cd = bpy.data.cameras.new("Cam"); cam = bpy.data.objects.new("Cam", cd); sc.collection.objects.link(cam)
     sc.camera = cam; cd.type = 'PERSP'; cd.lens = 50
-    t = Vector((0, 0, 0.8)); e_, a_ = math.radians(32), math.radians(18)
-    dist = 7.5 + cell * max(cols, rows) * 1.45
+    t = Vector((0, 0, target_z)); e_, a_ = math.radians(32), math.radians(18)
+    dist = dist or 7.5 + cell * max(cols, rows) * 1.45
     cam.location = t + Vector((dist * math.cos(e_) * math.sin(a_), -dist * math.cos(e_) * math.cos(a_), dist * math.sin(e_)))
     cam.rotation_euler = (t - cam.location).to_track_quat('-Z', 'Y').to_euler()
     sc.render.resolution_x, sc.render.resolution_y = res
@@ -276,6 +278,163 @@ def build_rocks():
     print("PREVIEW", os.path.join(prev, "Rocks_variants.png"))
 
 
+# ---------------------------------------------------------------- barrel
+BARREL_H = 0.90          # height
+BARREL_A_MID = 0.320     # stave apothem (flat-to-centre) at the middle before relief -> ~0.65 m across flats
+BARREL_THICK = 0.030     # stave thickness
+BARREL_TAPER = 0.15      # ends are 15% narrower
+BARREL_HOOP_Z = (0.13, 0.77)
+BARREL_HOOP_H = 0.04
+BARREL_HOOP_OUT = 0.018  # hoop sticks out past the highest stave
+BARREL_LID_DROP = 0.035  # lid sunk below the rim
+BARREL_RELIEF_MAX = 0.022   # per-stave outward relief
+BARREL_TOP_DROP_MAX = 0.030  # per-stave top height variation (stays above the lid)
+BARREL_HOOP_TILT_DEG = 4.0   # hoops tilted a little, opposite directions top / bottom
+BARREL_SEEDS = {"upright": 5, "lying": 9}  # approved
+_T225 = math.tan(math.radians(22.5))
+_C225 = math.cos(math.radians(22.5))
+
+
+def _barrel_f(z):
+    t = z / BARREL_H
+    return 1 - BARREL_TAPER * (2 * t - 1) ** 2
+
+
+def _pol(theta, u, a, z):
+    c, s = math.cos(theta), math.sin(theta)
+    return (a * c - u * s, a * s + u * c, z)
+
+
+def _clip(poly, axis, val, keep_ge):
+    out = []
+    n = len(poly)
+    for i in range(n):
+        p, q = poly[i], poly[(i + 1) % n]
+        ip = (p[axis] >= val) if keep_ge else (p[axis] <= val)
+        iq = (q[axis] >= val) if keep_ge else (q[axis] <= val)
+        if ip: out.append(p)
+        if ip != iq:
+            t = (val - p[axis]) / (q[axis] - p[axis])
+            out.append((p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
+    return out
+
+
+def make_barrel(name="Barrel", seed=5, lying=False):
+    """Octagonal wooden barrel: 8 separate staves (hand-made relief / height jitter by seed), 2 tilted iron hoops,
+    lid sunk 3.5 cm and split into 4 planks. 324 tris. Origin = centre of the base.
+    lying=True: rolled onto a flat side, resting on the ground, footprint centred, no yaw."""
+    H, A, TH = BARREL_H, BARREL_A_MID, BARREL_THICK
+    rng = random.Random(seed)
+    b = B(name)
+    W, G, I = b.mi("barrel_wood"), b.mi("barrel_groove"), b.mi("barrel_iron")
+
+    def add(verts, faces, m):
+        base = len(b.v); b.v.extend(verts)
+        for fc in faces:
+            b.f.append(tuple(base + i for i in fc)); b.m.append(m)
+
+    # core (groove colour): octagon prism with bulge, top below the lid
+    lid_z = H - BARREL_LID_DROP
+    core_top = lid_z - 0.015
+    a_core = lambda z: (A - TH + 0.001) * _barrel_f(z)
+    verts = []
+    for z in (0.0, H / 2, core_top):
+        a = a_core(z)
+        for i in range(8):
+            verts.append(_pol(math.radians(45 * i + 22.5), 0, a / _C225, z))
+    faces = []
+    for r in range(2):
+        for i in range(8):
+            j = (i + 1) % 8
+            faces.append((r * 8 + i, r * 8 + j, (r + 1) * 8 + j, (r + 1) * 8 + i))
+    faces.append(tuple(range(7, -1, -1)))
+    faces.append(tuple(16 + i for i in range(8)))
+    add(verts, faces, G)
+
+    # staves, each with its own relief and top height
+    max_relief = 0.0
+    for i in range(8):
+        th = math.radians(45 * i)
+        relief = rng.uniform(0.0, BARREL_RELIEF_MAX)
+        top = H - rng.uniform(0.0, BARREL_TOP_DROP_MAX)
+        max_relief = max(max_relief, relief)
+        vs = []
+        for z in (0.0, H / 2, top):
+            fz = _barrel_f(z)
+            ao, ai = (A + relief) * fz, (A - TH) * fz
+            wo, wi = ao * _T225 - 0.008, ai * _T225 - 0.008
+            vs += [_pol(th, -wo, ao, z), _pol(th, wo, ao, z), _pol(th, wi, ai, z), _pol(th, -wi, ai, z)]
+        fcs = []
+        for r in range(2):
+            o, n = r * 4, (r + 1) * 4
+            fcs += [(o + 0, o + 1, n + 1, n + 0), (o + 1, o + 2, n + 2, n + 1),
+                    (o + 2, o + 3, n + 3, n + 2), (o + 3, o + 0, n + 0, n + 3)]
+        fcs += [(3, 2, 1, 0), (8, 9, 10, 11)]
+        add(vs, fcs, W)
+
+    # lid: 4 planks inside the mouth, slightly uneven heights
+    R = a_core(lid_z) / _C225
+    octo = [_pol(math.radians(45 * i + 22.5), 0, R, 0)[:2] for i in range(8)]
+    edges = [-R, -R / 2, 0.0, R / 2, R]
+    for k in range(4):
+        p = _clip(_clip(octo, 0, edges[k] + 0.004, True), 0, edges[k + 1] - 0.004, False)
+        if len(p) < 3: continue
+        zt = lid_z + rng.uniform(-0.006, 0.004); zb = core_top - 0.002
+        n = len(p)
+        vs = [(x, y, zb) for x, y in p] + [(x, y, zt) for x, y in p]
+        fcs = [tuple(range(n - 1, -1, -1)), tuple(n + i for i in range(n))]
+        for i in range(n):
+            j = (i + 1) % n
+            fcs.append((i, j, n + j, n + i))
+        add(vs, fcs, G)
+
+    # iron hoops: octagonal prisms poking out past the staves, tilted
+    for hi, hz in enumerate(BARREL_HOOP_Z):
+        z0, z1 = hz - BARREL_HOOP_H / 2, hz + BARREL_HOOP_H / 2
+        r0 = max((A + 0.010 + BARREL_HOOP_OUT) * _barrel_f(z0), (A + max_relief) * _barrel_f(z0) + BARREL_HOOP_OUT * 0.9)
+        r1 = max((A + 0.010 + BARREL_HOOP_OUT) * _barrel_f(z1), (A + max_relief) * _barrel_f(z1) + BARREL_HOOP_OUT * 0.9)
+        vs = [_pol(math.radians(45 * i + 22.5), 0, r0 / _C225, z0) for i in range(8)] + \
+             [_pol(math.radians(45 * i + 22.5), 0, r1 / _C225, z1) for i in range(8)]
+        sgn = 1 if hi == 0 else -1
+        rot = Euler((math.radians(BARREL_HOOP_TILT_DEG) * sgn, math.radians(BARREL_HOOP_TILT_DEG * 0.6) * -sgn, 0)).to_matrix()
+        vs = [tuple(rot @ Vector((x, y, z - hz)) + Vector((0, 0, hz))) for x, y, z in vs]
+        fcs = [tuple(range(7, -1, -1)), tuple(8 + i for i in range(8))]
+        for i in range(8):
+            j = (i + 1) % 8
+            fcs.append((i, j, 8 + j, 8 + i))
+        add(vs, fcs, I)
+
+    ob = b.build()
+    if lying:  # bake: roll 90 deg about Y, rest on ground, centre the footprint
+        me = ob.data
+        me.transform(Matrix.Rotation(math.radians(90), 4, 'Y'))
+        zmin = min(v.co.z for v in me.vertices)
+        xs = [v.co.x for v in me.vertices]; ys = [v.co.y for v in me.vertices]
+        cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+        for v in me.vertices:
+            v.co.x -= cx; v.co.y -= cy; v.co.z -= zmin
+        me.update()
+    return ob
+
+
+def build_barrels():
+    """Export upright + lying barrel to Assets/Models/Props."""
+    folder = os.path.join(MODELS, "Props")
+    for key, lying in (("upright", False), ("lying", True)):
+        reset_scene()
+        ob = make_barrel("Barrel_" + key.capitalize(), BARREL_SEEDS[key], lying=lying)
+        zs = [v.co.z for v in ob.data.vertices]
+        print("BARREL", ob.name, "tris", sum(len(p.vertices) - 2 for p in ob.data.polygons), "height", round(max(zs) - min(zs), 3))
+        print("EXPORTED", export_fbx(ob, folder=folder))
+    reset_scene()
+    objs = [make_barrel("Barrel_Upright", BARREL_SEEDS["upright"]),
+            make_barrel("Barrel_Lying", BARREL_SEEDS["lying"], lying=True)]
+    prev = os.path.join(ROOT, "Art_kit", "previews")
+    os.makedirs(prev, exist_ok=True)
+    render_lineup(objs, os.path.join(prev, "Barrels.png"), cell=1.5, cols=2, res=(1280, 960), dist=5.2, target_z=0.35)
+    print("PREVIEW", os.path.join(prev, "Barrels.png"))
+
+
 def export_fbx(ob, name=None, folder=MODELS):
     """Export one object to <folder>/<name>.fbx for Unity (Y up, 1 unit = 1 m, flat faces)."""
     os.makedirs(folder, exist_ok=True)
@@ -289,7 +448,7 @@ def export_fbx(ob, name=None, folder=MODELS):
 
 
 ASSETS = {"pine": make_pine}
-BATCH = {"rocks": lambda: build_rocks()}  # assets that export their own files
+BATCH = {"rocks": lambda: build_rocks(), "barrels": lambda: build_barrels()}  # assets that export their own files
 
 if __name__ == "__main__":
     want = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else list(ASSETS)
