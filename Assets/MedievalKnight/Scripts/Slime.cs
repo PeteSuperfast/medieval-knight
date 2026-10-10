@@ -97,7 +97,8 @@ namespace MedievalKnight
                 return;
             }
             BaseTick(dt);
-            Knight k = Game.I.knight;
+            Knight k = Target();
+            if (k == null) return;
 
             if (spawnT < 1f)
             {
@@ -129,7 +130,7 @@ namespace MedievalKnight
                     case St.Squash:
                         stateT += dt / 0.28f;
                         target = new Vector3(1.3f, 0.6f, 1.3f);
-                        Vector3 toK = k.transform.position - transform.position; toK.y = 0f;
+                        Vector3 toK = k.Pos - transform.position; toK.y = 0f;
                         bool chase = !k.Dead && toK.magnitude < 17f;
                         if (chase) TurnTowards(toK, 500f, dt);
                         if (stateT >= 1f)
@@ -162,10 +163,17 @@ namespace MedievalKnight
                         transform.position = new Vector3(p.x, 0f, p.z);
                         hopFrom += knock * dt; hopTo += knock * dt;
                         target = new Vector3(0.8f, 1.3f, 0.8f);
-                        if (!hitDone && t > 0.55f && !k.Dead && !k.Airborne && FlatDist(transform.position, k.transform.position) < radius + 0.6f)
+                        if (!hitDone && t > 0.55f)
                         {
-                            hitDone = true;
-                            k.TakeDamage(damage, transform.position, label);
+                            // lands on whoever is underneath (one knight per hop)
+                            var ps = Game.I.players;
+                            for (int i = 0; i < ps.Count && !hitDone; i++)
+                            {
+                                Knight kn = ps[i];
+                                if (kn.Dead || kn.Airborne || FlatDist(transform.position, kn.Pos) >= radius + 0.6f) continue;
+                                hitDone = true;
+                                Game.I.DamageKnight(kn, damage, transform.position, label);
+                            }
                         }
                         if (stateT >= 1f)
                         {

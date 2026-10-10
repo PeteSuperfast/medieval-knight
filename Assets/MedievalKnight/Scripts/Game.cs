@@ -12,11 +12,16 @@ namespace MedievalKnight
         public const float ArenaHalf = 19f;        // the fenced field is 38 x 38 m
         public const float CamPitch = 56f, CamDist = 16f, CamFov = 40f;
         public const float MinotaurRespawn = 20f;
+        // co-op rules: enemy health per extra player, seconds a downed knight waits, protection while picking a level-up card
+        public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 1.4f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
+        public const float MaxHitDamage = 20000f;  // host-side sanity limit for one reported hit
         static readonly Vector3 MinotaurHome = new Vector3(0f, 0f, 12.5f);
         static readonly Vector3 DummyPos = new Vector3(5f, 0f, -3.5f);
+        static readonly Vector3 KnightSpawn = new Vector3(0f, 0f, -5f);
 
         public Camera cam;
-        public Knight knight;
+        public Knight knight;                      // the knight this machine controls (HUD, camera, input)
+        public readonly List<Knight> players = new List<Knight>();   // everyone in the arena, the local knight included
         public Dummy dummy;
         public Minotaur minotaur;
         public Hud hud;
@@ -33,15 +38,31 @@ namespace MedievalKnight
         public int LevelStep { get; private set; }
         public bool LevelUpOpen { get { return LevelStep != 0; } }
         public bool InventoryOpen { get; private set; }
-        public bool Paused { get { return LevelStep != 0 || InventoryOpen; } }
+        public bool InSession { get; private set; }                    // false while the start menu is up
+        public bool PanelOpen { get { return LevelStep != 0 || InventoryOpen; } }
+        // The panels freeze the game in single player only; online the world keeps running for everybody.
+        public bool Paused { get { return PanelOpen && !Net.Multiplayer; } }
         public float MinotaurRespawnIn { get { return minoRespawnAt - Time.time; } }
 
-        // Monsters get tougher as the knight levels, so the upgrades keep mattering.
-        public float EnemyHpScale { get { return 1f + 0.45f * (progress.level - 1); } }
-        public float EnemyDamageScale { get { return 1f + 0.08f * (progress.level - 1); } }
+        // Average level of everyone in the arena (single player: the knight's level).
+        public float PartyLevel
+        {
+            get
+            {
+                if (players.Count == 0) return 1f;
+                float sum = 0f;
+                for (int i = 0; i < players.Count; i++) sum += players[i].progress.level;
+                return sum / players.Count;
+            }
+        }
+
+        // Monsters get tougher as the party levels, so the upgrades keep mattering; each extra player adds health.
+        public float EnemyHpScale { get { return (1f + 0.45f * (PartyLevel - 1f)) * (1f + CoopHpPerPlayer * Mathf.Max(0, players.Count - 1)); } }
+        public float EnemyDamageScale { get { return 1f + 0.08f * (PartyLevel - 1f); } }
 
         Transform actors;
-        bool waveQueued;
+        bool waveQueued, started, readyPending, wiped;
+        int nextNetId;
         float levelUpOpenAt, waveAt, minoRespawnAt;
         float shakeAmp, shakeTime, shakeDur;
         float hitStopUntil;
@@ -57,6 +78,7 @@ namespace MedievalKnight
         void Awake()
         {
             I = this;
+            Args.Parse();
             QualitySettings.vSyncCount = 1;
 
             SetupCamera();
@@ -67,22 +89,82 @@ namespace MedievalKnight
             new GameObject("Sfx").AddComponent<Sfx>().transform.SetParent(transform, false);
             actors = Prims.Node(transform, "Actors", Vector3.zero);
 
-            knight = new GameObject("Knight").AddComponent<Knight>();
-            knight.transform.SetParent(transform, true);
-
             hud = new GameObject("Hud").AddComponent<Hud>();
             hud.transform.SetParent(transform, false);
 
-            SpawnActors();
-            camFocus = knight.transform.position;
-            PlaceCamera(Vector3.zero);
+            StartSession();
 
             SelfTest.StartIfRequested(gameObject);
         }
 
         void Start()
         {
-            Sfx.I.Play(Snd.Ready);                 // "stand ready" as the game begins
+            started = true;
+            if (readyPending) Sfx.I.Play(Snd.Ready);   // "stand ready" as the game begins
+            readyPending = false;
+        }
+
+        // ---------------------------------------------------------------- session (one run in the arena)
+
+        // Net.Mode / Net.LocalPid / Net.LocalName are already set: single player, host or a client that was let in.
+        public void StartSession()
+        {
+            if (InSession) return;
+            InSession = true;
+            Application.runInBackground = Net.Multiplayer || Args.Scripted;   // an online game must not stop when the window loses focus
+            Time.timeScale = 1f;
+            wave = 0; slimesAlive = 0; wiped = false;
+            minoRespawnAt = 0f; hitStopUntil = 0f; inputBlockUntil = 0f; levelUpOpenAt = 0f;
+            knight = SpawnKnight(Net.LocalPid, Net.LocalName, false);
+            hud.SetVisible(true);
+            if (Net.Authority) SpawnActors();
+            camFocus = knight.transform.position;
+            PlaceCamera(Vector3.zero);
+            if (started) Sfx.I.Play(Snd.Ready); else readyPending = true;
+        }
+
+        public static Vector3 SpawnPointFor(int pid)
+        {
+            float x = pid == 0 ? 0f : (pid % 2 == 1 ? -1.8f : 1.8f) * ((pid + 1) / 2);
+            return KnightSpawn + new Vector3(x, 0f, 0f);
+        }
+
+        public Knight SpawnKnight(int pid, string name, bool remote)
+        {
+            Knight k = new GameObject(remote ? "Knight " + name : "Knight").AddComponent<Knight>();
+            k.transform.SetParent(transform, true);
+            k.Init(pid, name, remote);
+            players.Add(k);
+            return k;
+        }
+
+        public Knight PlayerByPid(int pid)
+        {
+            for (int i = 0; i < players.Count; i++) if (players[i].pid == pid) return players[i];
+            return null;
+        }
+
+        // The living knight closest to a point (what the monsters go for). Nobody alive: the closest one anyway.
+        public Knight NearestKnight(Vector3 pos)
+        {
+            Knight best = null, bestAny = null;
+            float bd = float.MaxValue, bdAny = float.MaxValue;
+            for (int i = 0; i < players.Count; i++)
+            {
+                Knight k = players[i];
+                Vector3 d = k.Pos - pos; d.y = 0f;
+                float m = d.sqrMagnitude;
+                if (m < bdAny) { bdAny = m; bestAny = k; }
+                if (!k.Dead && m < bd) { bd = m; best = k; }
+            }
+            return best != null ? best : bestAny;
+        }
+
+        public int NewNetId()
+        {
+            nextNetId++;
+            if (nextNetId > 60000) nextNetId = 1;
+            return nextNetId;
         }
 
         // ---------------------------------------------------------------- camera / light
@@ -153,6 +235,7 @@ namespace MedievalKnight
         // World point under the mouse cursor on the ground plane: where the knight looks and leaps.
         public Vector3 AimPoint()
         {
+            if (knight == null) return Vector3.zero;
             Ray ray = cam.ScreenPointToRay(InputX.MousePos);
             if (Mathf.Abs(ray.direction.y) < 0.0001f) return knight.transform.position + knight.transform.forward;
             float t = -ray.origin.y / ray.direction.y;
@@ -305,11 +388,19 @@ namespace MedievalKnight
         {
             waveQueued = false;
             wave++;
-            int count = Mathf.Min(4 + wave, 10);
+            // two more slimes per extra player (co-op), at most 16
+            int count = Mathf.Min(Mathf.Min(4 + wave, 10) + 2 * Mathf.Max(0, players.Count - 1), 16);
             float blue = Mathf.Clamp((wave - 2) * 0.15f, 0f, 0.5f), red = Mathf.Clamp((wave - 5) * 0.12f, 0f, 0.35f);
-            Vector3 kp = knight.transform.position;
             for (int i = 0; i < count; i++)
             {
+                // around the knight; with several players each slime picks one of the living ones
+                Knight near = knight;
+                if (players.Count > 1)
+                {
+                    near = players[Random.Range(0, players.Count)];
+                    if (near.Dead) near = NearestKnight(near.Pos);
+                }
+                Vector3 kp = near.Pos; kp.y = 0f;
                 Vector3 p = kp;
                 for (int tries = 0; tries < 20; tries++)
                 {
@@ -318,7 +409,12 @@ namespace MedievalKnight
                     p = kp + new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang)) * dist;
                     p.x = Mathf.Clamp(p.x, -ArenaHalf + 1.5f, ArenaHalf - 1.5f);
                     p.z = Mathf.Clamp(p.z, -ArenaHalf + 1.5f, ArenaHalf - 1.5f);
-                    bool bad = (p - kp).magnitude < 4.5f || (p - DummyPos).magnitude < 2f;
+                    bool bad = (p - DummyPos).magnitude < 2f;
+                    for (int n = 0; n < players.Count; n++)
+                    {
+                        Vector3 d = p - players[n].Pos; d.y = 0f;
+                        if (d.magnitude < 4.5f) bad = true;                // never on top of a player
+                    }
                     if (minotaur != null && (p - minotaur.transform.position).magnitude < 6f) bad = true;
                     if (wave == 1 && p.z > 5f) bad = true;                 // first wave stays away from the lair
                     if (!bad) break;
@@ -328,10 +424,19 @@ namespace MedievalKnight
                 Slime.Spawn(kind, p, actors);
                 Fx.I.Dust(p, 6);
             }
-            if (wave > 1) hud.Banner("Wave " + wave + " - " + count + " slimes", new Color(0.6f, 1f, 0.6f));
+            if (wave > 1) WorldBanner("Wave " + wave + " - " + count + " slimes", new Color(0.6f, 1f, 0.6f));
         }
 
-        public void OnEnemyKilled(Enemy e)
+        // A banner about the shared world: shown here and, when hosting, on every client too.
+        public void WorldBanner(string text, Color color)
+        {
+            hud.Banner(text, color);
+            if (Net.IsHost) Net.BroadcastBanner(text, color);
+        }
+
+        // Runs where the world is simulated (single player / host). "by" = who landed the last hit (null: nobody in particular).
+        // EXP rule: every living player gets the full EXP of each kill; the kill itself is counted for "by".
+        public void OnEnemyKilled(Enemy e, Knight by)
         {
             if (e is Minotaur)
             {
@@ -340,10 +445,73 @@ namespace MedievalKnight
             }
             if (e.expReward > 0f)
             {
-                progress.kills++;
-                GrantExp(e.expReward, e.Center + Vector3.up * 0.8f);
+                if (by == null) by = knight;
+                Vector3 at = e.Center + Vector3.up * 0.8f;
+                for (int i = 0; i < players.Count; i++)
+                {
+                    Knight p = players[i];
+                    bool credit = p == by;
+                    if (Net.Multiplayer && p.Dead && !credit) continue;   // a downed knight gets nothing from kills he did not make
+                    bool exp = !Net.Multiplayer || !p.Dead;
+                    if (!p.remote)
+                    {
+                        if (credit) progress.kills++;
+                        if (exp) GrantExp(e.expReward, at);
+                    }
+                    else Net.SendExp(p.pid, exp ? e.expReward : 0f, at, credit);
+                }
             }
             RollDrop(e);
+        }
+
+        // A puppet enemy on a client was reported dead by the host.
+        public void OnPuppetKilled(Enemy e)
+        {
+            if (e is Minotaur) minotaur = null;
+        }
+
+        // Every sword / skill hit of a knight goes through here. Where the world is simulated the enemy takes it
+        // right away; a client only reports it to the host (and predicts armor-or-flesh for the hit sound).
+        public void HitEnemy(Knight by, Enemy e, float damage, float pierce, Vector3 origin, bool crit, float knock, float stun, string source, int src)
+        {
+            if (Net.Authority) { e.TakeHit(damage, pierce, origin, crit, knock, stun, source, by); return; }
+            float toArmor, toHp;
+            e.Split(damage, pierce, out toArmor, out toHp);
+            e.lastToArmor = toArmor; e.lastToHp = toHp;
+            Net.SendHit(e, damage, pierce, crit, knock, stun, origin, src);
+        }
+
+        // Host: a client reported a hit. Loose validation (friends-only co-op): the enemy must be alive, the numbers sane,
+        // and the swing must have started near where the host last saw that knight and near the enemy.
+        public bool ClientHit(Knight by, int enemyId, float damage, float pierce, bool crit, float knock, float stun, Vector3 origin, int src)
+        {
+            Enemy e = Enemy.Find(enemyId);
+            if (by == null || e == null || e.Dead) return false;
+            if (float.IsNaN(damage) || float.IsInfinity(damage) || damage <= 0f || damage > MaxHitDamage) return false;
+            Vector3 a = origin - by.Pos; a.y = 0f;
+            Vector3 b = e.transform.position - origin; b.y = 0f;
+            if (a.magnitude > 14f || b.magnitude - e.radius > 9f) return false;
+            string source = src >= 10 && src < 10 + Knight.Skills.Length ? Knight.Skills[src - 10].name
+                : src >= 0 && src < Knight.Attacks.Length ? Knight.Attacks[src].name : "Sword";
+            e.TakeHit(damage, Mathf.Clamp01(pierce), origin, crit, Mathf.Clamp(knock, 0f, 20f), Mathf.Clamp(stun, 0f, 3f), source, by);
+            return true;
+        }
+
+        // A monster hurts a knight. The local knight takes it here; a remote one is told by the host and applies it
+        // on his own machine (his block and dodge are judged where he plays).
+        public void DamageKnight(Knight k, float damage, Vector3 from, string source, float knockback = 6f)
+        {
+            if (k == null) return;
+            if (!k.remote) k.TakeDamage(damage, from, source, knockback);
+            else if (Net.IsHost) Net.SendKnightHit(k.pid, damage, from, source, knockback);
+        }
+
+        // Other players' sounds are quieter and fade with distance from the local knight.
+        public float RemoteVolume(Vector3 at)
+        {
+            if (knight == null) return 0.4f;
+            Vector3 d = at - knight.transform.position; d.y = 0f;
+            return Mathf.Lerp(0.5f, 0.12f, Mathf.InverseLerp(5f, 24f, d.magnitude));
         }
 
         // ---------------------------------------------------------------- sword drops
@@ -362,39 +530,75 @@ namespace MedievalKnight
             else if (e is Minotaur)
             {
                 float chance = dropOverride >= 0 ? dropOverride : Weapons.MinotaurDropChance;
-                if (Random.value < chance) id = Weapons.Boss;
+                if (Random.value < chance)
+                {
+                    if (players.Count <= 1) id = Weapons.Boss;
+                    else
+                    {
+                        // co-op: one boss sword per player, laid out in a ring; each one can only be taken (and seen) by its owner
+                        for (int i = 0; i < players.Count; i++)
+                        {
+                            float ang = i * Mathf.PI * 2f / players.Count;
+                            SpawnPickup(Weapons.Boss, e.transform.position + new Vector3(Mathf.Sin(ang), 0f, Mathf.Cos(ang)) * 1.8f, players[i].pid);
+                        }
+                    }
+                }
             }
             if (id >= 0) SpawnPickup(id, e.transform.position);
         }
 
-        public Pickup SpawnPickup(int weaponId, Vector3 pos)
+        // owner: -1 = whoever walks over it first, otherwise the pid of the only player who can take it.
+        public Pickup SpawnPickup(int weaponId, Vector3 pos, int owner = -1, int netId = 0)
         {
-            lastPickup = Pickup.Spawn(weaponId, pos, actors);
+            Pickup p = Pickup.Spawn(weaponId, pos, actors, owner, netId != 0 ? netId : NewNetId());
             WeaponDef w = Weapons.All[weaponId];
-            hud.Popup(lastPickup.transform.position + Vector3.up * 2.4f, w.name + "!", w.uiColor, 24);
-            Debug.Log("DROP " + w.name + " at (" + pos.x.ToString("0.0") + ", " + pos.z.ToString("0.0") + ")");
-            return lastPickup;
+            if (!p.hidden)
+            {
+                lastPickup = p;
+                hud.Popup(p.transform.position + Vector3.up * 2.4f, w.name + "!", w.uiColor, 24);
+            }
+            Debug.Log("DROP " + w.name + " at (" + pos.x.ToString("0.0") + ", " + pos.z.ToString("0.0") + ")" + (owner >= 0 ? " for player " + owner : ""));
+            return p;
         }
 
-        // A knight who walks over a sword takes it. New sword: goes to the inventory. Duplicate: refines the
-        // owned one (+1, up to +5), and past that it is worth a little EXP.
+        // A knight who walks over a sword takes it (decided where the world is simulated).
         void UpdatePickups()
         {
-            if (knight.Dead || knight.Airborne) return;
             for (int i = Pickup.All.Count - 1; i >= 0; i--)
             {
                 Pickup p = Pickup.All[i];
-                Vector3 d = p.transform.position - knight.transform.position; d.y = 0f;
-                if (p.age < 0.35f || d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
-                Collect(knight, p);
+                if (p.age < 0.35f) continue;
+                for (int n = 0; n < players.Count; n++)
+                {
+                    Knight k = players[n];
+                    if (k.Dead || k.Airborne || (p.owner >= 0 && p.owner != k.pid)) continue;
+                    Vector3 d = p.transform.position - k.Pos; d.y = 0f;
+                    if (d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
+                    Collect(k, p);
+                    break;
+                }
             }
         }
 
         void Collect(Knight k, Pickup p)
         {
-            WeaponDef w = Weapons.All[p.weaponId];
-            int result = k.inventory.Add(w.id);
             Vector3 at = p.transform.position;
+            int weaponId = p.weaponId, id = p.netId;
+            bool seen = !p.hidden;
+            p.gameObject.SetActive(false);
+            Destroy(p.gameObject);
+            if (!k.remote) CollectLocal(weaponId, at);
+            else OtherCollected(k, weaponId, at, seen);
+            if (Net.IsHost) Net.BroadcastPickupTaken(id, k.pid, weaponId, at);
+        }
+
+        // The local knight got a sword. New sword: goes to the inventory. Duplicate: refines the owned one
+        // (+1, up to +5), and past that it is worth a little EXP.
+        public void CollectLocal(int weaponId, Vector3 at)
+        {
+            Knight k = knight;
+            WeaponDef w = Weapons.All[weaponId];
+            int result = k.inventory.Add(w.id);
             if (result == 0) lastNotice = "Picked up " + w.name + "   -   press I to equip";
             else if (result == 1) lastNotice = w.name + " refined to +" + k.inventory.plus[w.id] + "   (duplicate: +5% damage)";
             else
@@ -406,8 +610,14 @@ namespace MedievalKnight
             Fx.I.Ring(new Vector3(at.x, 0.06f, at.z), 0.4f, 2.6f, new Color(w.uiColor.r, w.uiColor.g, w.uiColor.b, 0.9f), 0.45f);
             Fx.I.Burst(at + Vector3.up, 16, w.uiColor, 2f, 7f, Vector3.up, 0.9f, 0.6f, 6f, 0.12f);
             Debug.Log("PICKUP " + lastNotice);
-            p.gameObject.SetActive(false);
-            Destroy(p.gameObject);
+        }
+
+        // Another player took a sword that was visible here: a small flash, no inventory change.
+        public void OtherCollected(Knight k, int weaponId, Vector3 at, bool seen)
+        {
+            WeaponDef w = Weapons.All[weaponId];
+            if (seen) Fx.I.Ring(new Vector3(at.x, 0.06f, at.z), 0.4f, 2.0f, new Color(w.uiColor.r, w.uiColor.g, w.uiColor.b, 0.7f), 0.4f);
+            Debug.Log("PICKUP by " + (k != null ? k.playerName : "?") + ": " + w.name);
         }
 
         // ---------------------------------------------------------------- inventory panel (I)
@@ -452,6 +662,7 @@ namespace MedievalKnight
         void OpenLevelUp()
         {
             SetInventory(false);
+            if (Net.Multiplayer) knight.Protect(LevelUpProtect);     // online nothing pauses: a short shield while choosing instead
             offers = progress.MakeOffers();
             if (offers.Length > 0)
             {
@@ -474,6 +685,7 @@ namespace MedievalKnight
         {
             LevelStep = 0;
             hud.HideLevelUp();
+            if (Net.Multiplayer) knight.Protect(0.6f);
             inputBlockUntil = Time.unscaledTime + 0.2f;
             levelUpOpenAt = Time.unscaledTime + 0.3f;
         }
@@ -500,10 +712,17 @@ namespace MedievalKnight
             CloseLevelUp();
         }
 
-        public void OnKnightRevive()
+        // The local knight got back up.
+        public void OnKnightRevive(Knight k)
         {
             progress.exp = 0f;                                    // dying costs the progress inside the current level
-            Vector3 home = new Vector3(0f, 0f, -5f);
+            if (Net.Authority) PushEnemiesFrom(k.spawnPoint);
+            hud.Banner("Revived - EXP of this level lost", new Color(0.7f, 0.9f, 1f));
+        }
+
+        // Clears the area around a knight who is about to stand up again (single player / host).
+        public void PushEnemiesFrom(Vector3 home)
+        {
             for (int i = 0; i < Enemy.All.Count; i++)
             {
                 Enemy e = Enemy.All[i];
@@ -518,14 +737,30 @@ namespace MedievalKnight
                     if (sl != null) sl.Warp(to); else e.transform.position = to;
                 }
             }
-            hud.Banner("Revived - EXP of this level lost", new Color(0.7f, 0.9f, 1f));
         }
 
-        // F5: back to level 1 with a fresh arena.
-        public void ResetAll()
+        // Co-op: every knight is down at the same moment. The slimes of this wave are removed and the wave starts
+        // again; the Minotaur goes back to his lair with full health.
+        void OnPartyWipe()
         {
-            var old = new List<Enemy>(Enemy.All);
-            foreach (Enemy e in old)
+            foreach (Enemy e in new List<Enemy>(Enemy.All))
+            {
+                if (!(e is Slime)) continue;
+                e.gameObject.SetActive(false);
+                Destroy(e.gameObject);
+            }
+            wave = Mathf.Max(0, wave - 1);
+            waveQueued = true;
+            waveAt = Time.time + ReviveDelayCoop + 1.5f;
+            if (minotaur != null && !minotaur.Dead) minotaur.ResetToLair(MinotaurHome);
+            WorldBanner("Everyone is down - the wave starts again", new Color(1f, 0.5f, 0.4f));
+            Debug.Log("WIPE all " + players.Count + " knights down, wave " + (wave + 1) + " restarts");
+        }
+
+        // Removes every enemy, pickup, effect and floating number.
+        void ClearWorld()
+        {
+            foreach (Enemy e in new List<Enemy>(Enemy.All))
             {
                 e.gameObject.SetActive(false);
                 Destroy(e.gameObject);
@@ -535,17 +770,40 @@ namespace MedievalKnight
                 p.gameObject.SetActive(false);
                 Destroy(p.gameObject);
             }
+            dummy = null;
+            minotaur = null;
             lastPickup = null;
+            hud.ClearPopups();
+            Fx.I.Clear();
+        }
+
+        // F5: back to level 1 with a fresh arena. Online only the host can do it, and it restarts everybody.
+        public bool RequestReset()
+        {
+            if (Net.IsClient)
+            {
+                hud.Notice("Only the host can restart (F5)", new Color(1f, 0.6f, 0.5f));
+                return false;
+            }
+            ResetAll();
+            if (Net.IsHost) Net.BroadcastReset();
+            return true;
+        }
+
+        // The local part of a restart also runs on a client when the host restarts.
+        public void ResetAll()
+        {
+            ClearWorld();
             offers = null;
             LevelStep = 0;
             hud.HideLevelUp();
             SetInventory(false);
-            hud.ClearPopups();
-            Fx.I.Clear();
             hitStopUntil = 0f;
             minoRespawnAt = 0f;
+            wiped = false;
             knight.ResetAll();                                    // level, upgrades, stat points and swords
-            SpawnActors();
+            if (Net.Authority) SpawnActors();
+            else { wave = 0; slimesAlive = 0; }
             camFocus = knight.transform.position;
             hud.Banner("Restart - level 1", Color.white);
             Sfx.I.Play(Snd.Ready);
@@ -568,6 +826,9 @@ namespace MedievalKnight
 
         void Update()
         {
+            Net.Poll();                                           // network events first: they may start or end the session
+            if (!InSession) return;
+
             if (InputX.Down(KeyCode.Escape)) Application.Quit();
             if (InputX.Down(KeyCode.F1)) hud.ToggleControls();
             if (InputX.Down(KeyCode.M))
@@ -576,37 +837,60 @@ namespace MedievalKnight
                 hud.Notice("Sound: " + Sfx.I.VolumeLabel, Color.white);
             }
 
+            // The two panels pause the game in single player. Online they are just overlays: the world, the other
+            // players and this knight's own movement keep running underneath.
+            bool online = Net.Multiplayer;
             if (LevelStep != 0)
             {
-                Time.timeScale = 0f;
+                if (!online) Time.timeScale = 0f;
                 int pick = hud.LevelUpInput(LevelStep == 1 ? offers.Length : 3);
                 if (pick >= 0)
                 {
                     if (LevelStep == 1) ChooseUpgrade(pick); else ChooseStat(pick);
                 }
-                return;
+                if (!online) return;
             }
-            if (progress.pendingChoices > 0 && Time.unscaledTime >= levelUpOpenAt && !knight.Dead && !knight.Airborne)
+            else if (progress.pendingChoices > 0 && Time.unscaledTime >= levelUpOpenAt && !knight.Dead && !knight.Airborne)
             {
                 OpenLevelUp();
-                if (LevelStep != 0) { Time.timeScale = 0f; return; }
+                if (LevelStep != 0 && !online) { Time.timeScale = 0f; return; }
             }
 
-            // I: weapons + stats panel (pauses the game like the level-up panel)
-            if (InputX.Down(KeyCode.I)) SetInventory(!InventoryOpen);
-            if (InventoryOpen)
+            // I: weapons + stats panel
+            if (LevelStep == 0)
             {
-                Time.timeScale = 0f;
-                int pick = hud.InventoryInput();
-                if (pick >= 0) EquipWeapon(pick);
-                return;
+                if (InputX.Down(KeyCode.I)) SetInventory(!InventoryOpen);
+                if (InventoryOpen)
+                {
+                    if (!online) Time.timeScale = 0f;
+                    int pick = hud.InventoryInput();
+                    if (pick >= 0) EquipWeapon(pick);
+                    if (!online) return;
+                }
             }
 
-            Time.timeScale = Time.unscaledTime < hitStopUntil ? 0.03f : 1f;
+            // hit-stop is a single-player effect: online it would slow the whole world down for everyone
+            Time.timeScale = !online && Time.unscaledTime < hitStopUntil ? 0.03f : 1f;
 
-            if (InputX.Down(KeyCode.F5)) { ResetAll(); return; }
-            if (InputX.Down(KeyCode.H)) knight.TakeDamage(20f, knight.transform.position + knight.transform.forward, "Test hit");
+            if (InputX.Down(KeyCode.F5) && RequestReset()) return;
+            if (InputX.Down(KeyCode.H) && !PanelOpen) knight.TakeDamage(20f, knight.transform.position + knight.transform.forward, "Test hit");
+
+            if (Net.Authority) SimulateWorld();
+        }
+
+        // Pickups, wave / boss spawning and enemy separation: single player and host only.
+        void SimulateWorld()
+        {
             UpdatePickups();
+
+            // --- co-op: everybody down at once ---
+            if (Net.Multiplayer)
+            {
+                bool allDown = players.Count > 0;
+                for (int i = 0; i < players.Count; i++) if (!players[i].Dead) allDown = false;
+                if (allDown && !wiped) OnPartyWipe();
+                wiped = allDown;
+            }
 
             // --- spawning ---
             slimesAlive = 0;
@@ -621,7 +905,7 @@ namespace MedievalKnight
             if (minotaur == null && Time.time >= minoRespawnAt)
             {
                 minotaur = Minotaur.Spawn(MinotaurHome, actors);
-                hud.Banner("The Minotaur returns!", new Color(1f, 0.5f, 0.35f));
+                WorldBanner("The Minotaur returns!", new Color(1f, 0.5f, 0.35f));
             }
 
             // --- enemies do not stack on each other ---
@@ -647,6 +931,8 @@ namespace MedievalKnight
 
         void LateUpdate()
         {
+            if (!InSession || knight == null) return;
+            Net.LateTick();                                       // positions are final for this frame: send them
             Vector3 target = knight.transform.position; target.y = 0f;
             camFocus = Vector3.Lerp(camFocus, target, 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime));
 

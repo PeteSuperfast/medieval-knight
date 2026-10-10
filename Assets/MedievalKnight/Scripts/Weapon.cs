@@ -207,19 +207,31 @@ namespace MedievalKnight
         public const float CollectRadius = 1.25f, Lifetime = 90f;
 
         public int weaponId;
+        public int netId;                 // the same number on every machine in an online game
+        public int owner = -1;            // -1: anyone can take it; otherwise only the player with this pid (co-op boss sword)
+        public bool hidden;               // somebody else's personal drop: it exists for the rules but is not shown here
         public float age;
         Transform spin, ring, beam;
         Color color;
 
-        public static Pickup Spawn(int weaponId, Vector3 pos, Transform parent)
+        public static Pickup Spawn(int weaponId, Vector3 pos, Transform parent, int owner = -1, int netId = 0)
         {
             var go = new GameObject("Pickup " + Weapons.All[weaponId].name);
             go.transform.SetParent(parent, false);
             float lim = Game.ArenaHalf - 1f;
             go.transform.position = new Vector3(Mathf.Clamp(pos.x, -lim, lim), 0f, Mathf.Clamp(pos.z, -lim, lim));
             var p = go.AddComponent<Pickup>();
+            p.owner = owner;
+            p.netId = netId;
+            p.hidden = owner >= 0 && owner != Net.LocalPid;
             p.Setup(weaponId);
             return p;
+        }
+
+        public static Pickup Find(int netId)
+        {
+            for (int i = 0; i < All.Count; i++) if (All[i].netId == netId) return All[i];
+            return null;
         }
 
         void Setup(int id)
@@ -227,6 +239,7 @@ namespace MedievalKnight
             weaponId = id;
             WeaponDef w = Weapons.All[id];
             color = w.uiColor;
+            if (hidden) return;
             spin = Prims.Node(transform, "Spin", new Vector3(0f, 1.1f, 0f));
             Transform tilt = Prims.Node(spin, "Tilt", Vector3.zero);
             tilt.localRotation = Quaternion.Euler(-62f, 0f, 0f);                 // tip up, leaning so the top-down camera sees the blade
@@ -248,6 +261,11 @@ namespace MedievalKnight
         {
             float dt = Time.deltaTime;
             age += dt;
+            if (hidden)
+            {
+                if (age >= Lifetime && Net.Authority) Destroy(gameObject);
+                return;
+            }
             spin.localRotation = Quaternion.Euler(0f, age * 110f, 0f);
             spin.localPosition = new Vector3(0f, 1.1f + Mathf.Sin(age * 2.6f) * 0.12f, 0f);
             float pulse = 0.5f + 0.5f * Mathf.Sin(age * 5f);
@@ -257,7 +275,7 @@ namespace MedievalKnight
             bool show = !fading || Mathf.Sin(age * 18f) > -0.2f;
             Fx.I.SetDecal(ring, new Color(color.r, color.g, color.b, show ? 0.55f + 0.3f * pulse : 0.1f));
             if (beam.gameObject.activeSelf != show) beam.gameObject.SetActive(show);
-            if (age >= Lifetime) Destroy(gameObject);
+            if (age >= Lifetime && Net.Authority) Destroy(gameObject);   // on a client the host's list removes it
         }
     }
 }

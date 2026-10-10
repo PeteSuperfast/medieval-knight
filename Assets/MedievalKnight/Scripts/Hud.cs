@@ -365,6 +365,9 @@ namespace MedievalKnight
 
         public void ToggleControls() { showControls = !showControls; }
 
+        // The whole in-game HUD is hidden while the start menu is up.
+        public void SetVisible(bool on) { canvas.enabled = on; }
+
         // Floating text at a world position (damage numbers, BLOCK, +EXP...).
         public void Popup(Vector3 world, string text, Color color, int size)
         {
@@ -631,7 +634,7 @@ namespace MedievalKnight
                 bossText.text = "Minotaur returns in " + Mathf.Max(0, Mathf.CeilToInt(g.MinotaurRespawnIn)) + "s";
             }
 
-            bool controlsOn = showControls && !g.Paused;          // out of the way of the level-up / weapon panels
+            bool controlsOn = showControls && !g.PanelOpen;       // out of the way of the level-up / weapon panels
             if (controlsPanel.activeSelf != controlsOn) controlsPanel.SetActive(controlsOn);
             if (controlsText.gameObject.activeSelf != controlsOn) controlsText.gameObject.SetActive(controlsOn);
 

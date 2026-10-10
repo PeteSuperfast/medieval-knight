@@ -34,19 +34,42 @@ namespace MedievalKnight
         public Color color;
     }
 
-    // The player: top-down movement, health / armor / stamina, shield block, the 5-step sword combo
+    // What a knight is asked to do in one frame. It comes from the keyboard / mouse (Knight.ReadInput) or from a
+    // test script; the simulation (Knight.Simulate) never reads a device itself.
+    public struct KnightInput
+    {
+        public Vector2 move;        // walk direction on the ground plane (x = right, y = world +Z)
+        public Vector3 aim;         // world point the knight faces and leaps to
+        public bool block;
+        public int request;         // -1 = nothing, Knight.ComboRequest = next sword attack, Knight.SkillRequest + n = skill n
+    }
+
+    // A player: top-down movement, health / armor / stamina, shield block, the 5-step sword combo
     // (4 slashes + thrust) and the four active skills. He always faces the mouse cursor.
     // Everything that belongs to one player lives on this object: level / upgrades / stat points (progress)
     // and the owned + equipped swords (inventory).
+    // A knight is either local (remote == false: driven by ReadInput + Simulate on this machine) or remote
+    // (another player's knight: position, pose flags and numbers come from the network, attacks are replayed
+    // for show only and never hit anything here).
     public class Knight : MonoBehaviour
     {
         public const float BaseHp = 100f, HpPerLevel = 10f, BaseArmor = 60f, BaseStamina = 100f, StaminaRegen = 26f, BlockCost = 15f;
         public const float MinSwingSpeed = 0.4f, MaxSwingSpeed = 4f;
+        public const int ComboRequest = 100, SkillRequest = 200;
         const float MoveSpeed = 6.2f;
         const float RestYaw = 55f, RestPitch = -25f, RestHand = 0.36f;
-        const int ComboRequest = 100, SkillRequest = 200;
         static readonly Vector3 ShieldRestPos = new Vector3(-0.5f, 1.05f, 0.12f), ShieldBlockPos = new Vector3(-0.05f, 1.12f, 0.55f);
-        static readonly Vector3 SpawnPoint = new Vector3(0f, 0f, -5f);
+
+        // tabard + shield colour and plume + cape colour per player slot (slot 0 is the classic blue / red knight)
+        public static readonly Color[] MainColors =
+        {
+            new Color(0.16f, 0.32f, 0.8f), new Color(0.82f, 0.16f, 0.13f), new Color(0.14f, 0.6f, 0.24f), new Color(0.58f, 0.26f, 0.8f)
+        };
+        public static readonly Color[] AccentColors =
+        {
+            new Color(0.85f, 0.13f, 0.12f), new Color(0.97f, 0.82f, 0.2f), new Color(0.93f, 0.93f, 0.96f), new Color(1f, 0.55f, 0.15f)
+        };
+        public static Color UiColor(int pid) { return Color.Lerp(MainColors[pid & 3], Color.white, 0.35f); }
 
         public static readonly AttackDef[] Attacks =
         {
@@ -89,21 +112,31 @@ namespace MedievalKnight
         };
         const float WhirlRadius = 3.2f, DashLength = 6f, BashReach = 2.9f, BashArc = 60f, BashStun = 2.0f, SlamRadius = 3.6f, SlamRange = 7f;
 
+        public int pid;                                     // player slot 0..3 (0 = single player / the host)
+        public string playerName = "Knight";
+        public bool remote;                                 // another player's knight, shown here from network state
+        public Vector3 spawnPoint;
         public Progress progress = new Progress();
         public readonly Inventory inventory = new Inventory();
+        public readonly NetInterp interp = new NetInterp();
         public float hp = BaseHp, armor = BaseArmor, stamina = BaseStamina;
         public readonly float[] cd = new float[4], cdMax = new float[4];
         public bool IsAttacking { get; private set; }      // busy with a basic attack or a skill
         public bool IsBlocking { get; private set; }
         public bool Dead { get; private set; }
         public bool Airborne { get; private set; }
-        public bool Invulnerable { get { return invuln || Time.time < invulnUntil; } }
+        public bool Invulnerable { get { return invuln || Glowing; } }
+        // just revived, or picking a level-up card online: cannot be hurt, and glows
+        public bool Glowing { get { return remote ? netGlow : Time.time < invulnUntil || Time.time < protectUntil; } }
         public float StaminaDeniedTime { get; private set; }
         public string LastAction { get; private set; }
         public int LastHitCount { get; private set; }
-        public float MaxHp { get { return BaseHp + HpPerLevel * (progress.level - 1) + progress.HpBonus; } }
-        public float MaxArmor { get { return BaseArmor + progress.ArmorBonus; } }
+        public int ActionsSeen { get; private set; }       // attacks / skills started (local) or replayed (remote)
+        public float MaxHp { get { return remote ? netMaxHp : BaseHp + HpPerLevel * (progress.level - 1) + progress.HpBonus; } }
+        public float MaxArmor { get { return remote ? netMaxArmor : BaseArmor + progress.ArmorBonus; } }
         public float MaxStamina { get { return BaseStamina + progress.StaminaBonus; } }
+        // Where the rules see this knight: a remote one is at his newest reported position, not the smoothed one on screen.
+        public Vector3 Pos { get { return remote ? netPos : transform.position; } }
         public Vector3 Forward { get { return transform.forward; } }
         public WeaponDef Weapon { get { return inventory.Weapon; } }
         public Transform SwordModel { get { return swordModel; } }
@@ -135,19 +168,36 @@ namespace MedievalKnight
         Tint tint;
         float swYaw = RestYaw, swPitch = RestPitch, swHand = RestHand;
         float rigLean, rigHop, rigSpin, jumpY, walkPhase, hurtTint;
-        float lastSpendTime = -10f, lastDamageTime = -10f, lastAttackEnd = -10f, invulnUntil;
+        float lastSpendTime = -10f, lastDamageTime = -10f, lastAttackEnd = -10f, invulnUntil, protectUntil;
         bool invuln, lockFacing, whirl, shieldPush;
         float shieldPushK;
-        Vector3 knockVel;
+        Vector3 knockVel, aimPoint;
         int comboIndex, queued = -1;
         float queuedTime;
+
+        // remote knights only
+        Vector3 netPos, slamTarget;
+        float netMaxHp = BaseHp, netMaxArmor = BaseArmor, remoteSpeed;
+        bool netGlow, netSynced;
+        Coroutine act;
 
         void Awake()
         {
             StaminaDeniedTime = -10f;
             LastAction = "";
+        }
+
+        // Called once, right after AddComponent.
+        public void Init(int playerId, string name, bool isRemote)
+        {
+            pid = playerId;
+            playerName = name;
+            remote = isRemote;
+            spawnPoint = Game.SpawnPointFor(pid);
             Build();
-            transform.position = SpawnPoint;
+            transform.position = spawnPoint;
+            netPos = spawnPoint;
+            interp.Snap(spawnPoint, 0f);
         }
 
         // ---------------------------------------------------------------- model
@@ -156,8 +206,8 @@ namespace MedievalKnight
         {
             Material steel = Prims.Lit(new Color(0.74f, 0.77f, 0.82f), 0.7f, 0.75f);
             Material darkSteel = Prims.Lit(new Color(0.42f, 0.45f, 0.52f), 0.55f, 0.6f);
-            Material blue = Prims.Lit(new Color(0.16f, 0.32f, 0.8f));
-            Material red = Prims.Lit(new Color(0.85f, 0.13f, 0.12f));
+            Material blue = Prims.Lit(MainColors[pid & 3]);       // tabard + shield: the player's colour
+            Material red = Prims.Lit(AccentColors[pid & 3]);      // cape + plume
             Material gold = Prims.Lit(new Color(0.96f, 0.78f, 0.22f), 0.7f, 0.8f);
             Material leather = Prims.Lit(new Color(0.35f, 0.22f, 0.12f));
             Material black = Prims.Lit(new Color(0.06f, 0.06f, 0.08f));
@@ -256,26 +306,38 @@ namespace MedievalKnight
             rigLean = 0f; rigHop = 0f; rigSpin = 0f; jumpY = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             for (int i = 0; i < 4; i++) { cd[i] = 0f; cdMax[i] = 0f; }
-            invulnUntil = 0f;
-            transform.position = SpawnPoint;
+            invulnUntil = 0f; protectUntil = 0f;
+            transform.position = spawnPoint;
             transform.rotation = Quaternion.identity;
         }
 
         public void OnLevelUp()
         {
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
+            LevelUpFx();
+        }
+
+        void LevelUpFx()
+        {
             Vector3 g = new Vector3(transform.position.x, 0.06f, transform.position.z);
             Fx.I.Ring(g, 0.5f, 5f, new Color(1f, 0.9f, 0.35f, 0.9f), 0.7f);
             Fx.I.Ring(g, 0.3f, 3f, new Color(1f, 1f, 0.8f, 0.9f), 0.5f);
             Fx.I.Burst(transform.position + Vector3.up, 30, new Color(1f, 0.9f, 0.4f), 2f, 8f, Vector3.up, 0.6f, 0.9f, 6f, 0.14f);
         }
 
+        // Online: a short spell of invulnerability while the level-up panel is open (seconds <= 0 ends it).
+        public void Protect(float seconds)
+        {
+            protectUntil = seconds > 0f ? Time.time + seconds : 0f;
+        }
+
         // ---------------------------------------------------------------- update
 
         void Update()
         {
-            if (Game.I.Paused) return;
             float dt = Time.deltaTime;
+            if (remote) { RemoteTick(dt); return; }
+            if (Game.I.Paused) return;
 
             // --- resources ---
             if (!Dead)
@@ -287,21 +349,37 @@ namespace MedievalKnight
             }
             for (int i = 0; i < 4; i++) cd[i] = Mathf.Max(0f, cd[i] - dt);
 
-            // --- input ---
-            bool canInput = !Dead && Time.unscaledTime >= Game.I.inputBlockUntil;
-            Vector2 mv = Vector2.zero;
-            if (!Dead) mv = moveOverride.HasValue ? moveOverride.Value : InputX.Move();
-            IsBlocking = canInput && !IsAttacking && (InputX.Held(KeyCode.LeftShift) || InputX.MouseHeld(1));
+            // an open panel (online: the game is not paused) takes the combat keys and the mouse; walking still works
+            bool canInput = !Dead && Time.unscaledTime >= Game.I.inputBlockUntil && !Game.I.PanelOpen;
+            Simulate(ReadInput(canInput), canInput, dt);
+        }
+
+        // The only place where the knight looks at the keyboard and mouse (or at the self-test's overrides).
+        KnightInput ReadInput(bool canInput)
+        {
+            var inp = new KnightInput { request = -1 };
+            if (!Dead) inp.move = moveOverride.HasValue ? moveOverride.Value : InputX.Move();
+            inp.aim = aimOverride.HasValue ? aimOverride.Value : Game.I.AimPoint();
+            if (!canInput) return inp;
+            inp.block = InputX.Held(KeyCode.LeftShift) || InputX.MouseHeld(1);
+            if (InputX.Down(KeyCode.Q)) inp.request = SkillRequest;
+            else if (InputX.Down(KeyCode.E)) inp.request = SkillRequest + 1;
+            else if (InputX.Down(KeyCode.R)) inp.request = SkillRequest + 2;
+            else if (InputX.Down(KeyCode.F)) inp.request = SkillRequest + 3;
+            else if (InputX.MouseDown(0) || InputX.Down(KeyCode.J) || InputX.Down(KeyCode.Space)) inp.request = ComboRequest;
+            return inp;
+        }
+
+        // One frame of the local knight: actions, facing, movement, pose.
+        void Simulate(KnightInput inp, bool canInput, float dt)
+        {
+            Vector2 mv = inp.move;
+            aimPoint = inp.aim;
+            IsBlocking = canInput && !IsAttacking && inp.block;
 
             if (canInput)
             {
-                int req = -1;
-                if (InputX.Down(KeyCode.Q)) req = SkillRequest;
-                else if (InputX.Down(KeyCode.E)) req = SkillRequest + 1;
-                else if (InputX.Down(KeyCode.R)) req = SkillRequest + 2;
-                else if (InputX.Down(KeyCode.F)) req = SkillRequest + 3;
-                else if (InputX.MouseDown(0) || InputX.Down(KeyCode.J) || InputX.Down(KeyCode.Space)) req = ComboRequest;
-
+                int req = inp.request;
                 if (req >= 0)
                 {
                     if (IsAttacking) { queued = req; queuedTime = Time.time; }   // buffer the next action
@@ -318,7 +396,7 @@ namespace MedievalKnight
             // --- facing: always towards the cursor, unless an attack has committed to a direction ---
             if (!Dead && !lockFacing)
             {
-                Vector3 aim = (aimOverride.HasValue ? aimOverride.Value : Game.I.AimPoint()) - transform.position;
+                Vector3 aim = inp.aim - transform.position;
                 aim.y = 0f;
                 if (aim.sqrMagnitude > 0.05f)
                     transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(aim), 1100f * dt);
@@ -353,8 +431,13 @@ namespace MedievalKnight
             p.y = jumpY;
             transform.position = p;
 
-            // --- idle / walk / block poses (attacks drive these themselves) ---
-            bool moving = mv.sqrMagnitude > 0.01f && !Airborne;
+            Pose(dt, mv.sqrMagnitude > 0.01f && !Airborne);
+        }
+
+        // Idle / walk / block poses, legs, shield and tint (attacks drive the sword and body themselves).
+        // Shared by the local knight and by remote knights.
+        void Pose(float dt, bool moving)
+        {
             if (moving) walkPhase += dt * 13f * (whirl ? 0.5f : 1f);
             if (!IsAttacking && !Dead)
             {
@@ -392,9 +475,136 @@ namespace MedievalKnight
             }
 
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
-            if (Time.time < invulnUntil && !Dead) tint.Set(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
+            if (Glowing && !Dead) tint.Set(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
             else tint.Set(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
         }
+
+        // ---------------------------------------------------------------- remote knight (another player)
+
+        // State bits sent over the network.
+        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8;
+
+        public int NetFlags
+        {
+            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0); }
+        }
+
+        // Every frame: glide to the reported position and keep the idle / walk / block pose going.
+        void RemoteTick(float dt)
+        {
+            Vector3 p; float yaw;
+            if (interp.Sample(Time.unscaledTime, out p, out yaw))
+            {
+                Vector3 d = p - transform.position; d.y = 0f;
+                if (dt > 0f) remoteSpeed = Mathf.Lerp(remoteSpeed, d.magnitude / dt, 0.3f);
+                transform.position = p;
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            }
+            Pose(dt, remoteSpeed > 1f && !Airborne && !Dead);
+        }
+
+        // A state report from that player's machine (sender time is his clock).
+        public void ApplyNet(float senderTime, Vector3 pos, float yaw, int flags, float newHp, float newMaxHp, float newArmor, float newMaxArmor,
+            int level, int weapon, int plus)
+        {
+            if (!remote) return;
+            netPos = pos;
+            interp.Push(senderTime, Time.unscaledTime, pos, yaw);
+            bool wasDead = Dead, nowDead = (flags & NetDead) != 0;
+            IsBlocking = (flags & NetBlocking) != 0 && !nowDead;
+            Airborne = (flags & NetAirborne) != 0;
+            netGlow = (flags & NetGlow) != 0;
+
+            float before = hp + armor;
+            hp = newHp; armor = newArmor; netMaxHp = newMaxHp; netMaxArmor = newMaxArmor;
+            if (netSynced && !wasDead && hp + armor < before - 0.5f) RemoteHurt();
+
+            if (netSynced && level > progress.level) LevelUpFx();
+            progress.level = Mathf.Clamp(level, 1, Progress.MaxLevel);
+
+            if (weapon >= 0 && weapon < Weapons.All.Length && (weapon != inventory.equipped || plus != inventory.plus[weapon]))
+            {
+                inventory.owned[weapon] = true;
+                inventory.plus[weapon] = Mathf.Clamp(plus, 0, Weapons.MaxPlus);
+                if (weapon != inventory.equipped) { inventory.equipped = weapon; RebuildSword(); }
+            }
+
+            if (nowDead && !wasDead) RemoteDown();
+            else if (!nowDead && wasDead) RemoteRevive();
+            netSynced = true;
+        }
+
+        // The other player lost health or armor: flash and a few sparks (the numbers are shown on his own screen).
+        void RemoteHurt()
+        {
+            hurtTint = 1f;
+            Vector3 chestPos = transform.position + new Vector3(0f, 1.4f, 0f);
+            Fx.I.Burst(chestPos, 6, new Color(1f, 0.3f, 0.25f), 2f, 6f, Vector3.up, 0.9f, 0.3f, 8f, 0.1f);
+        }
+
+        void StopAct()
+        {
+            if (act != null) StopCoroutine(act);
+            act = null;
+            IsAttacking = false; whirl = false; shieldPush = false; lockFacing = false;
+            rigSpin = 0f;
+        }
+
+        void RemoteDown()
+        {
+            StopAllCoroutines();
+            StopAct();
+            Dead = true;
+            IsBlocking = false;
+            StartCoroutine(FallRoutine());
+        }
+
+        void RemoteRevive()
+        {
+            StopAllCoroutines();
+            StopAct();
+            Dead = false;
+            rigLean = 0f; rigHop = 0f;
+            swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
+            interp.Snap(netPos, transform.eulerAngles.y);
+            transform.position = netPos;
+            Sfx.I.Play(Snd.Ready, Game.I.RemoteVolume(netPos));
+            Fx.I.Ring(new Vector3(netPos.x, 0.06f, netPos.z), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
+            if (Net.IsHost) Game.I.PushEnemiesFrom(spawnPoint);       // same courtesy the local knight gets
+        }
+
+        // Replays an attack / skill of the remote player for show. kind: 0..4 = sword attack, 10..13 = skill.
+        // It starts one interpolation delay late, so it lines up with the delayed position on screen.
+        public void PlayRemoteAct(int kind, float speed, Vector3 target)
+        {
+            if (!remote || Dead) return;
+            bool skill = kind >= 10;
+            int index = skill ? kind - 10 : kind;
+            if (index < 0 || index >= (skill ? Skills.Length : Attacks.Length)) return;
+            StopAct();
+            slamTarget = target;
+            LastAction = skill ? Skills[index].name : Attacks[index].name;
+            ActionsSeen++;
+            act = StartCoroutine(RemoteAct(skill, index, Mathf.Clamp(speed, MinSwingSpeed, MaxSwingSpeed)));
+        }
+
+        IEnumerator RemoteAct(bool skill, int index, float speed)
+        {
+            if (interp.delay > 0f) yield return new WaitForSeconds(interp.delay);
+            if (!skill) yield return AttackRoutine(Attacks[index], speed);
+            else
+            {
+                Sfx.I.Grunt(true, Volume);
+                if (index == 0) yield return Whirlwind(Skills[0]);
+                else if (index == 1) yield return DashThrust(Skills[1]);
+                else if (index == 2) yield return ShieldBash(Skills[2]);
+                else yield return GroundSlam(Skills[3]);
+            }
+            act = null;
+        }
+
+        // Other players' swings and grunts are quieter and fade with distance.
+        float Volume { get { return remote ? Game.I.RemoteVolume(transform.position) : 1f; } }
 
         void LateUpdate()
         {
@@ -441,7 +651,9 @@ namespace MedievalKnight
             lastSpendTime = Time.time;
             if (fromCombo) comboIndex = (index + 1) % Attacks.Length;
             LastAction = a.name;
+            ActionsSeen++;
             Game.I.hud.Action((index + 1) + "  " + a.name, a.fxColor);
+            Net.SendAct(index, speed, Vector3.zero);
             StartCoroutine(AttackRoutine(a, speed));
         }
 
@@ -458,8 +670,10 @@ namespace MedievalKnight
             lastSpendTime = Time.time;
             cdMax[i] = cd[i] = s.cooldown / progress.SpeedMult(i);
             LastAction = s.name;
+            ActionsSeen++;
             Game.I.hud.Action(s.key + "  " + s.name, s.color);
             Sfx.I.Grunt(true);
+            if (i != 3) Net.SendAct(10 + i, 1f, Vector3.zero);      // the Ground Slam reports itself once it knows where it lands
             switch (i)
             {
                 case 0: StartCoroutine(Whirlwind(s)); break;
@@ -473,9 +687,11 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- hits
 
         // Damages every enemy inside a sector. skill: -1 = basic attack, 0..3 = Q/E/R/F (picks the upgrade totals).
+        // src is what the host is told: 0..4 = sword attack, 10..13 = skill. A remote knight's replay hits nothing.
         int HitArea(Vector3 origin, Vector3 dir, float reach, float halfArc, int skill, float baseDamage, float pierce,
-            float knock, float stun, string source, HashSet<Enemy> once = null)
+            float knock, float stun, string source, int src, HashSet<Enemy> once = null)
         {
+            if (remote) return 0;
             int n = 0;
             bool flesh = false, armored = false;
             Snd armorSnd = Snd.ArmorImpact;
@@ -495,7 +711,7 @@ namespace MedievalKnight
                 if (once != null && !once.Add(e)) continue;
                 bool crit;
                 float dmg = RollDamage(skill, baseDamage, out crit);
-                e.TakeHit(dmg, pierce, origin, crit, knock, stun, source);
+                Game.I.HitEnemy(this, e, dmg, pierce, origin, crit, knock, stun, source, src);
                 if (e.lastToArmor > e.lastToHp) { armored = true; armorSnd = e.ArmorSound; }   // the armor took most of it
                 else flesh = true;
                 n++;
@@ -514,7 +730,21 @@ namespace MedievalKnight
         // The whoosh of the equipped sword: heavier (slower) swords sound lower.
         void SwingSound(float volume = 1f)
         {
-            Sfx.I.Play(Snd.Swing, volume, Mathf.Lerp(0.82f, 1.18f, Mathf.InverseLerp(0.7f, 1.4f, Weapon.speed)));
+            Sfx.I.Play(Snd.Swing, volume * Volume, Mathf.Lerp(0.82f, 1.18f, Mathf.InverseLerp(0.7f, 1.4f, Weapon.speed)));
+        }
+
+        // Camera shake and hit-stop belong to the player who did it.
+        void Juice(float shake, float shakeTime, float stop)
+        {
+            if (remote) return;
+            Game.I.Shake(shake, shakeTime);
+            if (stop > 0f) Game.I.HitStop(stop);
+        }
+
+        // Attack lunges and dashes move the local knight only; a remote one is moved by his reported position.
+        void Push(Vector3 delta)
+        {
+            if (!remote) transform.position += delta;
         }
 
         Vector3 Ground(float y) { return new Vector3(transform.position.x, y, transform.position.z); }
@@ -545,7 +775,7 @@ namespace MedievalKnight
             dir = transform.forward;
             SpawnAttackFx(a);
             SwingSound();
-            Sfx.I.Grunt(a.damage >= 16f);                             // chop / spin / thrust always, light slashes sometimes
+            Sfx.I.Grunt(a.damage >= 16f, Volume);                     // chop / spin / thrust always, light slashes sometimes
             if (a.lunge > 2.5f) Fx.I.Dust(transform.position, 5);
             bool hitDone = false;
             for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.strikeTime)
@@ -557,7 +787,7 @@ namespace MedievalKnight
                 rigLean = Mathf.Lerp(a.leanWind, a.leanStrike, e);
                 rigHop = Mathf.Lerp(a.hopWind, 0f, e) + Mathf.Sin(t * Mathf.PI) * a.hopStrike;
                 if (a.kind == AttackKind.Spin) rigSpin = -360f * t;       // whole body turns once
-                transform.position += dir * a.lunge * Time.deltaTime;
+                Push(dir * a.lunge * Time.deltaTime);
 
                 if (!hitDone && t > (a.kind == AttackKind.Spin ? 0.2f : 0.35f)) { DoHit(a, dir); hitDone = true; }
                 yield return null;
@@ -569,7 +799,7 @@ namespace MedievalKnight
                 Vector3 g = Ground(0.05f) + dir * 2.2f;
                 Fx.I.Dust(g, 10);
                 Fx.I.Ring(g, 0.3f, 1.3f, new Color(1f, 0.95f, 0.75f, 0.7f), 0.25f);
-                Game.I.Shake(a.shake * 0.5f, 0.12f);
+                Juice(a.shake * 0.5f, 0.12f, 0f);
             }
 
             // 3) recover
@@ -617,10 +847,9 @@ namespace MedievalKnight
 
         void DoHit(AttackDef a, Vector3 dir)
         {
-            int n = HitArea(transform.position, dir, Reach(a), a.halfArc, -1, a.damage, a.pierce, a.knock, 0f, a.name);
+            int n = HitArea(transform.position, dir, Reach(a), a.halfArc, -1, a.damage, a.pierce, a.knock, 0f, a.name, System.Array.IndexOf(Attacks, a));
             if (n == 0) return;
-            Game.I.Shake(a.shake, 0.16f);
-            Game.I.HitStop(a.damage >= 16f ? 0.075f : 0.05f);
+            Juice(a.shake, 0.16f, a.damage >= 16f ? 0.075f : 0.05f);
         }
 
         // ---------------------------------------------------------------- skills
@@ -642,11 +871,8 @@ namespace MedievalKnight
                     SwingSound();
                     Fx.I.Arc(Ground(1.0f), Random.Range(0f, 360f), 1.2f, WhirlRadius, 360f, 0f, c, 0.3f, 0.08f, -700f, transform);
                     Fx.I.Dust(transform.position, 5);
-                    if (HitArea(transform.position, transform.forward, WhirlRadius, 180f, 0, s.damage, 0f, 3f, 0f, s.name) > 0)
-                    {
-                        Game.I.Shake(0.14f, 0.14f);
-                        Game.I.HitStop(0.04f);
-                    }
+                    if (HitArea(transform.position, transform.forward, WhirlRadius, 180f, 0, s.damage, 0f, 3f, 0f, s.name, 10) > 0)
+                        Juice(0.14f, 0.14f, 0.04f);
                 }
                 yield return null;
             }
@@ -667,7 +893,7 @@ namespace MedievalKnight
                 yield return null;
             }
             dir = transform.forward;
-            invuln = true;
+            if (!remote) invuln = true;
             Color c = s.color; c.a = 0.9f;
             Fx.I.Streak(Ground(1.0f), transform.eulerAngles.y, DashLength + 2.2f, 0.9f, c, 0.35f);
             Fx.I.Dust(transform.position, 8);
@@ -678,12 +904,12 @@ namespace MedievalKnight
             for (float t = 0; t < 1f; t += Time.deltaTime / dur)
             {
                 swYaw = 0f; swPitch = 0f; swHand = 1.05f; rigLean = 16f;
-                transform.position += dir * (DashLength / dur) * Time.deltaTime;
-                total += HitArea(transform.position + dir * 0.8f, dir, 1.5f, 180f, 1, s.damage, 0.5f, 5f, 0f, s.name, once);
+                Push(dir * (DashLength / dur) * Time.deltaTime);
+                total += HitArea(transform.position + dir * 0.8f, dir, 1.5f, 180f, 1, s.damage, 0.5f, 5f, 0f, s.name, 11, once);
                 yield return null;
             }
             LastHitCount = total;
-            if (total > 0) { Game.I.Shake(0.2f, 0.18f); Game.I.HitStop(0.06f); }
+            if (total > 0) Juice(0.2f, 0.18f, 0.06f);
             invuln = false;
             lockFacing = false;
             for (float t = 0; t < 1f; t += Time.deltaTime / 0.18f)
@@ -715,15 +941,12 @@ namespace MedievalKnight
             for (float t = 0; t < 1f; t += Time.deltaTime / 0.13f)
             {
                 rigLean = 14f;
-                transform.position += dir * 5f * Time.deltaTime;
+                Push(dir * 5f * Time.deltaTime);
                 if (!hitDone && t > 0.3f)
                 {
                     hitDone = true;
-                    if (HitArea(transform.position, dir, BashReach, BashArc, 2, s.damage, 0f, 10f, BashStun, s.name) > 0)
-                    {
-                        Game.I.Shake(0.22f, 0.18f);
-                        Game.I.HitStop(0.07f);
-                    }
+                    if (HitArea(transform.position, dir, BashReach, BashArc, 2, s.damage, 0f, 10f, BashStun, s.name, 12) > 0)
+                        Juice(0.22f, 0.18f, 0.07f);
                 }
                 yield return null;
             }
@@ -744,40 +967,50 @@ namespace MedievalKnight
         {
             IsAttacking = true; lockFacing = true;
             Vector3 from = Ground(0f);
-            Vector3 aim = aimOverride.HasValue ? aimOverride.Value : Game.I.AimPoint();
-            Vector3 delta = aim - from; delta.y = 0f;
-            delta = Vector3.ClampMagnitude(delta, SlamRange);
-            Vector3 to = from + delta;
-            float lim = Game.ArenaHalf - 0.6f;
-            to.x = Mathf.Clamp(to.x, -lim, lim); to.z = Mathf.Clamp(to.z, -lim, lim);
+            Vector3 to;
+            if (remote) to = new Vector3(slamTarget.x, 0f, slamTarget.z);     // where the other player said he lands
+            else
+            {
+                Vector3 delta = aimPoint - from; delta.y = 0f;
+                delta = Vector3.ClampMagnitude(delta, SlamRange);
+                to = from + delta;
+                float lim = Game.ArenaHalf - 0.6f;
+                to.x = Mathf.Clamp(to.x, -lim, lim); to.z = Mathf.Clamp(to.z, -lim, lim);
+                Net.SendAct(13, 1f, to);
+                Airborne = true; invuln = true;
+            }
 
-            Airborne = true; invuln = true;
             Fx.I.Dust(from, 10);
             SwingSound(0.8f);
             for (float t = 0; t < 1f; t += Time.deltaTime / 0.45f)
             {
-                Vector3 p = Vector3.Lerp(from, to, t);
-                jumpY = Mathf.Sin(t * Mathf.PI) * 2.6f;
-                transform.position = new Vector3(p.x, jumpY, p.z);
+                if (!remote)
+                {
+                    Vector3 p = Vector3.Lerp(from, to, t);
+                    jumpY = Mathf.Sin(t * Mathf.PI) * 2.6f;
+                    transform.position = new Vector3(p.x, jumpY, p.z);
+                }
                 swYaw = Mathf.Lerp(swYaw, 5f, 0.3f); swPitch = Mathf.Lerp(swPitch, -120f, 0.3f); swHand = 0.45f;
                 rigLean = Mathf.Lerp(-15f, 25f, t);
                 yield return null;
             }
-            jumpY = 0f;
-            transform.position = to;
-            Airborne = false;
+            if (!remote)
+            {
+                jumpY = 0f;
+                transform.position = to;
+                Airborne = false;
+            }
             swPitch = 45f; rigLean = 20f;
 
-            Vector3 g = Ground(0.06f);
+            Vector3 g = remote ? new Vector3(to.x, 0.06f, to.z) : Ground(0.06f);
             Color c = s.color; c.a = 0.9f;
             Fx.I.Ring(g, 0.6f, SlamRadius + 0.5f, c, 0.45f);
             Fx.I.Ring(g, 0.3f, SlamRadius * 0.7f, new Color(1f, 0.9f, 0.6f, 0.8f), 0.35f);
             Fx.I.Disc(g, SlamRadius * 0.5f, SlamRadius, new Color(1f, 0.8f, 0.5f, 0.45f), 0.25f);
             Fx.I.Dust(g, 26, 2f);
             Fx.I.Burst(g + Vector3.up * 0.2f, 14, new Color(0.45f, 0.36f, 0.25f), 3f, 9f, Vector3.up, 0.7f, 0.7f, 14f, 0.18f);
-            HitArea(transform.position, transform.forward, SlamRadius, 180f, 3, s.damage, 0.2f, 8f, 0.7f, s.name);
-            Game.I.Shake(0.45f, 0.3f);
-            Game.I.HitStop(0.09f);
+            HitArea(transform.position, transform.forward, SlamRadius, 180f, 3, s.damage, 0.2f, 8f, 0.7f, s.name, 13);
+            Juice(0.45f, 0.3f, 0.09f);
             invuln = false;
             lockFacing = false;
 
@@ -795,9 +1028,10 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- taking damage
 
         // Armor absorbs first. A raised shield facing the blow cuts it by 80% (+2% per BLOCK point) for 15 stamina.
+        // Always runs on the machine of the player who owns this knight (the host forwards monster hits to it).
         public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f)
         {
-            if (Dead || Invulnerable) return;
+            if (remote || Dead || Invulnerable) return;
             Vector3 toSrc = from - transform.position; toSrc.y = 0f;
             Vector3 srcDir = toSrc.sqrMagnitude > 0.0001f ? toSrc.normalized : transform.forward;
             Vector3 chestPos = transform.position + new Vector3(0f, 1.4f, 0f);
@@ -842,31 +1076,42 @@ namespace MedievalKnight
 
             if (hp <= 0f)
             {
+                LastDamageSource = source;
                 StopAllCoroutines();
                 StartCoroutine(DownRoutine());
             }
         }
 
+        public string LastDamageSource { get; private set; }
+
+        // Falling on the back (local and remote knights).
+        IEnumerator FallRoutine()
+        {
+            for (float t = 0; t < 1f; t += Time.deltaTime / 0.4f)
+            {
+                rig.localRotation = Quaternion.Euler(-86f * t * t, 0f, 0f);
+                rigHop = 0.2f * t;
+                yield return null;
+            }
+        }
+
+        // Down, wait, stand up again at the spawn point. Online the wait is longer (the others fight on meanwhile).
         IEnumerator DownRoutine()
         {
             Dead = true;
             IsAttacking = false; IsBlocking = false; Airborne = false;
             invuln = false; lockFacing = false; whirl = false; shieldPush = false;
             queued = -1; rigSpin = 0f; jumpY = 0f;
-            Game.I.hud.Banner("Knight down! Reviving...", new Color(1f, 0.5f, 0.4f));
-            for (float t = 0; t < 1f; t += Time.deltaTime / 0.4f)     // fall on the back
-            {
-                rig.localRotation = Quaternion.Euler(-86f * t * t, 0f, 0f);
-                rigHop = 0.2f * t;
-                yield return null;
-            }
-            yield return new WaitForSeconds(1.4f);
-            Game.I.OnKnightRevive();
+            bool online = Net.Multiplayer;
+            Game.I.hud.Banner(online ? "You are down! Back in " + Game.ReviveDelayCoop.ToString("0") + " seconds..." : "Knight down! Reviving...", new Color(1f, 0.5f, 0.4f));
+            yield return FallRoutine();
+            yield return new WaitForSeconds(online ? Game.ReviveDelayCoop : Game.ReviveDelaySingle);
+            Game.I.OnKnightRevive(this);
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
             rigLean = 0f; rigHop = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             knockVel = Vector3.zero;
-            transform.position = SpawnPoint;
+            transform.position = spawnPoint;
             invulnUntil = Time.time + 2.5f;
             Dead = false;
             Sfx.I.Play(Snd.Ready);

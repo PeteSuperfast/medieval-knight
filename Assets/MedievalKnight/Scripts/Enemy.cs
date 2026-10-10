@@ -14,6 +14,10 @@ namespace MedievalKnight
         public float radius = 0.6f, height = 1.2f, expReward, mass = 1f;
         public bool solid;                       // the knight cannot walk through it
         public bool Dead { get; protected set; }
+        public int netId;                        // the same number on every machine in an online game
+        public bool puppet;                      // on a client: no AI, it only shows what the host reports
+        public readonly NetInterp interp = new NetInterp();
+        protected float puppetSpeed;             // how fast the puppet is being moved (for walk animations)
 
         // read-out for the HUD / self-test
         public int hits;
@@ -33,8 +37,43 @@ namespace MedievalKnight
         public bool Stunned { get { return Time.time < stunUntil; } }
         public Vector3 Center { get { return transform.position + Vector3.up * height * 0.55f; } }
 
-        protected virtual void OnEnable() { All.Add(this); }
+        protected virtual void OnEnable()
+        {
+            All.Add(this);
+            if (netId == 0 && Net.Authority && Game.I != null) netId = Game.I.NewNetId();
+        }
+
         protected virtual void OnDisable() { All.Remove(this); }
+
+        public static Enemy Find(int netId)
+        {
+            for (int i = 0; i < All.Count; i++) if (All[i].netId == netId) return All[i];
+            return null;
+        }
+
+        // A client's puppet: glide to where the host says it is.
+        protected void PuppetMove()
+        {
+            Vector3 p; float y;
+            if (!interp.Sample(Time.unscaledTime, out p, out y)) return;
+            Vector3 d = p - transform.position; d.y = 0f;
+            float dt = Time.deltaTime;
+            if (dt > 0f) puppetSpeed = Mathf.Lerp(puppetSpeed, d.magnitude / dt, 0.3f);
+            transform.position = new Vector3(p.x, 0f, p.z);
+            transform.rotation = Quaternion.Euler(0f, y, 0f);
+        }
+
+        // The knight this enemy goes for: the nearest living one.
+        protected Knight Target() { return Game.I.NearestKnight(transform.position); }
+
+        // How a blow would be shared between armor and health (nothing is changed).
+        public void Split(float damage, float pierce, out float toArmor, out float toHp)
+        {
+            float direct = damage * Mathf.Clamp01(pierce);
+            float rest = damage - direct;
+            toArmor = Mathf.Min(armor, rest);
+            toHp = direct + rest - toArmor;
+        }
 
         protected void InitStats(float health, float armorPoints)
         {
@@ -54,16 +93,55 @@ namespace MedievalKnight
         }
 
         // damage is the final number (already multiplied / crit). pierce = share that ignores armor.
-        public virtual void TakeHit(float damage, float pierce, Vector3 from, bool crit, float knockback, float stun, string source)
+        // Only where the world is simulated (single player / host). "by" = the knight who struck (null: nobody, e.g. a test).
+        public virtual void TakeHit(float damage, float pierce, Vector3 from, bool crit, float knockback, float stun, string source, Knight by = null)
         {
-            if (Dead) return;
-            float direct = damage * Mathf.Clamp01(pierce);
-            float rest = damage - direct;
-            float toArmor = Mathf.Min(armor, rest);
+            if (Dead || puppet) return;
+            float toArmor, toHp;
+            Split(damage, pierce, out toArmor, out toHp);
             armor -= toArmor;
-            float toHp = direct + rest - toArmor;
             hp = Mathf.Max(0f, hp - toHp);
 
+            Vector3 away = transform.position - from; away.y = 0f;
+            away = away.sqrMagnitude > 0.0001f ? away.normalized : transform.forward;
+            knock += away * knockback * knockResist;
+            if (stun > 0f) stunUntil = Mathf.Max(stunUntil, Time.time + stun * stunResist);
+
+            bool killed = hp <= 0f;
+            if (Net.IsHost) Net.BroadcastEnemyHit(this, damage, toArmor, toHp, crit, stun > 0.3f, killed, away, by != null ? by.pid : 255);
+            ShowHit(damage, toArmor, toHp, crit, stun > 0.3f, away, source, by != null && by.remote);
+
+            OnHit(from, damage);
+            if (killed)
+            {
+                Dead = true;
+                if (bar != null) bar.gameObject.SetActive(false);
+                Game.I.OnEnemyKilled(this, by);
+                OnDeath(away);
+            }
+        }
+
+        // A client shows a hit that the host applied (numbers, sparks, wobble, and death when it was the last one).
+        public void NetHit(float damage, float toArmor, float toHp, bool crit, bool stunned, bool killed, Vector3 away, bool byOther, float newHp, float newArmor)
+        {
+            if (Dead) return;
+            hp = newHp; armor = newArmor;
+            if (away.sqrMagnitude < 0.0001f) away = transform.forward;
+            ShowHit(damage, toArmor, toHp, crit, stunned, away, "Hit", byOther);
+            OnHit(transform.position - away, damage);
+            if (killed)
+            {
+                Dead = true;
+                if (bar != null) bar.gameObject.SetActive(false);
+                Game.I.OnPuppetKilled(this);
+                OnDeath(away);
+            }
+        }
+
+        // The read-out and everything visible / audible about one hit. otherPlayer: it was not the local knight's
+        // blow, so its sound is played here (quieter); the local knight's own hit sound comes from Knight.HitArea.
+        void ShowHit(float damage, float toArmor, float toHp, bool crit, bool stunned, Vector3 away, string source, bool otherPlayer)
+        {
             hits++;
             totalDamage += damage;
             lastDamage = damage;
@@ -73,28 +151,16 @@ namespace MedievalKnight
             lastHit = source + " " + Mathf.RoundToInt(damage) + (crit ? " CRIT" : "");
             flash = 1f;
 
-            Vector3 away = transform.position - from; away.y = 0f;
-            away = away.sqrMagnitude > 0.0001f ? away.normalized : transform.forward;
-            knock += away * knockback * knockResist;
-            if (stun > 0f) stunUntil = Mathf.Max(stunUntil, Time.time + stun * stunResist);
-
             Vector3 at = Center + new Vector3(Random.Range(-0.3f, 0.3f), height * 0.5f, 0f);
             if (crit) Game.I.hud.Popup(at, Mathf.RoundToInt(damage) + "!", new Color(1f, 0.62f, 0.1f), 34);
             else if (toHp < 0.5f) Game.I.hud.Popup(at, Mathf.RoundToInt(damage).ToString(), new Color(0.65f, 0.82f, 1f), 22);
             else Game.I.hud.Popup(at, Mathf.RoundToInt(damage).ToString(), Color.white, 24);
-            if (stun > 0.3f) Game.I.hud.Popup(at + Vector3.up * 0.6f, "STUN", new Color(1f, 0.9f, 0.4f), 20);
+            if (stunned) Game.I.hud.Popup(at + Vector3.up * 0.6f, "STUN", new Color(1f, 0.9f, 0.4f), 20);
 
             Fx.I.Burst(Center - away * radius * 0.6f, crit ? 14 : 8, SparkColor(toHp > 0.5f), 3f, 8f, away + Vector3.up * 0.5f, 0.6f, 0.3f, 12f, 0.12f);
             if (crit) Fx.I.Ring(new Vector3(transform.position.x, 0.06f, transform.position.z), radius, radius + 1.4f, new Color(1f, 0.7f, 0.2f, 0.8f), 0.25f);
 
-            OnHit(from, damage);
-            if (hp <= 0f)
-            {
-                Dead = true;
-                if (bar != null) bar.gameObject.SetActive(false);
-                Game.I.OnEnemyKilled(this);
-                OnDeath(away);
-            }
+            if (otherPlayer) Sfx.I.Play(toArmor > toHp ? ArmorSound : Snd.Slice, Game.I.RemoteVolume(transform.position));
         }
 
         protected virtual Color SparkColor(bool flesh) { return flesh ? new Color(1f, 0.85f, 0.4f) : new Color(0.7f, 0.85f, 1f); }

@@ -93,14 +93,15 @@ namespace MedievalKnight
 
         // The knight's attack voice. Heavy hits and skills always grunt (still at most once per 0.9 s);
         // light swings only now and then, so a fast combo does not turn into constant shouting.
-        public bool Grunt(bool heavy)
+        // volume < 1: another player's knight (quieter, see Game.RemoteVolume).
+        public bool Grunt(bool heavy, float volume = 1f)
         {
             if (!heavy)
             {
                 if (Time.unscaledTime - lastTime[(int)Snd.Grunt] < LightGruntGap) return false;
                 if (rng.NextDouble() >= LightGruntChance) return false;
             }
-            return Play(Snd.Grunt, heavy ? 1f : 0.75f, heavy ? 0.96f : 1.04f);
+            return Play(Snd.Grunt, (heavy ? 1f : 0.75f) * volume, heavy ? 0.96f : 1.04f);
         }
 
         // M key: 100% > 60% > 30% > muted > 100% ...

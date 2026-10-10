@@ -21,6 +21,7 @@ namespace MedievalKnight
         float t, atkCd = 0.6f, chargeCd = 3f, walkPhase, axeYaw = 25f, axePitch = -40f, lean = 12f, deathT, dmgScale;
         Vector3 chargeDir, smashPoint;
         bool hitDone, roared;
+        int chargeMask;                     // players (bit = pid) already run over by the current charge
 
         public static Minotaur Spawn(Vector3 pos, Transform parent)
         {
@@ -154,7 +155,45 @@ namespace MedievalKnight
 
         protected override void OnHit(Vector3 from, float damage)
         {
-            if (State == S.Idle) Begin(S.Chase);
+            if (!puppet && State == S.Idle) Begin(S.Chase);
+        }
+
+        // Co-op party wipe: back to the lair, healed, resting.
+        public void ResetToLair(Vector3 home)
+        {
+            InitStats(maxHp, maxArmor);
+            transform.position = new Vector3(home.x, 0f, home.z);
+            transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            knock = Vector3.zero;
+            stunUntil = 0f;
+            roared = false;
+            atkCd = 0.6f; chargeCd = 3f;
+            head.localRotation = Quaternion.identity;
+            Begin(S.Idle);
+        }
+
+        // --- effects of the three attacks: played by the AI, and by a client's puppet when it sees the state change ---
+
+        void FxSweep()
+        {
+            Fx.I.Arc(transform.position + Vector3.up * 1.2f, transform.eulerAngles.y, 1.2f, SweepRange, SweepHalfArc, -SweepHalfArc,
+                new Color(1f, 0.55f, 0.25f, 0.85f), 0.3f, 0.08f);
+        }
+
+        void FxSmash()
+        {
+            Vector3 g = new Vector3(smashPoint.x, 0.06f, smashPoint.z);
+            Fx.I.Ring(g, 0.6f, SmashRadius + 0.8f, new Color(1f, 0.6f, 0.25f, 0.9f), 0.4f);
+            Fx.I.Disc(g, SmashRadius * 0.6f, SmashRadius, new Color(1f, 0.85f, 0.5f, 0.5f), 0.22f);
+            Fx.I.Dust(g, 22, 1.8f);
+            Fx.I.Burst(g + Vector3.up * 0.2f, 14, new Color(0.45f, 0.36f, 0.25f), 3f, 9f, Vector3.up, 0.7f, 0.7f, 14f, 0.2f);
+            Game.I.Shake(0.4f, 0.3f);
+        }
+
+        void FxWall()
+        {
+            Game.I.Shake(0.3f, 0.3f);
+            Fx.I.Dust(transform.position + chargeDir, 16, 1.6f);
         }
 
         protected override void OnDeath(Vector3 away)
@@ -178,6 +217,7 @@ namespace MedievalKnight
             State = s;
             t = 0f;
             hitDone = false;
+            chargeMask = 0;
             HideDecals();
         }
 
@@ -213,26 +253,33 @@ namespace MedievalKnight
             }
             BaseTick(dt);
 
-            Knight k = Game.I.knight;
-            Vector3 toK = k.transform.position - transform.position; toK.y = 0f;
+            // sim = the AI runs here (single player / host). A client's puppet only poses: its State, t and position
+            // come from the host, and nothing below may start a state or hurt anybody.
+            bool sim = !puppet;
+            if (puppet) PuppetMove();
+            Knight k = Target();
+            if (k == null) return;
+            var ps = Game.I.players;
+            Vector3 toK = k.Pos - transform.position; toK.y = 0f;
             float dist = toK.magnitude;
             float yawT = 25f, pitchT = -40f, leanT = 12f, poseRate = 9f;
             bool walking = false;
             chargeCd -= dt;
 
-            if (Stunned && State != S.Stun && State != S.Charging) Begin(S.Stun);
+            if (sim && Stunned && State != S.Stun && State != S.Charging) Begin(S.Stun);
 
             switch (State)
             {
                 case S.Idle:
-                    if (!k.Dead && dist < AggroRange) Begin(S.Chase);
+                    if (sim && !k.Dead && dist < AggroRange) Begin(S.Chase);
                     break;
 
                 case S.Chase:
+                    if (!sim) { walking = puppetSpeed > 0.6f; break; }
                     if (!roared)
                     {
                         roared = true;
-                        Game.I.hud.Banner("The Minotaur notices you!", new Color(1f, 0.5f, 0.35f));
+                        Game.I.WorldBanner("The Minotaur notices you!", new Color(1f, 0.5f, 0.35f));
                     }
                     if (k.Dead || dist > 34f) { roared = false; Begin(S.Idle); break; }
                     TurnTowards(toK, 230f, dt);
@@ -251,14 +298,13 @@ namespace MedievalKnight
 
                 case S.SweepTele:
                     t += dt / 0.75f;
-                    TurnTowards(toK, 80f, dt);
+                    if (sim) TurnTowards(toK, 80f, dt);
                     yawT = 125f; pitchT = -8f; leanT = 4f; poseRate = 12f;
                     ShowDecal(decalSector, transform.position, transform.eulerAngles.y, Vector3.one, Mathf.Clamp01(t));
-                    if (t >= 1f)
+                    if (sim && t >= 1f)
                     {
                         Begin(S.SweepStrike);
-                        Fx.I.Arc(transform.position + Vector3.up * 1.2f, transform.eulerAngles.y, 1.2f, SweepRange, SweepHalfArc, -SweepHalfArc,
-                            new Color(1f, 0.55f, 0.25f, 0.85f), 0.3f, 0.08f);
+                        FxSweep();
                     }
                     break;
 
@@ -271,22 +317,29 @@ namespace MedievalKnight
                     {
                         hitDone = true;
                         Game.I.Shake(0.15f, 0.2f);
-                        if (!k.Dead && !k.Airborne && dist < SweepRange + 0.4f && (dist < 1.6f || Vector3.Angle(transform.forward, toK) < SweepHalfArc))
-                            k.TakeDamage(SweepDamage * dmgScale, transform.position, "Axe Sweep", 9f);
+                        for (int i = 0; sim && i < ps.Count; i++)          // everyone inside the arc
+                        {
+                            Knight p = ps[i];
+                            if (p.Dead || p.Airborne) continue;
+                            Vector3 toP = p.Pos - transform.position; toP.y = 0f;
+                            float dp = toP.magnitude;
+                            if (dp < SweepRange + 0.4f && (dp < 1.6f || Vector3.Angle(transform.forward, toP) < SweepHalfArc))
+                                Game.I.DamageKnight(p, SweepDamage * dmgScale, transform.position, "Axe Sweep", 9f);
+                        }
                     }
-                    if (t >= 1f) Recover(0.75f);
+                    if (sim && t >= 1f) Recover(0.75f);
                     break;
 
                 case S.SmashTele:
                     t += dt / 0.85f;
-                    if (t < 0.65f)
+                    if (sim && t < 0.65f)
                     {
                         TurnTowards(toK, 140f, dt);
                         smashPoint = transform.position + transform.forward * 3.1f + transform.right * 0.7f;
                     }
                     yawT = 0f; pitchT = -125f; leanT = -6f; poseRate = 10f;
                     ShowDecal(decalDisc, smashPoint, 0f, new Vector3(SmashRadius, 1f, SmashRadius), Mathf.Clamp01(t));
-                    if (t >= 1f) Begin(S.SmashStrike);
+                    if (sim && t >= 1f) Begin(S.SmashStrike);
                     break;
 
                 case S.SmashStrike:
@@ -294,16 +347,15 @@ namespace MedievalKnight
                     axeYaw = 0f;
                     axePitch = Mathf.Lerp(-125f, 38f, Mathf.Clamp01(t) * Mathf.Clamp01(t));
                     yawT = axeYaw; pitchT = axePitch; leanT = 26f; poseRate = 0f;
-                    if (t >= 1f)
+                    if (sim && t >= 1f)
                     {
-                        Vector3 g = new Vector3(smashPoint.x, 0.06f, smashPoint.z);
-                        Fx.I.Ring(g, 0.6f, SmashRadius + 0.8f, new Color(1f, 0.6f, 0.25f, 0.9f), 0.4f);
-                        Fx.I.Disc(g, SmashRadius * 0.6f, SmashRadius, new Color(1f, 0.85f, 0.5f, 0.5f), 0.22f);
-                        Fx.I.Dust(g, 22, 1.8f);
-                        Fx.I.Burst(g + Vector3.up * 0.2f, 14, new Color(0.45f, 0.36f, 0.25f), 3f, 9f, Vector3.up, 0.7f, 0.7f, 14f, 0.2f);
-                        Game.I.Shake(0.4f, 0.3f);
-                        if (!k.Dead && !k.Airborne && FlatDist(k.transform.position, smashPoint) < SmashRadius + 0.35f)
-                            k.TakeDamage(SmashDamage * dmgScale, smashPoint, "Axe Smash", 7f);
+                        FxSmash();
+                        for (int i = 0; i < ps.Count; i++)                 // everyone inside the circle
+                        {
+                            Knight p = ps[i];
+                            if (!p.Dead && !p.Airborne && FlatDist(p.Pos, smashPoint) < SmashRadius + 0.35f)
+                                Game.I.DamageKnight(p, SmashDamage * dmgScale, smashPoint, "Axe Smash", 7f);
+                        }
                         Recover(1.0f);
                         axePitch = 38f;
                     }
@@ -311,34 +363,43 @@ namespace MedievalKnight
 
                 case S.ChargeTele:
                     t += dt / 0.9f;
-                    if (t < 0.7f) TurnTowards(toK, 220f, dt);
+                    if (sim && t < 0.7f) TurnTowards(toK, 220f, dt);
                     chargeDir = transform.forward;
                     yawT = 12f; pitchT = -80f; leanT = -10f + 40f * Mathf.Clamp01(t);
                     walking = true;                                    // paws the ground
                     ShowDecal(decalLane, transform.position, transform.eulerAngles.y, new Vector3(LaneWidth, 1f, LaneLength), Mathf.Clamp01(t));
                     if (Random.value < dt * 14f) Fx.I.Dust(transform.position - transform.forward * 0.6f, 2, 1.2f);
-                    if (t >= 1f) Begin(S.Charging);
+                    if (sim && t >= 1f) Begin(S.Charging);
                     break;
 
                 case S.Charging:
                     t += dt;
                     Vector3 before = transform.position;
-                    transform.position += chargeDir * 15f * dt;
-                    ClampToArena();
-                    bool wall = (transform.position - before).magnitude < 15f * dt * 0.5f && dt > 0f;
+                    bool wall = false;
+                    if (sim)
+                    {
+                        transform.position += chargeDir * 15f * dt;
+                        ClampToArena();
+                        wall = (transform.position - before).magnitude < 15f * dt * 0.5f && dt > 0f;
+                    }
+                    else chargeDir = transform.forward;
                     yawT = 12f; pitchT = -80f; leanT = 34f; walking = true;
                     walkPhase += dt * 14f;
                     if (Random.value < dt * 40f) Fx.I.Dust(transform.position - chargeDir * 0.8f, 3, 1.4f);
-                    if (!hitDone && !k.Dead && !k.Airborne && dist < radius + 1.0f)
+                    if (!sim) break;
+                    for (int i = 0; i < ps.Count; i++)                     // runs over each knight in the lane once
                     {
-                        hitDone = true;
-                        k.TakeDamage(ChargeDamage * dmgScale, transform.position - chargeDir, "Charge", 15f);
+                        Knight p = ps[i];
+                        int bit = 1 << (p.pid & 31);
+                        if ((chargeMask & bit) != 0 || p.Dead || p.Airborne || FlatDist(before, p.Pos) >= radius + 1.0f) continue;
+                        chargeMask |= bit;
+                        Game.I.DamageKnight(p, ChargeDamage * dmgScale, transform.position - chargeDir, "Charge", 15f);
                         Game.I.Shake(0.35f, 0.3f);
                     }
                     if (t >= LaneLength / 15f || wall)
                     {
                         chargeCd = 9f;
-                        if (wall) { Game.I.Shake(0.3f, 0.3f); Fx.I.Dust(transform.position + chargeDir, 16, 1.6f); }
+                        if (wall) FxWall();
                         Recover(wall ? 1.6f : 1.1f);
                     }
                     break;
@@ -346,13 +407,13 @@ namespace MedievalKnight
                 case S.Recover:
                     t -= dt;
                     leanT = 18f; poseRate = 5f;
-                    if (t <= 0f) { Begin(S.Chase); atkCd = 0.3f; }
+                    if (sim && t <= 0f) { Begin(S.Chase); atkCd = 0.3f; }
                     break;
 
                 case S.Stun:
                     leanT = 22f; yawT = 60f; pitchT = 30f;
                     head.localRotation = Quaternion.Euler(20f, Mathf.Sin(Time.time * 14f) * 18f, 0f);
-                    if (!Stunned) { head.localRotation = Quaternion.identity; Begin(S.Chase); atkCd = 0.4f; }
+                    if (sim && !Stunned) { head.localRotation = Quaternion.identity; Begin(S.Chase); atkCd = 0.4f; }
                     break;
             }
 
