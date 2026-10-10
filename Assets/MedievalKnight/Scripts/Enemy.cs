@@ -227,6 +227,7 @@ namespace MedievalKnight
             float lim = Game.ArenaHalf - radius * 0.5f;
             p.x = Mathf.Clamp(p.x, -lim, lim);
             p.z = Mathf.Clamp(p.z, -lim, lim);
+            if (!puppet) p = Obstacles.Push(p, Mathf.Max(0.35f, radius * 0.6f), Obstacles.Enemies);
             transform.position = p;
         }
 

@@ -9,16 +9,16 @@ namespace MedievalKnight
     {
         public static Game I;
 
-        public const float ArenaHalf = 19f;        // the fenced field is 38 x 38 m
+        public const float ArenaHalf = 190f;       // the fenced map is 380 x 380 m (see World.cs: MapLayout)
         public const float CamPitch = 56f, CamDist = 16f, CamFov = 40f;
         public const float MinotaurRespawn = 20f;
         // co-op rules: enemy health per extra player, seconds a downed knight waits, protection while picking a level-up card
         public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 3f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
         public const float MaxHitDamage = 20000f;  // host-side sanity limit for one reported hit
-        static readonly Vector3 MinotaurHome = new Vector3(0f, 0f, 12.5f);
-        static readonly Vector3 DummyPos = new Vector3(5f, 0f, -3.5f);
-        static readonly Vector3 KnightSpawn = new Vector3(0f, 0f, -5f);
-        static readonly Vector3 MenuFocus = new Vector3(0f, 0f, 3f);
+        static readonly Vector3 MinotaurHome = MapLayout.Lair;
+        static readonly Vector3 DummyPos = MapLayout.DummyPos;
+        static readonly Vector3 KnightSpawn = MapLayout.TownSpawn;
+        static readonly Vector3 MenuFocus = MapLayout.MenuFocus;
 
         public Camera cam;
         public Menu menu;
@@ -446,7 +446,7 @@ namespace MedievalKnight
             cam.orthographic = false;
             cam.fieldOfView = CamFov;
             cam.nearClipPlane = 0.5f;
-            cam.farClipPlane = 200f;
+            cam.farClipPlane = 120f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.16f, 0.27f, 0.2f);
             cam.allowMSAA = true;
@@ -511,125 +511,7 @@ namespace MedievalKnight
         void BuildWorld()
         {
             Transform world = Prims.Node(transform, "World", Vector3.zero);
-            var rng = new System.Random(11);
-            System.Func<float, float, float> R = (a, b) => a + (float)rng.NextDouble() * (b - a);
-
-            Material grassOut = Prims.Lit(new Color(0.2f, 0.4f, 0.2f));
-            Material grass = Prims.Lit(new Color(0.37f, 0.62f, 0.28f));
-            Material grassA = Prims.Lit(new Color(0.42f, 0.67f, 0.3f));
-            Material grassB = Prims.Lit(new Color(0.32f, 0.56f, 0.26f));
-            Material dirt = Prims.Lit(new Color(0.6f, 0.47f, 0.3f));
-            Material stone = Prims.Lit(new Color(0.62f, 0.62f, 0.64f));
-            Material stoneDark = Prims.Lit(new Color(0.45f, 0.45f, 0.48f));
-            Material wood = Prims.Lit(new Color(0.45f, 0.3f, 0.16f));
-            Material woodDark = Prims.Lit(new Color(0.32f, 0.2f, 0.11f));
-            Material trunk = Prims.Lit(new Color(0.36f, 0.24f, 0.13f));
-            Material[] leaves =
-            {
-                Prims.Lit(new Color(0.16f, 0.45f, 0.2f)), Prims.Lit(new Color(0.2f, 0.52f, 0.22f)), Prims.Lit(new Color(0.13f, 0.38f, 0.2f))
-            };
-            Material[] flowers =
-            {
-                Prims.Lit(new Color(0.95f, 0.9f, 0.35f)), Prims.Lit(new Color(0.95f, 0.5f, 0.6f)), Prims.Lit(new Color(0.9f, 0.92f, 0.98f))
-            };
-
-            float A = ArenaHalf;
-            Prims.Box(world, "Outside", new Vector3(0f, -0.5f, 0f), new Vector3(160f, 1f, 160f), grassOut, false).GetComponent<MeshRenderer>().receiveShadows = true;
-            Prims.Box(world, "Field", new Vector3(0f, -0.49f, 0f), new Vector3(A * 2f + 2.4f, 1f, A * 2f + 2.4f), grass, false).GetComponent<MeshRenderer>().receiveShadows = true;
-
-            // mottled grass
-            for (int i = 0; i < 46; i++)
-            {
-                float w = R(2f, 6f), d = R(2f, 6f);
-                Transform t = Prims.Box(world, "Patch", new Vector3(R(-A + 3f, A - 3f), 0.012f + i * 0.0002f, R(-A + 3f, A - 3f)), new Vector3(w, 0.02f, d), i % 2 == 0 ? grassA : grassB, false);
-                t.GetComponent<MeshRenderer>().receiveShadows = true;
-                t.Rot(0f, R(0f, 90f), 0f);
-            }
-            // dirt cross-roads and a round stone plaza in the middle
-            GroundBox(world, "RoadNS", new Vector3(0f, 0.03f, 0f), new Vector3(3.2f, 0.02f, A * 2f), dirt);
-            GroundBox(world, "RoadEW", new Vector3(0f, 0.032f, 0f), new Vector3(A * 2f, 0.02f, 3.2f), dirt);
-            Ground(world, "PlazaRim", Prims.Cyl(14), new Vector3(0f, 0f, 0f), new Vector3(13f, 0.05f, 13f), stoneDark);
-            Ground(world, "Plaza", Prims.Cyl(14), new Vector3(0f, 0f, 0f), new Vector3(11.6f, 0.06f, 11.6f), stone);
-            Ground(world, "PlazaCore", Prims.Cyl(8), new Vector3(0f, 0f, 0f), new Vector3(3.4f, 0.07f, 3.4f), stoneDark);
-            // the Minotaur's lair: a dark slab between broken columns at the north end
-            Ground(world, "Lair", Prims.Cyl(10), new Vector3(MinotaurHome.x, 0f, MinotaurHome.z), new Vector3(9f, 0.06f, 9f), stoneDark);
-            for (int i = 0; i < 6; i++)
-            {
-                Vector3 p = new Vector3(-8.75f + i * 3.5f, 0f, A + 0.75f);   // a ruined colonnade along the north fence
-                float h = R(1.6f, 4.2f);
-                Prims.Part(world, "Column", Prims.Cyl(8), p, new Vector3(1.0f, h, 1.0f), stone);
-                Prims.Box(world, "ColumnBase", p + Vector3.up * 0.15f, new Vector3(1.4f, 0.3f, 1.4f), stoneDark);
-                if (h > 3.4f) Prims.Box(world, "ColumnTop", p + Vector3.up * (h + 0.12f), new Vector3(1.4f, 0.24f, 1.4f), stoneDark);
-            }
-
-            // flowers and pebbles (decoration only, nothing blocks movement inside the fence)
-            for (int i = 0; i < 90; i++)
-            {
-                Vector3 p = new Vector3(R(-A + 1f, A - 1f), 0.08f, R(-A + 1f, A - 1f));
-                if (Mathf.Abs(p.x) < 2.2f || Mathf.Abs(p.z) < 2.2f || p.magnitude < 7.5f) continue;
-                if (i % 4 == 0) Prims.Part(world, "Pebble", Prims.Ball(5), p, new Vector3(R(0.25f, 0.55f), R(0.15f, 0.3f), R(0.25f, 0.5f)), stoneDark);
-                else Prims.Box(world, "Flower", p, new Vector3(0.16f, 0.16f, 0.16f), flowers[i % 3], false).Rot(0f, R(0f, 90f), 0f);
-            }
-
-            // fence
-            float f = A + 0.7f;
-            for (int side = 0; side < 4; side++)
-            {
-                Quaternion q = Quaternion.Euler(0f, side * 90f, 0f);
-                for (float x = -f; x <= f + 0.01f; x += 2.53f)
-                    Prims.Box(world, "Post", q * new Vector3(x, 0.65f, f), new Vector3(0.26f, 1.3f, 0.26f), woodDark).localRotation = q;
-                Prims.Box(world, "RailTop", q * new Vector3(0f, 1.0f, f), new Vector3(f * 2f, 0.14f, 0.12f), wood).localRotation = q;
-                Prims.Box(world, "RailLow", q * new Vector3(0f, 0.5f, f), new Vector3(f * 2f, 0.14f, 0.12f), wood).localRotation = q;
-            }
-
-            // banners at the corners
-            Material[] cloth = { Prims.Lit(new Color(0.8f, 0.15f, 0.13f)), Prims.Lit(new Color(0.16f, 0.32f, 0.8f)) };
-            int bi = 0;
-            for (int sx = -1; sx <= 1; sx += 2)
-            {
-                for (int sz = -1; sz <= 1; sz += 2)
-                {
-                    Vector3 p = new Vector3(sx * (A - 0.6f), 0f, sz * (A - 0.6f));
-                    Prims.Part(world, "Pole", Prims.Cyl(6), p, new Vector3(0.16f, 4.2f, 0.16f), woodDark);
-                    Prims.Box(world, "Flag", p + new Vector3(-sx * 0.62f, 3.3f, 0f), new Vector3(1.2f, 1.5f, 0.06f), cloth[bi++ % 2]);
-                    Prims.Part(world, "Finial", Prims.Ball(6), p + Vector3.up * 4.3f, new Vector3(0.3f, 0.3f, 0.3f), Prims.Lit(new Color(0.96f, 0.78f, 0.22f), 0.7f, 0.8f));
-                }
-            }
-
-            // forest and rocks outside the fence
-            for (int i = 0; i < 120; i++)
-            {
-                float ang = R(0f, Mathf.PI * 2f);
-                float dist = R(A + 3f, A + 16f);
-                Vector3 p = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang)) * dist * 1.25f;
-                p.x = Mathf.Clamp(p.x, -A - 20f, A + 20f); p.z = Mathf.Clamp(p.z, -A - 14f, A + 18f);
-                if (Mathf.Abs(p.x) < A + 2.4f && Mathf.Abs(p.z) < A + 2.4f) continue;
-                if (i % 6 == 0)
-                {
-                    float s = R(0.8f, 2.2f);
-                    Prims.Part(world, "Rock", Prims.Ball(6), p + Vector3.up * 0.3f * s, new Vector3(1.5f, 1f, 1.2f) * s, i % 12 == 0 ? stone : stoneDark).Rot(0f, R(0f, 360f), 0f);
-                    continue;
-                }
-                float sc = R(0.85f, 1.5f);
-                Material leaf = leaves[i % 3];
-                Transform tree = Prims.Node(world, "Tree", p);
-                tree.localScale = Vector3.one * sc;
-                tree.Rot(0f, R(0f, 360f), 0f);
-                Prims.Part(tree, "Trunk", Prims.Cyl(6), Vector3.zero, new Vector3(0.55f, 1.6f, 0.55f), trunk);
-                Prims.Part(tree, "L1", Prims.Cone(7), new Vector3(0f, 1.1f, 0f), new Vector3(3.0f, 2.3f, 3.0f), leaf);
-                Prims.Part(tree, "L2", Prims.Cone(7), new Vector3(0f, 2.3f, 0f), new Vector3(2.3f, 2.0f, 2.3f), leaf);
-                Prims.Part(tree, "L3", Prims.Cone(7), new Vector3(0f, 3.4f, 0f), new Vector3(1.5f, 1.7f, 1.5f), leaf);
-            }
-        }
-
-        static void GroundBox(Transform parent, string name, Vector3 pos, Vector3 size, Material m)
-        {
-            Prims.Box(parent, name, pos, size, m, false).GetComponent<MeshRenderer>().receiveShadows = true;
-        }
-
-        static void Ground(Transform parent, string name, Mesh mesh, Vector3 pos, Vector3 scale, Material m)
-        {
-            Prims.Part(parent, name, mesh, pos, scale, m, false).GetComponent<MeshRenderer>().receiveShadows = true;
+            WorldBuilder.Build(world);
         }
 
         // ---------------------------------------------------------------- actors
@@ -679,7 +561,8 @@ namespace MedievalKnight
                         if (d.magnitude < 4.5f) bad = true;                // never on top of a player
                     }
                     if (minotaur != null && (p - minotaur.transform.position).magnitude < 6f) bad = true;
-                    if (wave == 1 && p.z > 5f) bad = true;                 // first wave stays away from the lair
+                    if (wave == 1 && (p - MinotaurHome).magnitude < 30f) bad = true;   // first wave stays away from the lair
+                    if (!MapLayout.Walkable(p.x, p.z)) bad = true;                 // never in the lake or on the mountain
                     if (!bad) break;
                 }
                 float roll = Random.value;
@@ -1206,6 +1089,27 @@ namespace MedievalKnight
             hitStopUntil = Mathf.Max(hitStopUntil, Time.unscaledTime + seconds);
         }
 
+        // Road signs are arrow boards without text: the words appear on the HUD when a knight walks up to one.
+        float signCheckAt;
+        int signShown = -1;
+
+        void UpdateSigns()
+        {
+            if (Time.unscaledTime < signCheckAt || knight == null || knight.Dead) return;
+            signCheckAt = Time.unscaledTime + 0.3f;
+            Vector3 p = knight.Pos;
+            var list = MapLayout.Signs;
+            int near = -1;
+            for (int i = 0; i < list.Count; i++)
+            {
+                float dx = p.x - list[i].pos.x, dz = p.z - list[i].pos.z;
+                if (dx * dx + dz * dz < 64f) { near = i; break; }
+            }
+            if (near == signShown) return;
+            signShown = near;
+            if (near >= 0) hud.Notice(list[near].text, new Color(1f, 0.92f, 0.65f));
+        }
+
         void Update()
         {
             Net.Poll();                                           // network events first: they may start or end the session
@@ -1222,6 +1126,7 @@ namespace MedievalKnight
                 }
             }
             if (InputX.Down(KeyCode.F1)) hud.ToggleControls();
+            UpdateSigns();
             if (InputX.Down(KeyCode.M))
             {
                 Sfx.I.CycleVolume();

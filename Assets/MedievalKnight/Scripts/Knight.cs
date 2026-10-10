@@ -480,6 +480,7 @@ namespace MedievalKnight
                     p = new Vector3(e.transform.position.x, 0f, e.transform.position.z) + d.normalized * min;
                 }
             }
+            p = Obstacles.Push(p, 0.4f, Obstacles.Players);        // houses, walls, trees, rocks, the lake and the mountain
             float lim = Game.ArenaHalf - 0.4f;
             p.x = Mathf.Clamp(p.x, -lim, lim);
             p.z = Mathf.Clamp(p.z, -lim, lim);

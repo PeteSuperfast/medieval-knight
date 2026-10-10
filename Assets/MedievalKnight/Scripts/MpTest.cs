@@ -738,6 +738,25 @@ namespace MedievalKnight
                 Ck(Near("x" + pid, 0.15f) && Near("z" + pid, 0.15f), "player " + pid + " (" + peers[i] + ") stands at the same place on every screen");
             }
 
+            // the four far corners of the 380 m map: positions travel as centimetres in an i16 and must arrive exactly
+            {
+                float[] fx = { 186f, -70f, 186f, 20f }, fz = { -186f, 186f, 186f, -186f };
+                for (int i = 0; i < peers.Length; i++) yield return Tp(peers[i], fx[i % 4], fz[i % 4], fx[i % 4], fz[i % 4] + 3f);
+                yield return W(0.8f);
+                yield return Sum();
+                bool corners = true; string seenAt = "";
+                for (int i = 0; i < peers.Length; i++)
+                {
+                    int pid = peers[i] == "H" ? 0 : pidOf[peers[i]];
+                    bool ok = Near("x" + pid, 0.05f) && Near("z" + pid, 0.05f);
+                    corners &= ok && (Mathf.Abs(N("H", "x" + pid)) > 100f || Mathf.Abs(N("H", "z" + pid)) > 100f);
+                    seenAt += peers[i] + "(" + F1(N("H", "x" + pid)) + ", " + F1(N("H", "z" + pid)) + ") ";
+                }
+                Check("far corners of the map: every player is at the same place (within 5 cm) on every screen: " + seenAt, corners);
+                for (int i = 0; i < peers.Length; i++) yield return Tp(peers[i], -3f + i * 2f, -8f, -3f + i * 2f, 0f);
+                yield return W(0.6f);
+            }
+
             // ------------------------------------------------ 2. movement of a client, watched by the host and by another client
             {
                 int wb = Send(B, "watch", pidA.ToString(), "2.2");

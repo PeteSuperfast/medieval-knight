@@ -140,6 +140,7 @@ namespace MedievalKnight
             Vector3 side = p.x > -Game.ArenaHalf + 4f ? Vector3.left : Vector3.right;
             k.transform.position = new Vector3(p.x, 0f, p.z) + side * (e.radius + gap);
             k.aimOverride = p;
+            g.SnapCamera();
         }
 
         // Picks card 1 and then a stat for any level-up that opens while another test is running (the panel pauses the game).
@@ -260,6 +261,71 @@ namespace MedievalKnight
             for (int l = 1; l < Progress.MaxLevel; l++) { table += " L" + l + ">" + (l + 1) + "=" + Progress.Need(l); total += Progress.Need(l); }
             Log("exp table:" + table + "  total=" + total);
             { bool inc = true; for (int l = 2; l < Progress.MaxLevel; l++) inc &= Progress.Need(l) > Progress.Need(l - 1); Check("exp table: 24 steps, strictly increasing, 30 / 45 first, 1970 last, 16,410 in total", inc && Progress.MaxLevel == 25 && Progress.Need(1) == 30 && Progress.Need(2) == 45 && Progress.Need(24) == 1970 && total == 16410); }
+
+            // ------------------------------------------------ the big map: layout, collision, zones, frame time
+            {
+                Check("map: ArenaHalf 190 (380 x 380 m), the spawn point is in town, the lair is 300 m north of it",
+                    Game.ArenaHalf == 190f && MapLayout.InTown(Game.SpawnPointFor(0).x, Game.SpawnPointFor(0).z) && Mathf.Abs((MapLayout.Lair - MapLayout.TownSpawn).magnitude - 300f) < 0.5f);
+                Check("map: zones are where the layout says (town, meadow, autumn, pine, farm, lake, mountain, lair) and only lake / mountain are not walkable",
+                    MapLayout.ZoneAt(0f, -150f) == Zone.Town && MapLayout.ZoneAt(0f, -20f) == Zone.Meadow && MapLayout.ZoneAt(-140f, 40f) == Zone.AutumnForest
+                    && MapLayout.ZoneAt(150f, 120f) == Zone.DarkPineForest && MapLayout.ZoneAt(140f, -90f) == Zone.Farmland && MapLayout.ZoneAt(-140f, -140f) == Zone.Lake
+                    && MapLayout.ZoneAt(-140f, 150f) == Zone.Mountain && MapLayout.ZoneAt(0f, 150f) == Zone.Lair
+                    && !MapLayout.Walkable(-140f, -140f) && !MapLayout.Walkable(-140f, 150f) && MapLayout.Walkable(0f, 0f));
+
+                // walk into the corner, the lake, the mountain, the town wall (real movement, collision runs in Knight.Simulate)
+                k.aimOverride = null;
+                k.moveOverride = new Vector2(1f, -1f).normalized;
+                k.transform.position = new Vector3(186f, 0f, -186f); g.SnapCamera();
+                yield return W(1.2f);
+                Vector3 pc = k.transform.position;
+                k.moveOverride = new Vector2(-1f, 0f);
+                k.transform.position = new Vector3(-86f, 0f, -140f);
+                yield return W(1.0f);
+                Vector3 pl = k.transform.position;
+                k.moveOverride = new Vector2(-1f, 0f);
+                k.transform.position = new Vector3(-70f, 0f, 130f);
+                yield return W(1.6f);
+                Vector3 pm = k.transform.position;
+                k.moveOverride = new Vector2(0f, -1f);
+                k.transform.position = new Vector3(30f, 0f, -97f);
+                yield return W(1.0f);
+                Vector3 pw = k.transform.position;
+                k.transform.position = new Vector3(0f, 0f, -97f);
+                yield return W(1.2f);
+                Vector3 pg = k.transform.position;
+                k.moveOverride = null;
+                Log("map walls: corner " + V(pc) + ", lake " + V(pl) + ", mountain " + V(pm) + ", town wall " + V(pw) + ", gate " + V(pg));
+                Check("map: the corner is clamped at the fence (x, z within 189.7)", Mathf.Abs(pc.x) <= 189.7f && Mathf.Abs(pc.z) <= 189.7f && pc.x > 185.5f && pc.z < -185.5f);
+                Check("map: the lake stops the knight at its shore (x >= -90)", pl.x >= -90.01f && pl.x < -88f);
+                Check("map: the mountain stops the knight at its foot (x >= -80)", pm.x >= -80.01f && pm.x < -78f);
+                Check("map: the town wall stops the knight (z >= -99.0) but the gate lets him through (z < -102)", pw.z >= -99.05f && pw.z < -98f && pg.z < -102f);
+                Vector2 tc; float tr;
+                bool haveTree = Obstacles.NearestCircle(new Vector2(0f, 60f), Obstacles.Players, out tc, out tr);
+                Vector3 treeP = new Vector3(tc.x, 0f, tc.y);
+                Vector3 pushedK = Obstacles.Push(treeP, 0.4f, Obstacles.Players), pushedS = Obstacles.Push(treeP, 0.4f, Obstacles.Enemies);
+                Check("map: a tree stops a knight but not a slime (" + Obstacles.Count + " obstacles in total)",
+                    haveTree && (pushedK - treeP).magnitude > 0.4f && (pushedS - treeP).magnitude < 0.001f);
+
+                // frame time in the middle of the town, the open meadow and deep in a forest (log only)
+                string ft = "";
+                Vector3[] spots = { new Vector3(0f, 0f, -150f), new Vector3(0f, 0f, 0f), new Vector3(-140f, 0f, 40f), new Vector3(150f, 0f, 120f) };
+                string[] names = { "town", "meadow", "autumn forest", "pine forest" };
+                for (int i = 0; i < spots.Length; i++)
+                {
+                    k.transform.position = spots[i]; g.SnapCamera();
+                    yield return W(0.6f);
+                    float sum = 0f; int frames = 0, worst = 0;
+                    float t0 = Time.realtimeSinceStartup;
+                    float maxDt = 0f;
+                    while (Time.realtimeSinceStartup - t0 < 2f) { yield return null; sum += Time.unscaledDeltaTime; maxDt = Mathf.Max(maxDt, Time.unscaledDeltaTime); frames++; }
+                    ft += names[i] + " " + (sum / Mathf.Max(1, frames) * 1000f).ToString("0.0") + " ms (worst " + (maxDt * 1000f).ToString("0") + " ms)  ";
+                    worst = frames;
+                }
+                Log("frame time (1280x720, selftest window): " + ft);
+                k.transform.position = new Vector3(2f, 0f, -5f); g.SnapCamera();
+                ParkSlimes();
+                yield return W(0.3f);
+            }
 
             // ------------------------------------------------ movement (real key path)
             Vector3 p0 = k.transform.position;

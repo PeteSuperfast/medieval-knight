@@ -28,10 +28,10 @@
 | --- | --- | --- | --- |
 | เอกสาร | requirement / design / tech / decisions | commit แล้ว | `4ca65db` |
 | A | Shift วิ่ง, Space dash (อมตะ 0.5 วิ, stamina 25), คลิกขวายกโล่, stamina ใช้กับ dash อย่างเดียว, Tab เปิดหน้าต่าง, Esc ปิด Tab ก่อน | commit แล้ว | `7751284` |
-| B | เลเวล 25 + ตาราง EXP, ตายแล้วรีเซ็ต, Soul, หน้าจอ YOU DIED, protocol 2 | ยังไม่ commit (กำลังทำ หรือยังไม่เริ่ม) | – |
-| C | อาหาร (Apple / Roast Meat) | ยัง | – |
-| D | หน้าต่าง Tab รวมช่องเก็บของ + ค่าสถานะ, รูปดาบ | ยัง | – |
-| E | แมพ 380 x 380 ม. แบบ chunk + collision (ใหญ่และเสี่ยงสุด) | ยัง | – |
+| B | เลเวล 25 + ตาราง EXP, ตายแล้วรีเซ็ต, Soul, หน้าจอ YOU DIED, protocol 2 | commit แล้ว; build + selftest รันซ้ำ ผ่าน (109 PASS, 0 FAIL) | `feb415e` |
+| C | อาหาร (Apple / Roast Meat) | commit แล้ว; selftest ผ่าน; mptest ผ่านหมดยกเว้น 1 เช็ค "A's walk looks smooth on B" ซึ่งพังเหมือนกันบน `4b146ba` (ก่อนเริ่มงานนี้) = ไม่ใช่ regression | `5013ddd` |
+| D | หน้าต่าง Tab รวมช่องเก็บของ + ค่าสถานะ, รูปดาบ | commit แล้ว (เก็บงานค้างของ agent ก่อนหน้า) build + selftest ผ่าน 0 FAIL; ไอคอนดาบ render จริงจากโมเดล (ไม่ต้องใช้แผน B) | `a866701` |
+| E | แมพ 380 x 380 ม. แบบ chunk + collision (ใหญ่และเสี่ยงสุด) | commit แล้ว: build + selftest ผ่าน 0 FAIL (เพิ่มเช็คแมพ/ชนกำแพง/ทะเลสาบ/ภูเขา/ต้นไม้/เฟรมไทม์ ~4.2 ms ทุกจุด), mptest ผ่านหมดยกเว้นเช็คการเดินเนียนข้อเดิม + เช็คมุมแมพ 4 มุมผ่าน; ฉากสร้าง 55 ms 1,270 chunk mesh 1,304 obstacle | ดู git log |
 | F | ระบบเกิดสไลม์เป็นแพ็ครายคน, leash ของ Minotaur, ลูกศรชี้รัง | ยัง | – |
 | G | อัปเดต CLAUDE.md ของเกม, zip, copy ขึ้น Drive | ยัง | – |
 
