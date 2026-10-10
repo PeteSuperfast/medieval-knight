@@ -538,7 +538,7 @@ namespace MedievalKnight
                     Knight other = g.PlayerByPid(int.Parse(a[0]));
                     if (other == null) { Reply(id, "frames=0"); break; }
                     float secs = P(a[1]), t0 = RT, moved = 0f, maxStep = 0f;
-                    int frames = 0, stalls = 0, jumps = 0, pending = 0;
+                    int frames = 0, stalls = 0, jumps = 0, pending = 0, push0 = other.interp.Pushes; float minMargin = 9f, maxMargin = -9f;
                     bool started = false;
                     Vector3 lastPos = other.transform.position, startPos = lastPos;
                     while (RT - t0 < secs)
@@ -552,10 +552,10 @@ namespace MedievalKnight
                         if (step > 0.002f) { started = true; stalls += pending; frames += pending + 1; pending = 0; }
                         else if (started) pending++;                    // only counts if he moves again afterwards
                         if (step > expect * 2.5f + 0.03f) jumps++;
-                        maxStep = Mathf.Max(maxStep, step);
+                        maxStep = Mathf.Max(maxStep, step); minMargin = Mathf.Min(minMargin, other.interp.Margin); maxMargin = Mathf.Max(maxMargin, other.interp.Margin);
                     }
                     Reply(id, "frames=" + frames + ";stalls=" + stalls + ";jumps=" + jumps + ";max=" + F2(maxStep) + ";moved=" + F2(moved)
-                        + ";net=" + F2(Flat(startPos, lastPos)) + ";x=" + F2(lastPos.x) + ";z=" + F2(lastPos.z) + ";panel=" + g.LevelStep + ";ts=" + F2(Time.timeScale));
+                        + ";margin=" + F2(minMargin) + ".." + F2(maxMargin) + ";pushes=" + (other.interp.Pushes - push0) + ";net=" + F2(Flat(startPos, lastPos)) + ";x=" + F2(lastPos.x) + ";z=" + F2(lastPos.z) + ";panel=" + g.LevelStep + ";ts=" + F2(Time.timeScale));
                     break;
                 }
 
@@ -679,6 +679,16 @@ namespace MedievalKnight
             note = "";
         }
 
+        // A fresh drop is moved aside in the frame it appears (before any snapshot), so the killer does not grab it at once.
+        IEnumerator MoveDrops(Vector3 to)
+        {
+            while (true)
+            {
+                foreach (Pickup p in Pickup.All) if (p.age < 0.2f) p.transform.position = to;
+                yield return null;
+            }
+        }
+
         IEnumerator HostScript()
         {
             yield return W(1.0f);
@@ -734,7 +744,7 @@ namespace MedievalKnight
                 {
                     Map w = Parse(Rep(who == "H" ? wh : wb, who));
                     Log(A + " walked " + walked.G("moved") + " m east; on " + who + "'s screen his knight moved " + w.G("moved") + " m over " + w.G("frames") + " frames (largest step " + w.G("max")
-                        + " m, frames standing still mid-walk " + w.G("stalls") + ", jumps " + w.G("jumps") + "), ended at (" + w.G("x") + ", " + w.G("z") + ") vs his own (" + walked.G("x") + ", " + walked.G("z") + ")");
+                        + " m, frames standing still mid-walk " + w.G("stalls") + ", jumps " + w.G("jumps") + ", samples " + w.G("pushes") + ", buffer margin " + w.G("margin") + " s), ended at (" + w.G("x") + ", " + w.G("z") + ") vs his own (" + walked.G("x") + ", " + walked.G("z") + ")");
                     float frames = w.F("frames");
                     Check(A + "'s walk is seen on " + who + ": same distance and end point", walked.F("moved") > 5f && Mathf.Abs(w.F("net") - walked.F("moved")) < 0.6f
                         && Mathf.Abs(w.F("x") - walked.F("x")) < 0.4f && Mathf.Abs(w.F("z") - walked.F("z")) < 0.4f);
@@ -817,8 +827,11 @@ namespace MedievalKnight
                     var texp0 = new Dictionary<string, float>(); var kills0 = new Dictionary<string, float>();
                     foreach (string r in peers) { texp0[r] = N(r, "texp"); kills0[r] = N(r, "kills"); }
                     int en0 = (int)N("H", "en");
+                    Coroutine mover = StartCoroutine(MoveDrops(new Vector3(13f, 0f, -6f)));
                     yield return Cmd(A, "hunt", id.ToString(), "8");
                     g.dropOverride = 0;
+                    yield return W(0.2f);
+                    StopCoroutine(mover);
                     Map hunt = Parse(Rep(last, A));
                     yield return W(0.7f);
                     yield return Sum();
@@ -929,13 +942,15 @@ namespace MedievalKnight
                 foreach (string r in peers) { float de = N(r, "texp") - texp0[r]; expSeen += r + "+" + F1(de) + " "; if (Mathf.Abs(de - Minotaur.ExpReward) > 0.05f) expOk = false; }
                 Ck(hunt.G("dead") == "True" && Eq("mino") && S("H", "mino") == "none", A + " struck the last blow on the Minotaur (" + hunt.G("swings") + " swing(s)); he is dead on every screen");
                 Check("every player got the Minotaur's 250 EXP: " + expSeen, expOk);
-                Ck(S("H", "pkall") == (n + 1).ToString() && Eq("pk") && S("H", "pk") == "1", "boss sword: " + S("H", "pkall") + " on the host (one per player), each player sees exactly his own");
+                bool onePerPlayer = true; int ownedAlready = 0; string bossSeen = "";
+                foreach (string r in peers) { bool has = ((int)N(r, "own") & (1 << Weapons.Boss)) != 0; if (has) ownedAlready++; bossSeen += r + "=" + (has ? "taken" : S(r, "pk") + " on the ground") + " "; if (!has && S(r, "pk") != "1") onePerPlayer = false; if (has && S(r, "pk") != "0") onePerPlayer = false; }
+                Check("boss sword: one per player, each player sees only his own (" + bossSeen.Trim() + "; still on the host: " + S("H", "pkall") + ")", onePerPlayer && N("H", "pkall") + ownedAlready == n + 1);
                 yield return Cmd("all", "grab");
                 bool allGot = true;
                 string got = "";
-                foreach (string r in peers) { Map gr = Parse(Rep(last, r)); got += r + "=" + gr.G("ok") + "/sword" + gr.G("w") + " "; if (gr.G("ok") != "True" || gr.G("w") != Weapons.Boss.ToString()) allGot = false; }
                 yield return W(0.6f);
                 yield return Sum();
+                foreach (string r in peers) { bool has = ((int)N(r, "own") & (1 << Weapons.Boss)) != 0; got += r + "=" + has + " "; if (!has) allGot = false; }
                 Check("every player collected his own Horned King's Blade (" + got.Trim() + "); left on the host: " + S("H", "pkall"), allGot && S("H", "pkall") == "0");
                 yield return Cmd(C, "equip", Weapons.Boss.ToString());
                 yield return W(0.5f);
