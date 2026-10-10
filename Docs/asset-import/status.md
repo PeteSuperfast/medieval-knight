@@ -94,3 +94,7 @@
 ## เหลืออะไร / รอใคร
 - ขั้น 6 zip ขึ้น Drive: ดูส่วนท้ายถ้าทำแล้ว
 - ถ้าอยากให้ถังไม้/ตอไม้บล็อกผู้เล่น หรือเปิด bloom/SSAO ในเกม ต้องให้พีทตัดสิน (ข้อ 1 และ 6)
+
+## ขั้น 6 เสร็จ (2026-10-11)
+- zip `medieval-knight-win64.zip` (โครง `MedievalKnight/...` เดิม, 184 ไฟล์, 38,590,019 bytes) copy ทับใน `G:\My Drive\PusomGames\` แล้ว จาก build ที่ผ่าน selftest + mptest
+- ไม่ได้ push GitHub
