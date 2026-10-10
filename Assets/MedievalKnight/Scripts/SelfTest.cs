@@ -339,8 +339,8 @@ namespace MedievalKnight
 
                 // frame time in the middle of the town, the open meadow and deep in a forest (log only)
                 string ft = "";
-                Vector3[] spots = { new Vector3(0f, 0f, -150f), new Vector3(0f, 0f, 0f), new Vector3(-140f, 0f, 40f), new Vector3(150f, 0f, 120f) };
-                string[] names = { "town", "meadow", "autumn forest", "pine forest" };
+                Vector3[] spots = { new Vector3(0f, 0f, -150f), new Vector3(0f, 0f, 0f), new Vector3(-140f, 0f, 40f), new Vector3(150f, 0f, 120f), new Vector3(-30f, 0f, -140f), new Vector3(130f, 0f, -85f), new Vector3(0f, 0f, -108f) };
+                string[] names = { "town", "meadow", "autumn forest", "pine forest", "town houses", "farm", "gate" };
                 for (int i = 0; i < spots.Length; i++)
                 {
                     k.transform.position = spots[i]; g.SnapCamera();
@@ -351,6 +351,11 @@ namespace MedievalKnight
                     while (Time.realtimeSinceStartup - t0 < 2f) { yield return null; sum += Time.unscaledDeltaTime; maxDt = Mathf.Max(maxDt, Time.unscaledDeltaTime); frames++; }
                     ft += names[i] + " " + (sum / Mathf.Max(1, frames) * 1000f).ToString("0.0") + " ms (worst " + (maxDt * 1000f).ToString("0") + " ms)  ";
                     worst = frames;
+                    g.camZoom = 2.4f; g.SnapCamera();                          // pulled back for the asset screenshots (after the timing)
+                    yield return W(0.4f);
+                    Shot("asset_" + names[i].Replace(' ', '_'));
+                    yield return W(0.3f);                                      // the capture happens at the end of this frame: stay put
+                    g.camZoom = 1f; g.SnapCamera();
                 }
                 Log("frame time (1280x720, selftest window): " + ft);
                 k.transform.position = new Vector3(2f, 0f, -5f); g.SnapCamera();

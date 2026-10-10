@@ -619,6 +619,35 @@ public static class AssetImport
         Log("scene saved=" + saved + " " + ScenePath);
     }
 
+    // Step 5: the game builds its scenery in code and merges the meshes, so the FBX meshes must be readable at runtime and the
+    // prefabs must be reachable from Resources. KitCatalog.prefab lists them (the prefabs themselves stay in Assets/Prefabs).
+    //   Unity -batchmode -quit -projectPath <proj> -executeMethod AssetImport.MakeCatalog
+    [MenuItem("MedievalKnight/Asset Import/Make Kit Catalog")]
+    public static void MakeCatalog()
+    {
+        var list = new List<GameObject>();
+        foreach (var d in Defs)
+        {
+            var imp = AssetImporter.GetAtPath(d.fbx) as ModelImporter;
+            if (imp != null && !imp.isReadable)
+            {
+                imp.isReadable = true;                 // import setting only (.meta); the model file is not touched
+                imp.SaveAndReimport();
+            }
+            var pf = AssetDatabase.LoadAssetAtPath<GameObject>(d.PrefabPath);
+            if (pf == null) { Debug.LogError("ASSETIMPORT: missing prefab " + d.PrefabPath); continue; }
+            list.Add(pf);
+        }
+        EnsureDir("Assets/MedievalKnight/Resources/Kit");
+        if (list.Count == 0) { Debug.LogError("ASSETIMPORT: no prefabs"); return; }
+        var go = new GameObject("KitCatalog");
+        go.AddComponent<MedievalKnight.KitCatalog>().prefabs = list.ToArray();
+        PrefabUtility.SaveAsPrefabAsset(go, "Assets/MedievalKnight/Resources/Kit/KitCatalog.prefab");
+        UnityEngine.Object.DestroyImmediate(go);
+        AssetDatabase.SaveAssets();
+        Log("catalog with " + list.Count + " prefabs");
+    }
+
     static UniversalRenderPipelineAsset capUrp;
     static RenderPipelineAsset capPrev;
     static int capFrame, capIndex;

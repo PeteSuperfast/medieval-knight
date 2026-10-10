@@ -204,7 +204,7 @@ namespace MedievalKnight
         readonly Dictionary<long, List<CombineInstance>> buckets = new Dictionary<long, List<CombineInstance>>();
         public int Instances { get; private set; }
 
-        public void Add(Mesh mesh, Matrix4x4 xf, Material mat, bool shadows)
+        public void Add(Mesh mesh, Matrix4x4 xf, Material mat, bool shadows, int subMesh = 0)
         {
             int mi;
             if (!matIndex.TryGetValue(mat, out mi)) { mi = mats.Count; mats.Add(mat); matIndex[mat] = mi; }
@@ -215,7 +215,7 @@ namespace MedievalKnight
             long key = (((long)cz * 16 + cx) * 4096 + mi) * 2 + (shadows ? 1 : 0);
             List<CombineInstance> l;
             if (!buckets.TryGetValue(key, out l)) { l = new List<CombineInstance>(); buckets[key] = l; }
-            l.Add(new CombineInstance { mesh = mesh, subMeshIndex = 0, transform = xf });
+            l.Add(new CombineInstance { mesh = mesh, subMeshIndex = subMesh, transform = xf });
             Instances++;
         }
 
@@ -264,6 +264,41 @@ namespace MedievalKnight
 
         float R(float a, float c) { return a + (float)rng.NextDouble() * (c - a); }
 
+        // Art_kit scenery (Kit.cs). Its own fixed-seed stream: the main rng above is never touched by the kit, so every
+        // position and every obstacle stays exactly as before and only the look of the pieces changes.
+        readonly System.Random deco = new System.Random(11);
+        readonly Dictionary<string, int> kitCount = new Dictionary<string, int>();
+        readonly List<Vector4> kitHouses = new List<Vector4>();               // x, z, yaw, depth of the cottages
+        Material brickRoof;
+        Dictionary<string, Material>[] autumnOver;
+        float D(float a, float c) { return a + (float)deco.NextDouble() * (c - a); }
+
+        // Puts a kit prefab (all its meshes) into the batcher. False = no catalog: the caller draws the old primitives.
+        bool PutKit(string name, Vector3 pos, float yaw, float scale, Dictionary<string, Material> over = null, bool shadow = true)
+        {
+            Kit.Part[] parts = Kit.Get(name);
+            if (parts == null || parts.Length == 0) return false;
+            Matrix4x4 root = Matrix4x4.TRS(pos, Quaternion.Euler(0f, yaw, 0f), Vector3.one * scale);
+            foreach (Kit.Part part in parts)
+            {
+                int n = part.mesh.subMeshCount;
+                for (int i = 0; i < n; i++)
+                {
+                    int j = Mathf.Min(i, part.mats.Length - 1);
+                    Material m = part.mats[j];
+                    Material ov;
+                    if (over != null && over.TryGetValue(part.keys[j], out ov)) m = ov;
+                    b.Add(part.mesh, root * part.local, m, shadow, i);
+                }
+            }
+            int c;
+            kitCount.TryGetValue(name, out c);
+            kitCount[name] = c + 1;
+            return true;
+        }
+
+        static bool HasKit { get { return Kit.Get("Tree_Pine") != null; } }
+
         public static void Build(Transform parent)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -282,8 +317,13 @@ namespace MedievalKnight
             w.Forests();
             w.Decoration();
             w.EdgeFence();
+            w.KitProps();
             int chunks = w.b.Build(parent);
             Debug.Log("WORLD built in " + sw.ElapsedMilliseconds + " ms: " + w.b.Instances + " pieces merged into " + chunks + " chunk meshes, " + Obstacles.Count + " obstacles");
+            var kc = new System.Text.StringBuilder();
+            int kt = 0;
+            foreach (KeyValuePair<string, int> kv in w.kitCount) { kc.Append(kv.Key).Append('=').Append(kv.Value).Append(' '); kt += kv.Value; }
+            Debug.Log("WORLD kit: " + kt + " kit pieces placed: " + kc);
         }
 
         void MakeMaterials()
@@ -486,6 +526,20 @@ namespace MedievalKnight
         void House(float x, float z, float yaw, Material walls, Material roof, float w = 7f, float d = 6f, float h = 4.2f)
         {
             Vector3 o = new Vector3(x, 0f, z);
+            // the kit cottage (its front faces -Z in the prefab, the primitive house had its door on +Z) replaces the ordinary
+            // houses; the barn (w > 7.5) stays a primitive. The collision box below is the same either way.
+            Dictionary<string, Material> over = null;
+            if (roof == roofRed)
+            {
+                if (brickRoof == null) brickRoof = Prims.Lit(new Color(0.71f, 0.32f, 0.23f));       // #B5523B, brick roof from the palette
+                over = new Dictionary<string, Material> { { "roof_purple", brickRoof } };
+            }
+            if (w <= 7.5f && PutKit("Cottage", o, yaw + 180f, 1.25f, over))
+            {
+                kitHouses.Add(new Vector4(x, z, yaw, d));
+            }
+            else
+            {
             Box(o + new Vector3(0f, h * 0.5f, 0f), new Vector3(w, h, d), yaw, walls);
             RoofAt(o + new Vector3(0f, h, 0f), w + 1f, 2.6f, d + 1f, yaw, roof);
             Box(Local(o, yaw, 0f, 1.1f, d * 0.5f + 0.04f), new Vector3(1.2f, 2.2f, 0.12f), yaw, door);
@@ -494,6 +548,7 @@ namespace MedievalKnight
             Box(Local(o, yaw, -w * 0.5f + 0.1f, h * 0.5f, d * 0.5f + 0.05f), new Vector3(0.25f, h, 0.14f), yaw, woodDark);
             Box(Local(o, yaw, w * 0.5f - 0.1f, h * 0.5f, d * 0.5f + 0.05f), new Vector3(0.25f, h, 0.14f), yaw, woodDark);
             Box(Local(o, yaw, 0f, h - 0.5f, d * 0.5f + 0.05f), new Vector3(w, 0.25f, 0.14f), yaw, woodDark);
+            }
             Obstacles.AddBox(new Vector2(x, z), new Vector2(w * 0.5f + 0.1f, d * 0.5f + 0.1f), yaw, Obstacles.Both);
             Keep(x, z, Mathf.Max(w, d) * 0.5f + 4f);
         }
@@ -593,10 +648,25 @@ namespace MedievalKnight
             float a = yaw * Mathf.Deg2Rad;
             Vector3 dir = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));                // along the fence
             // yaw 0 runs along +Z; the east side is such a fence, the north / south sides are rotated by 90
+            bool kitFence = HasKit;
+            if (kitFence)
+            {
+                // kit fence pieces (2 m, along their own X, rails on the local -Z side): turn them along the line, rails toward the yard
+                float psi = yaw - 90f;
+                Vector3 front = new Vector3(-Mathf.Sin(psi * Mathf.Deg2Rad), 0f, -Mathf.Cos(psi * Mathf.Deg2Rad));
+                if (Vector3.Dot(front, center - MapLayout.DummyPos) > 0f) psi += 180f;
+                int pieces = Mathf.CeilToInt(length / 1.95f);
+                float step = length / pieces;
+                for (int i = 0; i < pieces; i++)
+                    PutKit("Fence_Straight_2m", center + dir * (-length * 0.5f + step * (i + 0.5f)), psi, step / 1.95f);
+            }
+            else
+            {
             for (float s = -length * 0.5f; s <= length * 0.5f + 0.01f; s += 2.8f)
                 Box(center + dir * s + Vector3.up * 0.65f, new Vector3(0.26f, 1.3f, 0.26f), yaw, woodDark);
             Box(center + Vector3.up * 1.0f, new Vector3(0.12f, 0.14f, length), yaw, wood);
             Box(center + Vector3.up * 0.5f, new Vector3(0.12f, 0.14f, length), yaw, wood);
+            }
             Obstacles.AddBox(new Vector2(center.x, center.z), new Vector2(0.25f, length * 0.5f), yaw, Obstacles.Both);
         }
 
@@ -652,7 +722,19 @@ namespace MedievalKnight
 
         void Rock(float x, float z, float s)
         {
-            Ball(new Vector3(x, 0.3f * s, z), new Vector3(1.5f, 1f, 1.2f) * s, 6, s > 1.6f ? rock : rockB);
+            string kitRock = null;
+            float ks = 1f;
+            if (HasKit)
+            {
+                // same blocking rule as before (s >= 1.4 blocks, smaller ones never did), so the size classes follow it:
+                // low rocks you can step over, then medium and large boulders that have a collision circle
+                char v = "ABC"[Mathf.Abs(Mathf.FloorToInt(x * 7.3f + z * 3.1f)) % 3];
+                if (s < 1.4f) { kitRock = "Rock_Small_" + v; ks = s * 1.7f; }
+                else if (s < 1.9f) { kitRock = "Rock_Medium_" + v; ks = s * 1.05f; }
+                else { kitRock = "Rock_Large_" + v; ks = Mathf.Lerp(0.7f, 1f, (s - 1.9f) / 0.5f); }
+            }
+            if (kitRock != null) PutKit(kitRock, new Vector3(x, 0f, z), Mathf.Abs(x * 13f + z * 5f) % 360f, ks);
+            else Ball(new Vector3(x, 0.3f * s, z), new Vector3(1.5f, 1f, 1.2f) * s, 6, s > 1.6f ? rock : rockB);
             if (s >= 1.4f) Obstacles.AddCircle(new Vector2(x, z), 0.7f * s, Obstacles.Both);
         }
 
@@ -729,6 +811,22 @@ namespace MedievalKnight
             float sc = R(0.85f, 1.5f);
             int v = Mathf.FloorToInt(R(0f, 3f));
             bool pine = zone == Zone.DarkPineForest || (zone != Zone.AutumnForest && rng.NextDouble() < 0.3);
+            if (HasKit)
+            {
+                Dictionary<string, Material> over = null;
+                if (!pine && zone == Zone.AutumnForest)
+                {
+                    // the autumn forest keeps its orange leaves (zone identity), the trunks and shapes are the kit's
+                    if (autumnOver == null) autumnOver = new Dictionary<string, Material>[3];
+                    if (autumnOver[v] == null)
+                        autumnOver[v] = new Dictionary<string, Material> { { "leaf_light", autumn[v] }, { "leaf_under", autumn[(v + 1) % 3] } };
+                    over = autumnOver[v];
+                }
+                string nm = pine ? "Tree_Pine" : (v == 2 ? "Tree_Round_Wide" : "Tree_Round_Slender");
+                PutKit(nm, new Vector3(x, 0f, z), D(0f, 360f), sc * 0.9f, over);
+                Obstacles.AddCircle(new Vector2(x, z), 0.5f * sc, Obstacles.Players);
+                return;
+            }
             Cyl(new Vector3(x, 0f, z), 0.55f * sc, (pine ? 1.4f : 1.9f) * sc, 6, trunk);
             if (pine)
             {
@@ -791,6 +889,12 @@ namespace MedievalKnight
                     float x = gx + R(-3f, 3f), z = gz + R(-3f, 3f);
                     if (Mathf.Abs(x) < MapLayout.Half + 2.5f && Mathf.Abs(z) < MapLayout.Half + 2.5f) continue;
                     float sc = R(0.9f, 1.6f);
+                    if (HasKit)
+                    {
+                        R(0f, 3f); R(0f, 3f);                                   // keep the main rng stream identical
+                        PutKit("Tree_Pine", new Vector3(x, 0f, z), D(0f, 360f), sc * 0.9f);
+                        continue;
+                    }
                     Cyl(new Vector3(x, 0f, z), 0.55f * sc, 1.4f * sc, 6, trunk);
                     Cone(new Vector3(x, 1.0f * sc, z), 3.1f * sc, 2.6f * sc, 6, pines[Mathf.FloorToInt(R(0f, 3f))]);
                     Cone(new Vector3(x, 2.5f * sc, z), 2.2f * sc, 2.2f * sc, 6, pines[Mathf.FloorToInt(R(0f, 3f))]);
@@ -813,10 +917,65 @@ namespace MedievalKnight
             }
         }
 
+        // Small kit pieces with no collision (like the flowers and pebbles of Decoration): grass, mushrooms, stumps, stepping
+        // stones, barrels. Nothing here touches Obstacles, so the collision map is exactly the one of the primitive scenery.
+        void KitProps()
+        {
+            if (!HasKit) return;
+            // grass tufts over the open ground
+            for (int i = 0; i < 1100; i++)
+            {
+                float x = D(-MapLayout.Half + 3f, MapLayout.Half - 3f), z = D(-MapLayout.Half + 3f, MapLayout.Half - 3f);
+                Zone zn = MapLayout.ZoneAt(x, z);
+                if (zn == Zone.Town || zn == Zone.Lake || zn == Zone.Mountain || zn == Zone.Lair || zn == Zone.Farmland || OnRoad(x, z)) continue;
+                if (zn == Zone.DarkPineForest && i % 3 != 0) continue;
+                PutKit("Grass_Tuft", new Vector3(x, 0f, z), D(0f, 360f), D(1.1f, 1.9f), null, false);
+            }
+            // red mushrooms and tree stumps, a few of each, near where the trees are
+            int mush = 0, stumps = 0;
+            for (int i = 0; i < 2000 && (mush < 70 || stumps < 28); i++)
+            {
+                float x = D(-MapLayout.Half + 4f, MapLayout.Half - 4f), z = D(-MapLayout.Half + 4f, MapLayout.Half - 4f);
+                Zone zn = MapLayout.ZoneAt(x, z);
+                if (zn != Zone.Meadow && zn != Zone.AutumnForest && zn != Zone.DarkPineForest) continue;
+                if (OnRoad(x, z) || Kept(x, z, 1.5f)) continue;
+                if (Mathf.Abs(x) < 28f && z > -42f && z < 32f) continue;
+                if (mush < 70 && i % 2 == 0) { PutKit("Mushroom_Red_Cluster", new Vector3(x, 0f, z), D(0f, 360f), D(1.4f, 2.2f), null, false); mush++; }
+                else if (stumps < 28) { PutKit("Tree_Stump", new Vector3(x, 0f, z), D(0f, 360f), D(0.9f, 1.4f)); stumps++; }
+            }
+            // by the town houses: a path of stepping stones from the door, a barrel standing against the wall, sometimes a lying one
+            for (int h = 0; h < kitHouses.Count; h++)
+            {
+                Vector4 k = kitHouses[h];
+                Vector3 o = new Vector3(k.x, 0f, k.y);
+                float yaw = k.z, d = k.w;
+                for (int s = 0; s < 3; s++)
+                    PutKit("Stepping_Stone", Local(o, yaw, D(-0.35f, 0.35f), 0.02f, d * 0.5f + 1.6f + s * 1.1f), D(0f, 360f), D(1.5f, 2.0f), null, false);
+                PutKit("Barrel_Upright", Local(o, yaw, 2.5f, 0f, d * 0.5f + 0.5f), D(0f, 360f), 1f);
+                if (h % 2 == 0) PutKit("Barrel_Lying", Local(o, yaw, 3.2f, 0f, d * 0.5f + 0.7f), yaw + D(-20f, 20f), 1f);
+                PutKit("Grass_Tuft", Local(o, yaw, -2.8f, 0f, d * 0.5f + 0.5f), D(0f, 360f), 1.5f, null, false);
+            }
+            // a barrel at each market stall
+            float[] sx = { -15f, 15f, -15f, 15f };
+            float[] sz = { -141f, -163f, -163f, -141f };
+            for (int i = 0; i < 4; i++)
+                PutKit("Barrel_Upright", new Vector3(sx[i] + 2.4f, 0f, sz[i] + 0.2f), D(0f, 360f), 1f);
+        }
+
         void EdgeFence()
         {
             float f = MapLayout.Half + 0.7f;
-            for (int side = 0; side < 4; side++)
+            bool kitFence = HasKit;
+            for (int side = 0; side < 4 && kitFence; side++)
+            {
+                // kit fence pieces round the map, rails toward the inside (the piece's front is -Z, like the north side)
+                Quaternion q = Quaternion.Euler(0f, side * 90f, 0f);
+                int pieces = Mathf.CeilToInt(2f * f / 1.95f);
+                float step = 2f * f / pieces;
+                for (int i = 0; i < pieces; i++)
+                    PutKit("Fence_Straight_2m", q * new Vector3(-f + step * (i + 0.5f), 0f, f), side * 90f, step / 1.95f);
+            }
+            for (int side = 0; side < 4 && !kitFence; side++)
             {
                 Quaternion q = Quaternion.Euler(0f, side * 90f, 0f);
                 for (float x = -f; x <= f + 0.01f; x += 2.53f)
