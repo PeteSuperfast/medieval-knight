@@ -18,8 +18,10 @@ namespace MedievalKnight
         static readonly Vector3 MinotaurHome = new Vector3(0f, 0f, 12.5f);
         static readonly Vector3 DummyPos = new Vector3(5f, 0f, -3.5f);
         static readonly Vector3 KnightSpawn = new Vector3(0f, 0f, -5f);
+        static readonly Vector3 MenuFocus = new Vector3(0f, 0f, 3f);
 
         public Camera cam;
+        public Menu menu;
         public Knight knight;                      // the knight this machine controls (HUD, camera, input)
         public readonly List<Knight> players = new List<Knight>();   // everyone in the arena, the local knight included
         public Dummy dummy;
@@ -63,6 +65,7 @@ namespace MedievalKnight
         Transform actors;
         bool waveQueued, started, readyPending, wiped;
         int nextNetId;
+        float leaveAskedAt = -10f;
         float levelUpOpenAt, waveAt, minoRespawnAt;
         float shakeAmp, shakeTime, shakeDur;
         float hitStopUntil;
@@ -80,6 +83,7 @@ namespace MedievalKnight
             I = this;
             Args.Parse();
             QualitySettings.vSyncCount = 1;
+            Application.runInBackground = true;        // the menu must keep running (a join in progress) without focus
 
             SetupCamera();
             SetupLight();
@@ -91,10 +95,45 @@ namespace MedievalKnight
 
             hud = new GameObject("Hud").AddComponent<Hud>();
             hud.transform.SetParent(transform, false);
+            hud.SetVisible(false);
+            menu = new GameObject("Menu").AddComponent<Menu>();
+            menu.transform.SetParent(transform, false);
+            camFocus = MenuFocus;
+            PlaceCamera(Vector3.zero);
 
-            StartSession();
+            // Normal play starts at the menu. The command line can go straight into a mode (see Args.cs).
+            string name = Args.name ?? "Knight";
+            if (Args.host)
+            {
+                string error = Net.StartHost(Args.port, name);
+                if (error == null) StartSession();
+                else menu.Show(error);
+            }
+            else if (Args.joinHost != null)
+            {
+                menu.ShowConnecting(Args.joinHost, Args.port);
+                StartCoroutine(JoinFromCommandLine(name));
+            }
+            else if (Args.selfTestDir != null || Args.single)
+            {
+                Net.StartSingle(name);
+                StartSession();
+            }
+            else menu.Show("");
 
             SelfTest.StartIfRequested(gameObject);
+            MpTest.StartIfRequested(gameObject);
+        }
+
+        System.Collections.IEnumerator JoinFromCommandLine(string name)
+        {
+            if (Args.joinDelay > 0f) yield return new WaitForSecondsRealtime(Args.joinDelay);
+            menu.BeginJoin(Args.joinHost, Args.port, name);
+        }
+
+        void OnApplicationQuit()
+        {
+            Net.Shutdown(Net.IsHost ? "The host closed the game." : "left the game");
         }
 
         void Start()
@@ -116,11 +155,217 @@ namespace MedievalKnight
             wave = 0; slimesAlive = 0; wiped = false;
             minoRespawnAt = 0f; hitStopUntil = 0f; inputBlockUntil = 0f; levelUpOpenAt = 0f;
             knight = SpawnKnight(Net.LocalPid, Net.LocalName, false);
+            menu.Hide();
             hud.SetVisible(true);
             if (Net.Authority) SpawnActors();
             camFocus = knight.transform.position;
             PlaceCamera(Vector3.zero);
             if (started) Sfx.I.Play(Snd.Ready); else readyPending = true;
+            Debug.Log("SESSION start: " + Net.Mode + ", player " + Net.LocalPid + " '" + Net.LocalName + "'");
+        }
+
+        // Back to the start menu (Esc twice, the host closed the game, the connection dropped). The sockets are
+        // closed by the caller (Net.Shutdown) - this only takes the arena apart.
+        public void EndSession(string message)
+        {
+            if (!InSession) { menu.Show(message); return; }
+            InSession = false;
+            foreach (Knight k in players) { k.gameObject.SetActive(false); Destroy(k.gameObject); }
+            players.Clear();
+            knight = null;
+            ClearWorld();
+            offers = null;
+            LevelStep = 0;
+            InventoryOpen = false;
+            hud.HideLevelUp();
+            hud.HideInventory();
+            hud.SetVisible(false);
+            Time.timeScale = 1f;
+            Application.runInBackground = true;
+            camFocus = MenuFocus;
+            PlaceCamera(Vector3.zero);
+            Debug.Log("SESSION end: " + message);
+            menu.Show(message);
+        }
+
+        // Esc in the arena: asks once, the second press within 3 seconds leaves.
+        void LeaveKey()
+        {
+            if (Time.unscaledTime > leaveAskedAt + 3f)
+            {
+                leaveAskedAt = Time.unscaledTime;
+                hud.Notice(Net.IsHost ? "Press Esc again to close the game for everyone and go to the menu"
+                    : "Press Esc again to leave to the menu", new Color(1f, 0.85f, 0.5f));
+                return;
+            }
+            LeaveToMenu();
+        }
+
+        public void LeaveToMenu()
+        {
+            Net.Shutdown(Net.IsHost ? "The host closed the game." : "left the game");
+            EndSession("");
+        }
+
+        // ---------------------------------------------------------------- online: other players
+
+        // quiet: somebody who was already in the game when this machine joined.
+        public void OnPlayerJoined(int pid, string name, bool quiet)
+        {
+            if (!InSession || pid == Net.LocalPid || PlayerByPid(pid) != null) return;
+            SpawnKnight(pid, name, true);
+            if (!quiet)
+            {
+                hud.Notice(name + " joined the game   (" + players.Count + " / " + Net.MaxPlayers + " players)", Knight.UiColor(pid));
+                Sfx.I.Play(Snd.Ready, 0.5f);
+            }
+            Debug.Log("PLAYER joined: " + pid + " '" + name + "', players " + players.Count);
+        }
+
+        public void OnPlayerLeft(int pid, string why)
+        {
+            Knight k = PlayerByPid(pid);
+            if (!InSession || k == null || !k.remote) return;
+            players.Remove(k);
+            Fx.I.Dust(k.transform.position, 14, 1.4f);
+            hud.Notice(k.playerName + " left the game   (" + players.Count + " / " + Net.MaxPlayers + " players)", new Color(1f, 0.7f, 0.5f));
+            Debug.Log("PLAYER left: " + pid + " '" + k.playerName + "' (" + why + "), players " + players.Count);
+            k.gameObject.SetActive(false);
+            Destroy(k.gameObject);
+        }
+
+        // ---------------------------------------------------------------- online: the world snapshot
+
+        readonly HashSet<int> seenIds = new HashSet<int>();
+
+        // Host, 15 times a second: counters, every knight, every enemy, every pickup.
+        public NetW WriteSnapshot()
+        {
+            var w = new NetW(Msg.Snapshot);
+            w.F32(Time.unscaledTime).U16(wave).U8(Mathf.Min(slimesAlive, 255));
+            w.F32(minotaur != null && !minotaur.Dead ? -1f : Mathf.Max(0f, MinotaurRespawnIn));
+
+            w.U8(players.Count);
+            for (int i = 0; i < players.Count; i++)
+            {
+                w.U8(players[i].pid);
+                Net.WriteKnight(w, players[i]);
+            }
+
+            int n = 0;
+            for (int i = 0; i < Enemy.All.Count; i++) if (InSnapshot(Enemy.All[i])) n++;
+            w.U8(Mathf.Min(n, 255));
+            int written = 0;
+            for (int i = 0; i < Enemy.All.Count && written < 255; i++)
+            {
+                Enemy e = Enemy.All[i];
+                if (!InSnapshot(e)) continue;
+                w.U16(e.netId).U8(e.NetType);
+                e.WriteNet(w);
+                written++;
+            }
+
+            w.U8(Mathf.Min(Pickup.All.Count, 255));
+            for (int i = 0; i < Pickup.All.Count && i < 255; i++)
+            {
+                Pickup p = Pickup.All[i];
+                w.U16(p.netId).U8(p.weaponId).U8(p.owner < 0 ? 255 : p.owner).Pos(p.transform.position.x).Pos(p.transform.position.z);
+            }
+            return w;
+        }
+
+        // A dying slime / Minotaur is not sent any more (its death went out as an event); the dummy always is.
+        static bool InSnapshot(Enemy e) { return !e.Dead || e is Dummy; }
+
+        // Client: make the local copy of the world match.
+        public void ReadSnapshot(NetR r)
+        {
+            float hostTime = r.F32();
+            wave = r.U16();
+            slimesAlive = r.U8();
+            float respawnIn = r.F32();
+            if (respawnIn >= 0f) minoRespawnAt = Time.time + respawnIn;
+
+            int np = r.U8();
+            for (int i = 0; i < np; i++)
+            {
+                Knight k = PlayerByPid(r.U8());
+                Net.ReadKnight(r, k);
+            }
+
+            seenIds.Clear();
+            int ne = r.U8();
+            for (int i = 0; i < ne; i++)
+            {
+                int id = r.U16(), type = r.U8();
+                seenIds.Add(id);
+                Enemy e = Enemy.Find(id);
+                if (e != null && e.NetType != type)                       // the id was reused for something else
+                {
+                    e.gameObject.SetActive(false);
+                    Destroy(e.gameObject);
+                    e = null;
+                }
+                bool first = e == null;
+                if (first) e = SpawnPuppet(type, id);
+                e.ReadNet(r, hostTime, first);
+            }
+            for (int i = Enemy.All.Count - 1; i >= 0; i--)
+            {
+                Enemy e = Enemy.All[i];
+                if (e.Dead || seenIds.Contains(e.netId)) continue;        // dead ones finish their death animation
+                if (e == minotaur) minotaur = null;
+                e.gameObject.SetActive(false);                            // gone without a kill (restart, wave reset)
+                Destroy(e.gameObject);
+            }
+
+            seenIds.Clear();
+            int npk = r.U8();
+            for (int i = 0; i < npk; i++)
+            {
+                int id = r.U16(), weapon = r.U8(), owner = r.U8();
+                float x = r.Pos(), z = r.Pos();
+                seenIds.Add(id);
+                if (weapon < Weapons.All.Length && Pickup.Find(id) == null) SpawnPickup(weapon, new Vector3(x, 0f, z), owner == 255 ? -1 : owner, id);
+            }
+            for (int i = Pickup.All.Count - 1; i >= 0; i--)
+            {
+                Pickup p = Pickup.All[i];
+                if (seenIds.Contains(p.netId)) continue;
+                p.gameObject.SetActive(false);                            // expired on the host
+                Destroy(p.gameObject);
+            }
+        }
+
+        Enemy SpawnPuppet(int type, int id)
+        {
+            Enemy e;
+            if (type <= 2) e = Slime.Spawn(type, Vector3.zero, actors);
+            else if (type == 3) e = minotaur = Minotaur.Spawn(MinotaurHome, actors);
+            else
+            {
+                dummy = new GameObject("StrawDummy").AddComponent<Dummy>();
+                dummy.transform.SetParent(actors, false);
+                e = dummy;
+            }
+            e.puppet = true;
+            e.netId = id;
+            return e;
+        }
+
+        // Client: the host says a sword was collected.
+        public void OnPickupTaken(int id, int pid, int weaponId, Vector3 at)
+        {
+            Pickup p = Pickup.Find(id);
+            bool seen = p != null && !p.hidden;
+            if (p != null)
+            {
+                p.gameObject.SetActive(false);
+                Destroy(p.gameObject);
+            }
+            if (weaponId >= Weapons.All.Length) return;
+            if (pid == Net.LocalPid) CollectLocal(weaponId, at);
+            else OtherCollected(PlayerByPid(pid), weaponId, at, seen);
         }
 
         public static Vector3 SpawnPointFor(int pid)
@@ -829,7 +1074,11 @@ namespace MedievalKnight
             Net.Poll();                                           // network events first: they may start or end the session
             if (!InSession) return;
 
-            if (InputX.Down(KeyCode.Escape)) Application.Quit();
+            if (InputX.Down(KeyCode.Escape))
+            {
+                LeaveKey();
+                if (!InSession) return;
+            }
             if (InputX.Down(KeyCode.F1)) hud.ToggleControls();
             if (InputX.Down(KeyCode.M))
             {

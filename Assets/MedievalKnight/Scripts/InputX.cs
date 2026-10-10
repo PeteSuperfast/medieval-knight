@@ -56,8 +56,37 @@ namespace MedievalKnight
                 case KeyCode.Keypad1: return Key.Numpad1;
                 case KeyCode.Keypad2: return Key.Numpad2;
                 case KeyCode.Keypad3: return Key.Numpad3;
+                case KeyCode.Backspace: return Key.Backspace;      // menu text fields
+                case KeyCode.Tab: return Key.Tab;
+                case KeyCode.Return: return Key.Enter;
+                case KeyCode.KeypadEnter: return Key.NumpadEnter;
+                case KeyCode.LeftControl: return Key.LeftCtrl;
+                case KeyCode.RightControl: return Key.RightCtrl;
+                case KeyCode.V: return Key.V;
             }
             return Key.None;
+        }
+
+        // --- typed characters (menu text fields): collected from the keyboard's text events ---
+        static Keyboard textKeyboard;
+        static readonly System.Text.StringBuilder typed = new System.Text.StringBuilder();
+
+        static void OnText(char c) { if (typed.Length < 256) typed.Append(c); }
+
+        // Everything typed since the last call (printable characters only). Call it every frame while a text field is open.
+        public static string Typed()
+        {
+            Keyboard kb = Keyboard.current;
+            if (kb != textKeyboard)
+            {
+                if (textKeyboard != null) textKeyboard.onTextInput -= OnText;
+                textKeyboard = kb;
+                if (kb != null) kb.onTextInput += OnText;
+            }
+            if (typed.Length == 0) return "";
+            string s = typed.ToString();
+            typed.Length = 0;
+            return s;
         }
 
         public static bool Down(KeyCode k)
@@ -106,6 +135,7 @@ namespace MedievalKnight
         public static bool MouseHeld(int button) { return Input.GetMouseButton(button); }
         public static bool HasMouse { get { return true; } }
         public static Vector2 MousePos { get { return Input.mousePosition; } }
+        public static string Typed() { return Input.inputString; }
 #endif
     }
 }

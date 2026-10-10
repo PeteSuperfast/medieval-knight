@@ -177,7 +177,7 @@ namespace MedievalKnight
 
         // remote knights only
         Vector3 netPos, slamTarget;
-        float netMaxHp = BaseHp, netMaxArmor = BaseArmor, remoteSpeed;
+        float netMaxHp = BaseHp, netMaxArmor = BaseArmor, remoteSpeed, netTime, netYaw;
         bool netGlow, netSynced;
         Coroutine act;
 
@@ -198,6 +198,7 @@ namespace MedievalKnight
             transform.position = spawnPoint;
             netPos = spawnPoint;
             interp.Snap(spawnPoint, 0f);
+            interp.delay = Net.KnightDelay;
         }
 
         // ---------------------------------------------------------------- model
@@ -489,6 +490,11 @@ namespace MedievalKnight
             get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0); }
         }
 
+        // The time stamp and facing that go out with this knight's state: his own for the local knight, the last
+        // reported ones for a remote knight (the host passes other players' reports on unchanged).
+        public float NetTime { get { return remote ? netTime : Time.unscaledTime; } }
+        public float NetYaw { get { return remote ? netYaw : transform.eulerAngles.y; } }
+
         // Every frame: glide to the reported position and keep the idle / walk / block pose going.
         void RemoteTick(float dt)
         {
@@ -508,7 +514,7 @@ namespace MedievalKnight
             int level, int weapon, int plus)
         {
             if (!remote) return;
-            netPos = pos;
+            netPos = pos; netYaw = yaw; netTime = senderTime;
             interp.Push(senderTime, Time.unscaledTime, pos, yaw);
             bool wasDead = Dead, nowDead = (flags & NetDead) != 0;
             IsBlocking = (flags & NetBlocking) != 0 && !nowDead;
@@ -1032,6 +1038,7 @@ namespace MedievalKnight
         public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f)
         {
             if (remote || Dead || Invulnerable) return;
+            LastDamageSource = source;
             Vector3 toSrc = from - transform.position; toSrc.y = 0f;
             Vector3 srcDir = toSrc.sqrMagnitude > 0.0001f ? toSrc.normalized : transform.forward;
             Vector3 chestPos = transform.position + new Vector3(0f, 1.4f, 0f);
@@ -1076,7 +1083,6 @@ namespace MedievalKnight
 
             if (hp <= 0f)
             {
-                LastDamageSource = source;
                 StopAllCoroutines();
                 StartCoroutine(DownRoutine());
             }

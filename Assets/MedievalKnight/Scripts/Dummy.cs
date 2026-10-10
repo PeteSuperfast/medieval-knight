@@ -77,6 +77,17 @@ namespace MedievalKnight
             Game.I.hud.Popup(Center + Vector3.up, "BROKEN", new Color(1f, 0.85f, 0.4f), 26);
         }
 
+        public override int NetType { get { return 4; } }
+
+        // A client's dummy breaks and rebuilds when the host's does.
+        protected override void OnNetDead(bool dead)
+        {
+            if (dead == Dead) return;
+            Dead = dead;
+            ShowBar(!dead);
+            if (!dead) Fx.I.Dust(transform.position, 10);
+        }
+
         public void ResetAll()
         {
             Dead = false;
@@ -98,7 +109,7 @@ namespace MedievalKnight
             if (Dead)
             {
                 collapse = Mathf.MoveTowards(collapse, 1f, dt * 5f);
-                if (Time.time >= rebuildAt)
+                if (!puppet && Time.time >= rebuildAt)
                 {
                     Dead = false;
                     InitStats(MaxHp, MaxArmor);
@@ -109,7 +120,7 @@ namespace MedievalKnight
             else
             {
                 collapse = Mathf.MoveTowards(collapse, 0f, dt * 4f);
-                if (Time.time - lastHitTime > 4f)          // patch itself up when left alone
+                if (!puppet && Time.time - lastHitTime > 4f)   // patch itself up when left alone
                 {
                     armor = Mathf.Min(maxArmor, armor + 30f * dt);
                     hp = Mathf.Min(maxHp, hp + 40f * dt);

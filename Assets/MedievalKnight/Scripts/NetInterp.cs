@@ -22,6 +22,10 @@ namespace MedievalKnight
         public float delay = 0.1f;
         public Vector3 Latest { get { return count > 0 ? pos[count - 1] : Vector3.zero; } }
         public bool Empty { get { return count == 0; } }
+        // read-outs for the tests: samples taken so far, and how far the drawn moment was behind the newest sample
+        // at the last Sample (seconds; negative = it ran out of samples and had to hold / extrapolate)
+        public int Pushes { get; private set; }
+        public float Margin { get; private set; }
 
         // Forget the history and stand at one place (spawn, teleport).
         public void Snap(Vector3 p, float y)
@@ -47,6 +51,7 @@ namespace MedievalKnight
             }
             time[count] = senderTime; pos[count] = p; yaw[count] = y;
             count++;
+            Pushes++;
             hasSnap = false;
         }
 
@@ -59,6 +64,7 @@ namespace MedievalKnight
                 return hasSnap;
             }
             float t = localNow + offset - delay;
+            Margin = time[count - 1] - t;
             if (t <= time[0]) { p = pos[0]; y = yaw[0]; return true; }
             for (int i = count - 1; i > 0; i--)
             {

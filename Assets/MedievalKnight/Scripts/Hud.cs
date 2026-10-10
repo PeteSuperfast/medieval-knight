@@ -47,6 +47,21 @@ namespace MedievalKnight
             public Text key, name, stats, state;
         }
 
+        // one line of the party list: another player's colour, name, level and health
+        class PartyUi
+        {
+            public GameObject go;
+            public Image swatch;
+            public RectTransform fill;
+            public Text name, level, value;
+        }
+
+        readonly PartyUi[] party = new PartyUi[Net.MaxPlayers - 1];
+        readonly List<Text> tags = new List<Text>();           // name tags above the knights (online)
+        GameObject partyRoot;
+        Image partyPanel, levelDim, invDim;
+        Text netText, invFoot;
+
         Font font;
         Canvas canvas;
         RectTransform root, popupRoot;
@@ -116,6 +131,30 @@ namespace MedievalKnight
             statsText = MakeText("Stats", new Vector2(0, 1), new Vector2(28, -174), new Vector2(380, 142), 13, TextAnchor.UpperLeft);
             statsText.supportRichText = true;
 
+            // --- online: connection line and the other players, under the stats ---
+            RectTransform pr = Rect("Party", new Vector2(0, 1), Vector2.zero, Vector2.zero);
+            partyRoot = pr.gameObject;
+            partyPanel = Panel("PartyPanel", new Vector2(0, 1), new Vector2(16, -326), new Vector2(400, 110), PanelCol, pr);
+            netText = MakeText("NetStatus", new Vector2(0, 1), new Vector2(28, -330), new Vector2(380, 20), 13, TextAnchor.MiddleLeft, pr);
+            netText.color = new Color(0.75f, 0.95f, 0.8f);
+            for (int i = 0; i < party.Length; i++)
+            {
+                var u = new PartyUi();
+                float y = -354f - i * 26f;
+                RectTransform row = Rect("PartyRow" + i, new Vector2(0, 1), Vector2.zero, Vector2.zero, pr);
+                u.go = row.gameObject;
+                u.swatch = Panel("Swatch", new Vector2(0, 1), new Vector2(28, y - 2), new Vector2(10, 18), Color.white, row);
+                u.name = MakeText("Name", new Vector2(0, 1), new Vector2(44, y), new Vector2(132, 22), 14, TextAnchor.MiddleLeft, row);
+                u.name.fontStyle = FontStyle.Bold;
+                u.level = MakeText("Level", new Vector2(0, 1), new Vector2(180, y), new Vector2(50, 22), 14, TextAnchor.MiddleLeft, row);
+                u.level.color = new Color(1f, 0.9f, 0.45f);
+                Image frame = Panel("Bar", new Vector2(0, 1), new Vector2(232, y - 2), new Vector2(172, 18), FrameCol, row);
+                u.fill = Stretch(Panel("Fill", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.86f, 0.2f, 0.2f), frame.transform));
+                u.value = MakeText("Value", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(164, 18), 12, TextAnchor.MiddleCenter, frame.transform);
+                party[i] = u;
+            }
+            partyRoot.SetActive(false);
+
             // --- boss bar, top-centre ---
             bossPanel = Panel("BossPanel", new Vector2(0.5f, 1), new Vector2(0, -14), new Vector2(380, 50), PanelCol).gameObject;
             bossText = MakeText("BossText", new Vector2(0.5f, 1), new Vector2(0, -3), new Vector2(360, 20), 14, TextAnchor.MiddleCenter, bossPanel.transform);
@@ -146,7 +185,7 @@ namespace MedievalKnight
                 + "I  Weapons + stats (1 - 5 / Click equips)\n"
                 + "Walk over a dropped sword to take it\n"
                 + "M  Sound volume / mute\n"
-                + "H  Test hit     F5  Restart     Esc  Quit";
+                + "H  Test hit   F5  Restart (online: host)   Esc  Menu";
 
             // --- skill bar, bottom-centre ---
             for (int i = 0; i < 4; i++) slots[i] = MakeSlot(i);
@@ -266,7 +305,8 @@ namespace MedievalKnight
             RectTransform lr = Rect("LevelUp", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             Fill(lr);
             levelRoot = lr.gameObject;
-            Fill(Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.04f, 0.68f), lr).rectTransform);
+            levelDim = Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.04f, 0.68f), lr);
+            Fill(levelDim.rectTransform);
             levelTitle = MakeText("Title", new Vector2(0.5f, 0.5f), new Vector2(0, 215), new Vector2(900, 60), 46, TextAnchor.MiddleCenter, lr);
             levelTitle.fontStyle = FontStyle.Bold;
             levelTitle.color = new Color(1f, 0.88f, 0.35f);
@@ -301,7 +341,8 @@ namespace MedievalKnight
             RectTransform ir = Rect("Inventory", new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             Fill(ir);
             invRoot = ir.gameObject;
-            Fill(Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.04f, 0.6f), ir).rectTransform);
+            invDim = Panel("Dim", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.04f, 0.6f), ir);
+            Fill(invDim.rectTransform);
             Image frame = Panel("Frame", new Vector2(0.5f, 0.5f), new Vector2(0, 42), new Vector2(836, 446), new Color(0.75f, 0.62f, 0.3f, 1f), ir);
             RectTransform p = Panel("Bg", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(830, 440), new Color(0.07f, 0.07f, 0.1f, 1f), frame.transform).rectTransform;
 
@@ -332,9 +373,8 @@ namespace MedievalKnight
 
             invStats = MakeText("Points", new Vector2(0.5f, 1), new Vector2(0, -362), new Vector2(798, 44), 14, TextAnchor.UpperLeft, p);
             invStats.supportRichText = true;
-            Text foot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(800, 20), 13, TextAnchor.MiddleCenter, p);
-            foot.color = new Color(0.7f, 0.72f, 0.78f);
-            foot.text = "1 - 5 or click a row: equip an owned sword          I: close          (the game is paused)";
+            invFoot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(800, 20), 13, TextAnchor.MiddleCenter, p);
+            invFoot.color = new Color(0.7f, 0.72f, 0.78f);
             invRoot.SetActive(false);
         }
 
@@ -401,7 +441,8 @@ namespace MedievalKnight
             levelOpenedAt = Time.unscaledTime;
             bannerTime = 0f; bannerText.text = "";
             levelTitle.text = "LEVEL UP!   Lv " + newLevel;
-            levelSub.text = "Choose 1 of 3 upgrades   (keys 1 / 2 / 3 or click a card)";
+            levelSub.text = "Choose 1 of 3 upgrades   (keys 1 / 2 / 3 or click a card)" + OnlineNote();
+            DimFor(levelDim, 0.68f);
             for (int i = 0; i < 3; i++)
             {
                 bool on = i < offers.Length;
@@ -426,7 +467,8 @@ namespace MedievalKnight
             levelOpenedAt = Time.unscaledTime;
             bannerTime = 0f; bannerText.text = "";
             levelTitle.text = "STAT POINT" + (pr.statPoints > 1 ? "   (" + pr.statPoints + " to spend)" : "");
-            levelSub.text = "Spend 1 stat point   (keys 1 / 2 / 3 or click a card)";
+            levelSub.text = "Spend 1 stat point   (keys 1 / 2 / 3 or click a card)" + OnlineNote();
+            DimFor(levelDim, 0.68f);
             for (int i = 0; i < 3; i++)
             {
                 Attr a = (Attr)i;
@@ -467,10 +509,26 @@ namespace MedievalKnight
 
         public void HideLevelUp() { levelRoot.SetActive(false); }
 
+        // Online the panels do not pause anything: say so, and darken the arena less so the fight stays visible.
+        static string OnlineNote()
+        {
+            return Net.Multiplayer ? "\nOnline: the game is NOT paused - you are shielded for " + Game.LevelUpProtect.ToString("0") + " seconds, and can still walk" : "";
+        }
+
+        static void DimFor(Image dim, float alpha)
+        {
+            Color c = dim.color;
+            c.a = Net.Multiplayer ? alpha * 0.5f : alpha;
+            dim.color = c;
+        }
+
         public void ShowInventory()
         {
             invRoot.SetActive(true);
             invOpenedAt = Time.unscaledTime;
+            DimFor(invDim, 0.6f);
+            invFoot.text = "1 - 5 or click a row: equip an owned sword          I: close          "
+                + (Net.Multiplayer ? "(online: the game keeps running!)" : "(the game is paused)");
             RefreshInventory(-1);
         }
 
@@ -634,6 +692,8 @@ namespace MedievalKnight
                 bossText.text = "Minotaur returns in " + Mathf.Max(0, Mathf.CeilToInt(g.MinotaurRespawnIn)) + "s";
             }
 
+            UpdateParty(g, k);
+
             bool controlsOn = showControls && !g.PanelOpen;       // out of the way of the level-up / weapon panels
             if (controlsPanel.activeSelf != controlsOn) controlsPanel.SetActive(controlsOn);
             if (controlsText.gameObject.activeSelf != controlsOn) controlsText.gameObject.SetActive(controlsOn);
@@ -688,6 +748,64 @@ namespace MedievalKnight
                 p.text.rectTransform.localScale = Vector3.one * (1f + Mathf.Clamp01(1f - t * 6f) * 0.6f);
             }
         }
+
+        // Online only: the connection line, one row per other player, and a name tag over every knight.
+        void UpdateParty(Game g, Knight me)
+        {
+            bool online = Net.Multiplayer;
+            if (partyRoot.activeSelf != online) partyRoot.SetActive(online);
+            int tagCount = 0;
+            if (online)
+            {
+                netText.text = Net.StatusLine;
+                int row = 0;
+                float scale = ScaleFactor;
+                for (int i = 0; i < g.players.Count; i++)
+                {
+                    Knight p = g.players[i];
+                    Color col = Knight.UiColor(p.pid);
+
+                    // name tag
+                    Vector3 sp = g.cam.WorldToScreenPoint(p.transform.position + new Vector3(0f, 2.75f, 0f));
+                    if (sp.z > 0f)
+                    {
+                        if (tagCount == tags.Count)
+                        {
+                            Text nt = MakeText("NameTag", Vector2.zero, Vector2.zero, new Vector2(220, 24), 16, TextAnchor.MiddleCenter, popupRoot);
+                            nt.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                            nt.fontStyle = FontStyle.Bold;
+                            tags.Add(nt);
+                        }
+                        Text t = tags[tagCount++];
+                        if (!t.gameObject.activeSelf) t.gameObject.SetActive(true);
+                        t.text = p.Dead ? p.playerName + "  (down)" : p.playerName;
+                        t.color = p == me ? new Color(col.r, col.g, col.b, 0.8f) : col;
+                        t.rectTransform.anchoredPosition = new Vector2(sp.x, sp.y) / scale;
+                    }
+
+                    // party row (the local knight has the big bars already)
+                    if (p == me || row >= party.Length) continue;
+                    PartyUi u = party[row++];
+                    if (!u.go.activeSelf) u.go.SetActive(true);
+                    u.swatch.color = Knight.MainColors[p.pid & 3];
+                    u.name.text = p.playerName;
+                    u.name.color = col;
+                    u.level.text = "Lv " + p.progress.level;
+                    float f = p.MaxHp > 0f ? Mathf.Clamp01(p.hp / p.MaxHp) : 0f;
+                    u.fill.anchorMax = new Vector2(Mathf.Max(0.0001f, f), 1f);
+                    u.fill.offsetMax = new Vector2(-3f * f, -3f);
+                    u.value.text = p.Dead ? "DOWN" : Mathf.CeilToInt(p.hp) + " / " + Mathf.CeilToInt(p.MaxHp);
+                }
+                for (int i = row; i < party.Length; i++) if (party[i].go.activeSelf) party[i].go.SetActive(false);
+                partyPanel.rectTransform.sizeDelta = new Vector2(400f, row == 0 ? 28f : 32f + row * 26f);
+                if (row == 0 && g.players.Count <= 1) netText.text += Net.IsHost ? "   - waiting for friends" : "";
+            }
+            for (int i = tagCount; i < tags.Count; i++) if (tags[i].gameObject.activeSelf) tags[i].gameObject.SetActive(false);
+        }
+
+        // test access: the visible name tags and party rows
+        public int NameTagsShown { get { int n = 0; foreach (Text t in tags) if (t.gameObject.activeSelf) n++; return n; } }
+        public int PartyRowsShown { get { int n = 0; foreach (PartyUi u in party) if (u.go.activeSelf && partyRoot.activeSelf) n++; return n; } }
 
         void UpdateBar(BarUi b, float value, float max, float dt, bool denied, string text)
         {

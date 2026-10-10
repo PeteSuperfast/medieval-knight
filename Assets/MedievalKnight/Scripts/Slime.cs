@@ -86,6 +86,50 @@ namespace MedievalKnight
             Fx.I.Disc(new Vector3(transform.position.x, 0.05f, transform.position.z), radius, radius * 2.4f, new Color(color.r, color.g, color.b, 0.55f), 0.5f);
         }
 
+        // ---------------------------------------------------------------- online
+
+        public override int NetType { get { return kind; } }
+
+        protected override void WriteExtra(NetW w) { w.U8((int)state); }
+
+        protected override void ReadExtra(NetR r)
+        {
+            St ns = (St)r.U8();
+            if (ns == state) return;
+            if (ns == St.Land) Fx.I.Dust(transform.position, 4, 0.7f * size);
+            state = ns;
+            stateT = 0f;
+        }
+
+        // A client's slime: the host moves it; the squash, stretch and hop arc are played from its state.
+        void PuppetPose(float dt)
+        {
+            Vector3 target = Vector3.one;
+            float y = 0f;
+            if (Stunned)
+            {
+                float w = Mathf.Sin(Time.time * 30f) * 0.08f;
+                target = new Vector3(1.15f + w, 0.75f, 1.15f - w);
+            }
+            else if (state == St.Wait)
+            {
+                float br = Mathf.Sin(Time.time * 4f + size * 7f) * 0.05f;
+                target = new Vector3(1f + br, 1f - br, 1f + br);
+            }
+            else if (state == St.Squash) target = new Vector3(1.3f, 0.6f, 1.3f);
+            else if (state == St.Hop)
+            {
+                stateT += dt / 0.42f;
+                y = Mathf.Sin(Mathf.Clamp01(stateT) * Mathf.PI) * (0.9f + 0.35f * kind);
+                target = new Vector3(0.8f, 1.3f, 0.8f);
+            }
+            else target = new Vector3(1.35f, 0.55f, 1.35f);
+
+            squash = Vector3.Lerp(squash, target, 1f - Mathf.Exp(-22f * dt));
+            rig.localScale = squash * size;
+            rig.localPosition = new Vector3(0f, y, 0f);
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;
@@ -97,8 +141,9 @@ namespace MedievalKnight
                 return;
             }
             BaseTick(dt);
+            if (puppet) PuppetMove();
             Knight k = Target();
-            if (k == null) return;
+            if (k == null && !puppet) return;
 
             if (spawnT < 1f)
             {
@@ -107,6 +152,7 @@ namespace MedievalKnight
                 rig.localScale = Vector3.one * size * pop * (1f + 0.25f * Mathf.Sin(Mathf.Clamp01(spawnT) * Mathf.PI));
                 return;
             }
+            if (puppet) { PuppetPose(dt); return; }
 
             Vector3 target = Vector3.one;
             float y = 0f;

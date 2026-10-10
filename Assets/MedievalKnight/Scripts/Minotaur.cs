@@ -158,6 +158,40 @@ namespace MedievalKnight
             if (!puppet && State == S.Idle) Begin(S.Chase);
         }
 
+        // ---------------------------------------------------------------- online
+
+        public override int NetType { get { return 3; } }
+
+        protected override void WriteExtra(NetW w)
+        {
+            w.U8((int)State).F32(t).Pos(smashPoint.x).Pos(smashPoint.z);
+        }
+
+        // Client: follow the host's state. The attack effects are played when the state is seen to change
+        // (a strike state is short, so a change that skipped it still plays its effect).
+        protected override void ReadExtra(NetR r)
+        {
+            S ns = (S)r.U8();
+            float nt = r.F32();
+            float sx = r.Pos(), sz = r.Pos();
+            smashPoint = new Vector3(sx, 0f, sz);
+            if (ns == State)
+            {
+                if (Mathf.Abs(t - nt) > 0.2f) t = nt;
+                return;
+            }
+            S old = State;
+            if (ns == S.SweepStrike || (old == S.SweepTele && ns == S.Recover)) FxSweep();
+            bool smashed = (old == S.SmashStrike || old == S.SmashTele) && ns == S.Recover;
+            if (smashed) FxSmash();
+            float edge = Game.ArenaHalf - radius * 0.5f - 0.4f;
+            if (old == S.Charging && ns == S.Recover && (Mathf.Abs(transform.position.x) > edge || Mathf.Abs(transform.position.z) > edge)) FxWall();
+            if (old == S.Stun) head.localRotation = Quaternion.identity;
+            Begin(ns);
+            t = nt;
+            if (smashed) axePitch = 38f;
+        }
+
         // Co-op party wipe: back to the lair, healed, resting.
         public void ResetToLair(Vector3 home)
         {

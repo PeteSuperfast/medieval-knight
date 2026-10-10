@@ -14,8 +14,8 @@ namespace MedievalKnight
     //   -menutest <folder>      scripted menu test (MpTest.cs)
     public static class Args
     {
-        public static string selfTestDir, mpTestDir, menuTestDir, joinHost, name, bind, role = "";
-        public static bool host, single;
+        public static string selfTestDir, mpTestDir, menuTestDir, joinHost, name, bind, role = "", expectText = "";
+        public static bool host, single, refusals;
         public static int port = Net.DefaultPort, netVersion = Net.Protocol, expect = 1;
         public static float joinDelay;
         static bool parsed;
@@ -42,6 +42,8 @@ namespace MedievalKnight
                     case "-name": if (next != null) name = next; break;
                     case "-bind": if (next != null) bind = next; break;
                     case "-role": if (next != null) role = next; break;
+                    case "-expecttext": if (next != null) expectText = next; break;     // test: the join must fail with this text
+                    case "-refusals": refusals = true; break;                           // test host: wait for a "full" and a "version" refusal
                     case "-port": Int(next, ref port); break;
                     case "-netversion": Int(next, ref netVersion); break;
                     case "-expect": Int(next, ref expect); break;

@@ -51,6 +51,43 @@ namespace MedievalKnight
             return null;
         }
 
+        // ---------------------------------------------------------------- online: host -> client state
+
+        // 0 / 1 / 2 = green / blue / red slime, 3 = Minotaur, 4 = straw dummy (tells a client which puppet to build)
+        public abstract int NetType { get; }
+
+        // Host: this enemy's part of a snapshot.
+        public void WriteNet(NetW w)
+        {
+            Vector3 p = transform.position;
+            w.Pos(p.x).Pos(p.z).Yaw(transform.eulerAngles.y).F32(hp).F32(maxHp).F32(armor).F32(maxArmor).U8((Dead ? 1 : 0) | (Stunned ? 2 : 0));
+            WriteExtra(w);
+        }
+
+        // Client: the same fields, applied to the puppet. first = it was created for this snapshot.
+        public void ReadNet(NetR r, float hostTime, bool first)
+        {
+            float x = r.Pos(), z = r.Pos(), yaw = r.Yaw();
+            hp = r.F32(); maxHp = r.F32(); armor = r.F32(); maxArmor = r.F32();
+            int flags = r.U8();
+            var p = new Vector3(x, 0f, z);
+            if (first)
+            {
+                interp.delay = Net.EnemyDelay;
+                interp.Snap(p, yaw);
+                transform.position = p;
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            }
+            interp.Push(hostTime, Time.unscaledTime, p, yaw);
+            stunUntil = (flags & 2) != 0 ? Time.time + 0.25f : 0f;
+            OnNetDead((flags & 1) != 0);
+            ReadExtra(r);
+        }
+
+        protected virtual void WriteExtra(NetW w) { }
+        protected virtual void ReadExtra(NetR r) { }
+        protected virtual void OnNetDead(bool dead) { }
+
         // A client's puppet: glide to where the host says it is.
         protected void PuppetMove()
         {
