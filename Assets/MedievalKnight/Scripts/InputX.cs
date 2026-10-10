@@ -39,6 +39,7 @@ namespace MedievalKnight
                 case KeyCode.K: return Key.K;
                 case KeyCode.I: return Key.I;
                 case KeyCode.M: return Key.M;
+                case KeyCode.N: return Key.N;
                 case KeyCode.UpArrow: return Key.UpArrow;
                 case KeyCode.DownArrow: return Key.DownArrow;
                 case KeyCode.LeftArrow: return Key.LeftArrow;
