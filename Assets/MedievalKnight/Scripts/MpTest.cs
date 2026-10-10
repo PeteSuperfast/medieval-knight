@@ -835,7 +835,10 @@ namespace MedievalKnight
                     Map hunt = Parse(Rep(last, A));
                     yield return W(0.7f);
                     yield return Sum();
-                    Ck(hunt.G("dead") == "True" && Eq("en") && N("H", "en") == en0 - 1, A + " killed the " + label + " with his sword (" + hunt.G("swings") + " swing(s)); it is gone on every screen");
+                    // (the count itself may differ from en0 - 1: the wave spawner can add a slime in the same second)
+                    Enemy gone = Enemy.Find(id);
+                    Log("slime " + id + ": enemies on the host " + en0 + " -> " + S("H", "en"));
+                    Ck(hunt.G("dead") == "True" && Eq("en") && (gone == null || gone.Dead), A + " killed the " + label + " with his sword (" + hunt.G("swings") + " swing(s)); it is gone on every screen");
                     bool expOk = true, killOk = true;
                     string expSeen = "", killSeen = "";
                     foreach (string r in peers)
