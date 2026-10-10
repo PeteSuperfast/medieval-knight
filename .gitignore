@@ -114,3 +114,5 @@ player.log
 # Extracted copies of the reference zip (the zip itself is kept)
 /_reference/extracted/
 /_reference/extracted_inner/
+/selftest/
+/medieval-knight-win64.zip
