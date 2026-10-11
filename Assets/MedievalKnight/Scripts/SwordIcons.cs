@@ -149,8 +149,8 @@ namespace MedievalKnight
             cam.targetTexture = null;
             rt.Release();
             Object.Destroy(rt);
-            Object.Destroy(camGo);
-            Object.Destroy(stage);
+            Object.DestroyImmediate(camGo);                // immediately: a delayed Destroy left every earlier sword in the next photo
+            Object.DestroyImmediate(stage);
             return tex;
         }
 

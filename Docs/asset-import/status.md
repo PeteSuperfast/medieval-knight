@@ -98,3 +98,7 @@
 ## ขั้น 6 เสร็จ (2026-10-11)
 - zip `medieval-knight-win64.zip` (โครง `MedievalKnight/...` เดิม, 184 ไฟล์, 38,590,019 bytes) copy ทับใน `G:\My Drive\PusomGames\` แล้ว จาก build ที่ผ่าน selftest + mptest
 - ไม่ได้ push GitHub
+
+## Banana-sword.fbx ผูกกับดาบเล่มที่ 6 (2026-10-12)
+- สำเนาไฟล์ใช้ใน player build: `Assets/MedievalKnight/Resources/Models/Banana-sword.fbx` (ต้นฉบับยังอยู่ที่ `Assets/Models/Weapons/`) โหลดด้วย `Resources.Load<GameObject>("Models/Banana-sword")`
+- แกนหลัง Unity import: ใบมีดยาวตาม -Z (ปลาย z -1.39, โค้งไป -X), มี Camera/Light ติดมาใน FBX (ถูกถอดตอนสร้างโมเดลในเกม) ในเกมหมุน yaw 180 ให้ +Z = มือไปปลาย ดู `Docs/combat-tweaks/status.md`

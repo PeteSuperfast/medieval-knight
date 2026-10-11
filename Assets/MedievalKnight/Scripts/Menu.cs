@@ -74,7 +74,7 @@ namespace MedievalKnight
             Text title = Label("Title", root, new Vector2(0, 262), new Vector2(1000, 70), 58, "MEDIEVAL KNIGHT");
             title.fontStyle = FontStyle.Bold;
             title.color = Gold;
-            Label("Sub", root, new Vector2(0, 214), new Vector2(1000, 28), 18, "Slimes, a Minotaur and five swords  -  alone or online with up to 3 friends").color = Soft;
+            Label("Sub", root, new Vector2(0, 214), new Vector2(1000, 28), 18, "Slimes, a Minotaur and six swords  -  alone or online with up to 3 friends").color = Soft;
 
             for (int i = 0; i < pages.Length; i++)
             {

@@ -410,7 +410,7 @@ namespace MedievalKnight
             levelRoot.SetActive(false);
         }
 
-        // The Tab window: left = the equipped sword and the five sword slots (a picture each), right = character,
+        // The Tab window: left = the equipped sword and the six sword slots (a picture each), right = character,
         // stat points, skills, Soul and kills. About 1000 x 520, centred.
         void BuildInventoryPanel()
         {
@@ -447,37 +447,40 @@ namespace MedievalKnight
             ownedText = MakeText("Owned", tl, new Vector2(500, -56), new Vector2(130, 22), 15, TextAnchor.MiddleRight, p);
             ownedText.color = gray;
 
-            // ---- left: five sword slots in a row
+            // ---- left: one slot per sword (six) in a row, sized to fit the same width
             Text swLabel = MakeText("SwordsLabel", tl, new Vector2(16, -254), new Vector2(500, 22), 15, TextAnchor.MiddleLeft, p);
             swLabel.color = gray;
-            swLabel.text = "SWORDS   (click or press 1-5 to equip)";
+            swLabel.text = "SWORDS   (click or press 1-6 to equip)";
+            // the slots share 622 px (5 slots: 118 wide as before, 6 slots: 97 wide) with an 8 px gap
+            float slotW = Mathf.Floor((622f - 8f * (rows.Length - 1)) / rows.Length);
+            bool narrow = slotW < 110f;
             for (int i = 0; i < rows.Length; i++)
             {
                 var r = new RowUi();
-                float x = 16 + i * 126;
-                r.border = Panel("Slot" + (i + 1) + "Border", tl, new Vector2(x, -278), new Vector2(118, 190), Color.white, p);
+                float x = 16 + i * (slotW + 8f);
+                r.border = Panel("Slot" + (i + 1) + "Border", tl, new Vector2(x, -278), new Vector2(slotW, 190), Color.white, p);
                 r.rt = r.border.rectTransform;
-                r.bg = Panel("Bg", tl, new Vector2(3, -3), new Vector2(112, 184), SlotCol, r.rt);
+                r.bg = Panel("Bg", tl, new Vector2(3, -3), new Vector2(slotW - 6f, 184), SlotCol, r.rt);
                 r.key = MakeText("Key", tl, new Vector2(8, -6), new Vector2(40, 22), 16, TextAnchor.MiddleLeft, r.bg.transform);
                 r.key.fontStyle = FontStyle.Bold;
                 r.key.text = "[" + (i + 1) + "]";
-                r.icon = AddRaw("Icon", r.bg.transform, new Vector2(90, 90));
+                r.icon = AddRaw("Icon", r.bg.transform, new Vector2(Mathf.Min(90f, slotW - 12f), Mathf.Min(90f, slotW - 12f)));
                 r.icon.rectTransform.anchorMin = r.icon.rectTransform.anchorMax = r.icon.rectTransform.pivot = new Vector2(0.5f, 1f);
                 r.icon.rectTransform.anchoredPosition = new Vector2(0f, -24f);
                 r.qmark = MakeText("Q", new Vector2(0.5f, 1), new Vector2(0, -69), new Vector2(100, 56), 46, TextAnchor.MiddleCenter, r.bg.transform);
                 r.qmark.fontStyle = FontStyle.Bold;
                 r.qmark.color = new Color(0.55f, 0.55f, 0.62f);
                 r.qmark.text = "?";
-                r.name = MakeText("Name", new Vector2(0.5f, 0), new Vector2(0, 48), new Vector2(108, 34), 14, TextAnchor.MiddleCenter, r.bg.transform);
+                r.name = MakeText("Name", new Vector2(0.5f, 0), new Vector2(0, 48), new Vector2(slotW - 4f, 34), narrow ? 12 : 14, TextAnchor.MiddleCenter, r.bg.transform);
                 r.name.fontStyle = FontStyle.Bold;
                 r.name.horizontalOverflow = HorizontalWrapMode.Wrap;
-                r.state = MakeText("State", new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(108, 26), 11, TextAnchor.MiddleCenter, r.bg.transform);
+                r.state = MakeText("State", new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(slotW - 4f, 26), narrow ? 10 : 11, TextAnchor.MiddleCenter, r.bg.transform);
                 r.state.horizontalOverflow = HorizontalWrapMode.Wrap;
                 r.badge = MakeText("Plus", new Vector2(1, 1), new Vector2(-6, -14), new Vector2(76, 20), 14, TextAnchor.MiddleRight, r.bg.transform);
                 r.badge.fontStyle = FontStyle.Bold;
                 r.badge.color = new Color(1f, 0.9f, 0.4f);
-                r.eqBar = Panel("EqBar", new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(104, 18), new Color(0.2f, 0.55f, 0.25f, 1f), r.bg.transform);
-                Text eqt = MakeText("Text", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(110, 18), 12, TextAnchor.MiddleCenter, r.eqBar.transform);
+                r.eqBar = Panel("EqBar", new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(slotW - 14f, 18), new Color(0.2f, 0.55f, 0.25f, 1f), r.bg.transform);
+                Text eqt = MakeText("Text", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(slotW - 8f, 18), narrow ? 10 : 12, TextAnchor.MiddleCenter, r.eqBar.transform);
                 eqt.fontStyle = FontStyle.Bold;
                 eqt.text = "EQUIPPED  *";
                 r.eqBar.gameObject.SetActive(false);
@@ -734,7 +737,7 @@ namespace MedievalKnight
             invRoot.SetActive(true);
             invOpenedAt = Time.unscaledTime;
             DimFor(invDim, 0.6f);
-            invFoot.text = "1-5 / Click: equip          Tab / Esc: close          "
+            invFoot.text = "1-6 / Click: equip          Tab / Esc: close          "
                 + (Net.Multiplayer ? "(online: the game keeps running!)" : "(the game is paused)");
             lastTabRefresh = -10f;
             RefreshInventory(-1);
@@ -851,13 +854,13 @@ namespace MedievalKnight
             soulKills.text = "<color=" + Hex(SoulColor) + "><b>SOUL " + k.souls.ToString("N0") + "</b></color>        Kills " + pr.kills;
         }
 
-        // Returns the sword to equip (index into Weapons.All) or -1. Keys 1..5 or a left click on an owned slot.
+        // Returns the sword to equip (index into Weapons.All) or -1. Keys 1..6 or a left click on an owned slot.
         public int InventoryInput()
         {
             if (!invRoot.activeSelf) return -1;
             Inventory inv = Game.I.knight.inventory;
             int pick = -1;
-            KeyCode[] keys = { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5 };
+            KeyCode[] keys = { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6 };
             for (int i = 0; i < rows.Length && i < keys.Length; i++)
                 if (InputX.Down(keys[i])) pick = i;
 

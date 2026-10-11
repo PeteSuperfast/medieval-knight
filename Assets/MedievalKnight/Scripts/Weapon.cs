@@ -24,6 +24,15 @@ namespace MedievalKnight
         public GuardStyle guard = GuardStyle.Bar;
         public float curve = 0f;                    // degrees the outer half of the blade bends sideways
 
+        // A model from a file instead of the coded one. null / empty = the coded model above.
+        //   modelPath    Resources path without extension, e.g. "Models/Banana-sword" (loaded with Resources.Load<GameObject>)
+        //   modelEuler / modelOffset / modelScale   put the file's axes onto the game's: hand at the origin, +Z = hand to the tip
+        //   modelTip     where the tip is in that space (a "Tip" marker node is placed there; the self-test measures it)
+        // Colours still come from bladeColor / guardColor / gripColor (material names *_Blade / *_Guard / *_Grip, in that order).
+        public string modelPath;
+        public Vector3 modelEuler = Vector3.zero, modelOffset = Vector3.zero, modelTip = new Vector3(0f, 0f, 1.4f);
+        public float modelScale = 1f;
+
         public string StatLine()
         {
             return "DMG x" + damage.ToString("0.00") + "   SPEED x" + speed.ToString("0.00")
@@ -34,15 +43,15 @@ namespace MedievalKnight
     // The sword table and the code that builds a sword model (held by the knight or lying on the ground).
     public static class Weapons
     {
-        public const int Iron = 0, Rapier = 1, Greatsword = 2, Fang = 3, Boss = 4;
+        public const int Iron = 0, Rapier = 1, Greatsword = 2, Fang = 3, Boss = 4, Dao = 5;
         public const int MaxPlus = 5;                   // a duplicate refines the sword: +1 .. +5
         public const float DamagePerPlus = 0.05f;       // each "+" adds 5% of the sword's damage
         public const float DuplicateExp = 15f;          // EXP for a duplicate of a sword that is already +5
 
         // drop chance per slime kind (green / blue / red) and the share of each sword in a slime drop
         public static readonly float[] SlimeDropChance = { 0.04f, 0.10f, 0.20f };
-        public static readonly int[] SlimeDropIds = { Rapier, Greatsword, Fang };
-        public static readonly float[] SlimeDropWeights = { 0.45f, 0.35f, 0.20f };
+        public static readonly int[] SlimeDropIds = { Rapier, Greatsword, Fang, Dao };
+        public static readonly float[] SlimeDropWeights = { 0.405f, 0.315f, 0.18f, 0.10f };    // sums to 1
         public const float MinotaurDropChance = 1f;     // always the boss sword
 
         public static readonly WeaponDef[] All =
@@ -73,11 +82,74 @@ namespace MedievalKnight
                 bladeLen = 1.55f, bladeWidth = 0.17f, bladeThick = 0.05f, tipLen = 0.32f, gripLen = 0.34f,
                 bladeColor = new Color(1f, 0.82f, 0.3f), guardColor = new Color(0.95f, 0.92f, 0.8f), gripColor = new Color(0.5f, 0.08f, 0.08f),
                 coreColor = new Color(1f, 0.45f, 0.1f, 1f), guard = GuardStyle.Horns },
+
+            // Trial sword (not a final weapon design): the Dao model from Banana-sword.fbx, stats the same as the Iron Sword.
+            // File axes after Unity's import: blade along -Z (tip at z -1.39, x -0.26 = it bends to -X), pommel at +Z 0.17, flat faces up/down.
+            // A yaw of 180 puts +Z hand-to-tip with the hand at the origin (grip -0.17..0.11, guard 0.14..0.3), scale 1.
+            // Palette colours from Docs/style.md: light stone (blade), light wood (guard), dark wood (grip).
+            new WeaponDef { id = Dao, name = "Banana Dao", rarity = "Uncommon", hint = "Test sword (Dao model)", dropHint = "Drops from slimes (rare)",
+                uiColor = new Color(0.96f, 0.76f, 0.35f),
+                bladeLen = 1.155f, bladeWidth = 0.18f, bladeThick = 0.04f, tipLen = 0.25f, gripLen = 0.28f,     // used by the flat fallback icon only
+                bladeColor = new Color(0.678f, 0.671f, 0.718f), guardColor = new Color(0.631f, 0.467f, 0.239f), gripColor = new Color(0.443f, 0.325f, 0.196f),
+                modelPath = "Models/Banana-sword", modelEuler = new Vector3(0f, 180f, 0f), modelTip = new Vector3(0.256f, 0f, 1.392f) },
         };
+
+        static readonly Dictionary<string, GameObject> fileModels = new Dictionary<string, GameObject>();
+
+        // The file model as a child of "Model": cameras / lights / colliders / scripts that came with the FBX are removed,
+        // each material slot gets the weapon's blade / guard / grip colour. Returns null when the file is missing.
+        static Transform BuildFileModel(Transform parent, WeaponDef w)
+        {
+            GameObject src;
+            if (!fileModels.TryGetValue(w.modelPath, out src))
+            {
+                src = Resources.Load<GameObject>(w.modelPath);
+                fileModels[w.modelPath] = src;
+                if (src == null) Debug.LogWarning("WEAPON: model '" + w.modelPath + "' not found in Resources, using the coded model for " + w.name);
+            }
+            if (src == null) return null;
+
+            Transform m = Prims.Node(parent, "Model", Vector3.zero);
+            GameObject inst = Object.Instantiate(src, m);
+            inst.name = "File";
+            inst.transform.localPosition = w.modelOffset;
+            inst.transform.localRotation = Quaternion.Euler(w.modelEuler);
+            inst.transform.localScale = Vector3.one * w.modelScale;
+
+            foreach (Camera c in inst.GetComponentsInChildren<Camera>(true)) if (c != null && c.gameObject != inst) Object.DestroyImmediate(c.gameObject);
+            foreach (Light l in inst.GetComponentsInChildren<Light>(true)) if (l != null && l.gameObject != inst) Object.DestroyImmediate(l.gameObject);
+            foreach (Collider c in inst.GetComponentsInChildren<Collider>(true)) if (c != null) Object.DestroyImmediate(c);
+            foreach (Rigidbody rb in inst.GetComponentsInChildren<Rigidbody>(true)) if (rb != null) Object.DestroyImmediate(rb);
+            foreach (Animator a in inst.GetComponentsInChildren<Animator>(true)) if (a != null) Object.DestroyImmediate(a);
+            foreach (MonoBehaviour b in inst.GetComponentsInChildren<MonoBehaviour>(true)) if (b != null) Object.DestroyImmediate(b);
+
+            Material blade = Prims.Lit(w.bladeColor, 0.85f, 0.9f);
+            Material guard = Prims.Lit(w.guardColor, 0.7f, 0.8f);
+            Material grip = Prims.Lit(w.gripColor);
+            foreach (MeshRenderer r in inst.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                Material[] src2 = r.sharedMaterials, dst = new Material[src2.Length];
+                for (int i = 0; i < src2.Length; i++)
+                {
+                    string n = src2[i] != null ? src2[i].name : "";
+                    dst[i] = n.Contains("Guard") ? guard : n.Contains("Grip") ? grip : n.Contains("Blade") ? blade : (i == 1 ? guard : i == 2 ? grip : blade);
+                }
+                r.sharedMaterials = dst;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                r.receiveShadows = true;
+            }
+            Prims.Node(m, "Tip", w.modelTip);          // marker the tests (and anything else) can read the tip position from
+            return m;
+        }
 
         // Builds grip, pommel, guard and blade under "parent". Local +Z runs from the hand to the tip.
         public static Transform BuildModel(Transform parent, WeaponDef w)
         {
+            if (!string.IsNullOrEmpty(w.modelPath))
+            {
+                Transform fm = BuildFileModel(parent, w);
+                if (fm != null) return fm;
+            }
             Transform m = Prims.Node(parent, "Model", Vector3.zero);
             bool shiny = w.id != Fang;
             Material blade = Prims.Lit(w.bladeColor, 0.85f, shiny ? 0.9f : 0.55f);
@@ -279,7 +351,8 @@ namespace MedievalKnight
             Transform tilt = Prims.Node(spin, "Tilt", Vector3.zero);
             tilt.localRotation = Quaternion.Euler(-62f, 0f, 0f);                 // tip up, leaning so the top-down camera sees the blade
             Transform model = Weapons.BuildModel(tilt, w);
-            model.localPosition = new Vector3(0f, 0f, -0.2f - w.bladeLen * 0.5f);   // turn around the middle of the sword
+            float midZ = string.IsNullOrEmpty(w.modelPath) ? 0.2f + w.bladeLen * 0.5f : (w.modelTip.z - 0.17f) * 0.5f;   // middle of the sword along Z
+            model.localPosition = new Vector3(0f, 0f, -midZ);                       // turn around the middle of the sword
             model.localScale = Vector3.one * 1.25f;
             beam = Prims.Box(transform, "Beam", new Vector3(0f, 1.6f, 0f), new Vector3(0.07f, 3.2f, 0.07f), Prims.Glow(color), false);
             ring = Fx.I.MakeDecal(Prims.Arc(0.62f, 0.85f, 0f, 360f), "PickupRing");

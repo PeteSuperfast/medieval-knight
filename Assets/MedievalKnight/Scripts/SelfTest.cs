@@ -224,7 +224,7 @@ namespace MedievalKnight
                     info += " " + Weapons.All[i].name + "=" + px + "px";
                 }
                 Log("sword icons made by '" + SwordIcons.Method + "':" + info);
-                Check("the five sword icons exist (128 x 128), are not empty and all look different", okIcons && seenHash.Count == Weapons.All.Length);
+                Check("the six sword icons exist (128 x 128), are not empty and all look different", okIcons && seenHash.Count == Weapons.All.Length);
             }
             Shot("start");
             yield return null;
@@ -672,7 +672,7 @@ namespace MedievalKnight
                 k.aimOverride = d.transform.position;
             }
 
-            // ------------------------------------------------ sword drop, pickup, inventory panel, the five swords
+            // ------------------------------------------------ sword drop, pickup, inventory panel, the six swords
             {
                 Inventory inv = k.inventory;
                 AttackDef slash = Knight.Attacks[0];
@@ -687,10 +687,10 @@ namespace MedievalKnight
                 int[] dropCount = new int[Weapons.All.Length];
                 for (int n = 0; n < 1000; n++) dropCount[Weapons.SlimeDrop(n / 1000f)]++;
                 Log("slime drop table over 1000 even rolls: rapier " + dropCount[Weapons.Rapier] + ", greatsword " + dropCount[Weapons.Greatsword] + ", fang " + dropCount[Weapons.Fang]
-                    + ", iron " + dropCount[Weapons.Iron] + ", boss " + dropCount[Weapons.Boss] + "; chance green/blue/red "
+                    + ", banana dao " + dropCount[Weapons.Dao] + ", iron " + dropCount[Weapons.Iron] + ", boss " + dropCount[Weapons.Boss] + "; chance green/blue/red "
                     + Weapons.SlimeDropChance[0] + "/" + Weapons.SlimeDropChance[1] + "/" + Weapons.SlimeDropChance[2] + ", minotaur " + Weapons.MinotaurDropChance);
-                Check("slimes only drop the three slime swords, in a 45 / 35 / 20 split",
-                    Mathf.Abs(dropCount[Weapons.Rapier] - 450) <= 1 && Mathf.Abs(dropCount[Weapons.Greatsword] - 350) <= 1 && Mathf.Abs(dropCount[Weapons.Fang] - 200) <= 1
+                Check("slimes only drop the four slime swords, in a 40.5 / 31.5 / 18 / 10 split",
+                    Mathf.Abs(dropCount[Weapons.Rapier] - 405) <= 1 && Mathf.Abs(dropCount[Weapons.Greatsword] - 315) <= 1 && Mathf.Abs(dropCount[Weapons.Fang] - 180) <= 1 && Mathf.Abs(dropCount[Weapons.Dao] - 100) <= 1
                     && dropCount[Weapons.Iron] == 0 && dropCount[Weapons.Boss] == 0);
 
                 // a slime killed with the drop forced on: the same RollDrop path as every kill
@@ -704,7 +704,7 @@ namespace MedievalKnight
                 g.dropOverride = -1;
                 yield return W(0.5f);
                 Pickup pk = g.lastPickup;
-                bool dropped = Pickup.All.Count == pk0 + 1 && pk != null && pk.weaponId >= Weapons.Rapier && pk.weaponId <= Weapons.Fang;
+                bool dropped = Pickup.All.Count == pk0 + 1 && pk != null && System.Array.IndexOf(Weapons.SlimeDropIds, pk.weaponId) >= 0;
                 Check("a killed slime leaves a sword pickup on the ground (drop forced on by the self-test)", dropped);
                 int firstId = dropped ? pk.weaponId : Weapons.Rapier;
                 if (!dropped) pk = g.SpawnPickup(firstId, dropAt);
@@ -765,7 +765,7 @@ namespace MedievalKnight
                 for (int id = 1; id < Weapons.All.Length; id++)
                     if (!inv.owned[id]) g.SpawnPickup(id, k.transform.position + new Vector3(0.25f * id, 0f, 0f));
                 yield return W(0.8f);
-                Check("all five swords are owned after collecting the pickups", inv.OwnedCount == 5 && Pickup.All.Count == 0);
+                Check("all six swords are owned after collecting the pickups", inv.OwnedCount == 6 && Pickup.All.Count == 0);
                 g.camZoom = 1f;
 
                 // --- the Tab window: open, equip by key, equip by click, close ---
@@ -778,6 +778,21 @@ namespace MedievalKnight
                 yield return null;
                 bool byKey = inv.equipped == Weapons.Rapier && k.SwordModel.name == "Swift Rapier";
                 Check("key 2 in the panel equips the Swift Rapier and swaps the held model", byKey);
+                yield return Tap(Key.Digit6);
+                yield return W(0.3f);
+                bool byKey6 = inv.equipped == Weapons.Dao && k.SwordModel.name == "Banana Dao" && g.hud.SlotEquippedMark(Weapons.Dao) && !g.hud.SlotEquippedMark(Weapons.Rapier);
+                Check("key 6 in the panel equips the Banana Dao (6th slot, model from file) and swaps the held model", byKey6);
+                Shot("inventory_banana_dao_equipped");
+                yield return null;
+                for (int key1 = 0; key1 < 5; key1++)         // the old keys still work: 1..5 each pick their own sword
+                {
+                    Key[] digits = { Key.Digit1, Key.Digit3, Key.Digit4, Key.Digit5, Key.Digit2 };
+                    int[] want = { Weapons.Iron, Weapons.Greatsword, Weapons.Fang, Weapons.Boss, Weapons.Rapier };
+                    yield return Tap(digits[key1]);
+                    yield return null;
+                    Check("key " + (System.Array.IndexOf(new[] { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5 }, digits[key1]) + 1) + " in the panel still equips " + Weapons.All[want[key1]].name,
+                        inv.equipped == want[key1] && k.SwordModel.name == Weapons.All[want[key1]].name);
+                }
                 Vector2 rowPos = g.hud.RowRect(Weapons.Greatsword).position;
                 SetMouse(rowPos, false);
                 yield return null; yield return null; yield return null;
@@ -852,9 +867,33 @@ namespace MedievalKnight
                         && Mathf.Abs(cost - wantCost) < 0.05f && Mathf.Abs(chance - wantChance) < 0.03f && Mathf.Abs(k.Reach(slash) - slash.reach * w.reach) < 0.001f
                         && Mathf.Abs(speedSeen - w.speed) < 0.15f * w.speed;
                     Check("sword " + (id + 1) + " " + w.name + ": model, damage x" + w.damage + ", speed x" + w.speed + ", crit +" + (w.critChance * 100f) + "% / +" + w.critMult + "x, reach x" + w.reach, ok);
+                    if (!string.IsNullOrEmpty(w.modelPath))
+                    {
+                        // a model from a file: axes (+Z hand to tip, hand at the origin), no stray camera / light / collider, our colours
+                        Transform fileRoot = Find(k.SwordModel, "File");
+                        float zMin = 9f, zMax = -9f, xAbs = 0f;
+                        foreach (Renderer rd in k.SwordModel.GetComponentsInChildren<Renderer>())
+                        {
+                            Bounds bb = rd.localBounds;                  // the renderer's own box: exact whatever pose the sword is in
+                            for (int cx = 0; cx < 8; cx++)
+                            {
+                                Vector3 pw = rd.transform.TransformPoint(bb.center + Vector3.Scale(bb.extents, new Vector3((cx & 1) == 0 ? -1f : 1f, (cx & 2) == 0 ? -1f : 1f, (cx & 4) == 0 ? -1f : 1f)));
+                                Vector3 pl = k.SwordModel.InverseTransformPoint(pw);
+                                zMin = Mathf.Min(zMin, pl.z); zMax = Mathf.Max(zMax, pl.z); xAbs = Mathf.Max(xAbs, Mathf.Abs(pl.x));
+                            }
+                        }
+                        int stray = k.SwordModel.GetComponentsInChildren<Camera>(true).Length + k.SwordModel.GetComponentsInChildren<Light>(true).Length
+                            + k.SwordModel.GetComponentsInChildren<Collider>(true).Length + k.SwordModel.GetComponentsInChildren<MonoBehaviour>(true).Length;
+                        Material[] mats = fileRoot != null ? fileRoot.GetComponentInChildren<MeshRenderer>().sharedMaterials : new Material[0];
+                        bool colours = mats.Length == 3 && mats[0].GetColor(Prims.BaseColor) == w.bladeColor && mats[1].GetColor(Prims.BaseColor) == w.guardColor && mats[2].GetColor(Prims.BaseColor) == w.gripColor;
+                        Log("file model " + w.modelPath + ": local z " + F(zMin) + " .. " + F(zMax) + ", |x| up to " + F(xAbs) + ", tip marker " + V(tip.localPosition)
+                            + ", stray components " + stray + ", materials " + mats.Length + " colours ok=" + colours);
+                        Check("sword " + (id + 1) + " file model points +Z (tip near z 1.39, hand/pommel near z -0.17, hand at the origin), has no camera / light / collider / script, uses the weapon colours",
+                            fileRoot != null && zMax > 1.3f && zMax < 1.55f && zMin > -0.3f && zMin < 0f && xAbs < 0.45f && stray == 0 && colours);
+                    }
                     yield return W(0.3f);
                 }
-                Check("the five sword models have five different lengths", distinct);
+                Check("the six sword models have six different lengths", distinct);
                 g.camZoom = 1f;
 
                 // reach on the field: from 3.6 m the Iron Sword misses the dummy, the Greatsword reaches it
@@ -1485,7 +1524,7 @@ namespace MedievalKnight
                 Log("after death: swords owned " + owned0 + " -> " + k.inventory.OwnedCount + ", equipped " + k.inventory.NameOf(k.inventory.equipped) + " (model " + k.SwordModel.name
                     + "), souls " + souls0 + " -> " + k.souls + ", knight_ready +" + (Snds(Snd.Ready) - ready0));
                 Check("death keeps the swords, the equipped sword and the Soul",
-                    k.inventory.OwnedCount == owned0 && owned0 == 5 && k.inventory.equipped == equipped0 && k.SwordModel.name == k.Weapon.name && k.souls == souls0 && souls0 > 0);
+                    k.inventory.OwnedCount == owned0 && owned0 == 6 && k.inventory.equipped == equipped0 && k.SwordModel.name == k.Weapon.name && k.souls == souls0 && souls0 > 0);
                 Check("reviving plays the 'ready' voice line", Snds(Snd.Ready) - ready0 == 1);
                 Shot("revived");
             }

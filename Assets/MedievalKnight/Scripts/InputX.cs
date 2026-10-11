@@ -54,6 +54,7 @@ namespace MedievalKnight
                 case KeyCode.Alpha3: return Key.Digit3;
                 case KeyCode.Alpha4: return Key.Digit4;
                 case KeyCode.Alpha5: return Key.Digit5;
+                case KeyCode.Alpha6: return Key.Digit6;
                 case KeyCode.Keypad1: return Key.Numpad1;
                 case KeyCode.Keypad2: return Key.Numpad2;
                 case KeyCode.Keypad3: return Key.Numpad3;

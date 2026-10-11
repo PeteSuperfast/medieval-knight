@@ -315,18 +315,23 @@ namespace MedievalKnight
     public class Tint
     {
         readonly Renderer[] rs;
-        readonly Color[] cols;
+        readonly Color[][] cols;                 // base colour of every material slot of every renderer (a model from a file has several)
         readonly MaterialPropertyBlock mpb = new MaterialPropertyBlock();
         bool active;
 
         public Tint(Transform root)
         {
             rs = root.GetComponentsInChildren<Renderer>(true);
-            cols = new Color[rs.Length];
+            cols = new Color[rs.Length][];
             for (int i = 0; i < rs.Length; i++)
             {
-                Material m = rs[i].sharedMaterial;
-                cols[i] = m != null && m.HasProperty(Prims.BaseColor) ? m.GetColor(Prims.BaseColor) : Color.white;
+                Material[] ms = rs[i].sharedMaterials;
+                cols[i] = new Color[Mathf.Max(1, ms.Length)];
+                for (int j = 0; j < cols[i].Length; j++)
+                {
+                    Material m = j < ms.Length ? ms[j] : null;
+                    cols[i][j] = m != null && m.HasProperty(Prims.BaseColor) ? m.GetColor(Prims.BaseColor) : Color.white;
+                }
             }
         }
 
@@ -336,15 +341,24 @@ namespace MedievalKnight
             {
                 if (!active) return;
                 active = false;
-                for (int i = 0; i < rs.Length; i++) if (rs[i] != null) rs[i].SetPropertyBlock(null);
+                for (int i = 0; i < rs.Length; i++)
+                {
+                    if (rs[i] == null) continue;
+                    if (cols[i].Length > 1) for (int j = 0; j < cols[i].Length; j++) rs[i].SetPropertyBlock(null, j);
+                    else rs[i].SetPropertyBlock(null);
+                }
                 return;
             }
             active = true;
             for (int i = 0; i < rs.Length; i++)
             {
                 if (rs[i] == null) continue;
-                mpb.SetColor(Prims.BaseColor, Color.Lerp(cols[i], c, k));
-                rs[i].SetPropertyBlock(mpb);
+                for (int j = 0; j < cols[i].Length; j++)
+                {
+                    mpb.SetColor(Prims.BaseColor, Color.Lerp(cols[i][j], c, k));
+                    if (cols[i].Length > 1) rs[i].SetPropertyBlock(mpb, j);
+                    else rs[i].SetPropertyBlock(mpb);
+                }
             }
         }
     }
