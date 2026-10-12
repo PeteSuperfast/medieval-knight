@@ -53,6 +53,11 @@ namespace MedievalKnight
         readonly List<Cell> carryCells = new List<Cell>();
         readonly Cell[][] carryGrid = new Cell[3][];
         Text carryChar, carryInfo, carryHead;
+        // end-of-run summary
+        GameObject summaryRoot;
+        Image deathDim;
+        Text sumTitle, sumSub, sumBody;
+        Btn returnBtn;
         Image fade;
         float fadeFrom, fadeTarget, fadeStart, fadeDur = 1f;
         Text objective, strip;
@@ -139,6 +144,7 @@ namespace MedievalKnight
 
             BuildPrepare();
             BuildCarry();
+            BuildSummary();
             BuildOverlays();
         }
 
@@ -421,6 +427,7 @@ namespace MedievalKnight
         {
             if (prepareRoot != null) prepareRoot.SetActive(false);
             if (carryRoot != null) carryRoot.SetActive(false);
+            if (summaryRoot != null) summaryRoot.SetActive(false);
         }
 
         Item ItemOf(Loadout d, Cell c)
@@ -628,6 +635,107 @@ namespace MedievalKnight
             }
             foreach (Cell c in carryCells)
                 c.cursor.color = c == hover ? new Color(1f, 1f, 1f, 0.3f) : new Color(1f, 1f, 1f, 0f);
+        }
+        // ---------------------------------------------------------------- end-of-run summary
+
+        void BuildSummary()
+        {
+            deathDim = Box("DeathDim", root, Mid, Vector2.zero, Vector2.zero, new Color(0.12f, 0f, 0f, 0f));
+            deathDim.rectTransform.anchorMin = Vector2.zero; deathDim.rectTransform.anchorMax = Vector2.one;
+            deathDim.rectTransform.offsetMin = deathDim.rectTransform.offsetMax = Vector2.zero;
+
+            RectTransform sr = Rect("Summary", root, Mid, Vector2.zero, Vector2.zero);
+            sr.anchorMin = Vector2.zero; sr.anchorMax = Vector2.one; sr.offsetMin = sr.offsetMax = Vector2.zero;
+            summaryRoot = sr.gameObject;
+            Image frame = Box("Frame", sr, Mid, Vector2.zero, new Vector2(706, 486), FrameCol);
+            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(700, 480), PanelBg).rectTransform;
+            sumTitle = Label("Title", p, new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(660, 56), 46, TextAnchor.MiddleCenter, "VICTORY");
+            sumTitle.fontStyle = FontStyle.Bold;
+            sumSub = Label("Sub", p, new Vector2(0.5f, 1f), new Vector2(0f, -88f), new Vector2(660, 26), 19, TextAnchor.MiddleCenter);
+            sumSub.color = Gray;
+            sumBody = Label("Body", p, TL, Vector2.zero, new Vector2(640, 280), 19, TextAnchor.UpperLeft);
+            sumBody.rectTransform.pivot = TL; sumBody.rectTransform.anchoredPosition = new Vector2(30, -124);
+            sumBody.horizontalOverflow = HorizontalWrapMode.Wrap;
+            returnBtn = MakeButton("ReturnButton", p, new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(340, 56), "RETURN TO BASE", 26);
+            returnBtn.rt.pivot = new Vector2(0.5f, 0f);
+            returnBtn.frame.color = Gold;
+            returnBtn.bg.color = new Color(0.45f, 0.34f, 0.12f, 1f);
+            summaryRoot.SetActive(false);
+        }
+
+        public bool SummaryVisible { get { return summaryRoot != null && summaryRoot.activeSelf; } }
+        public RectTransform ReturnRect { get { return returnBtn.rt; } }
+        public string SummaryTitle { get { return sumTitle.text; } }
+        public string SummarySubtitle { get { return sumSub.text; } }
+        public string SummaryBody { get { return sumBody.text; } }
+
+        // "Iron Sword +2, Apple x2, Horned King's Blade NEW"
+        static string Group(List<ResultLine> lines)
+        {
+            var order = new List<string>();
+            var count = new Dictionary<string, int>();
+            var isNew = new Dictionary<string, bool>();
+            foreach (ResultLine l in lines)
+            {
+                string n = l.item.Name;
+                if (!count.ContainsKey(n)) { order.Add(n); count[n] = 0; isNew[n] = false; }
+                count[n]++;
+                if (l.isNew) isNew[n] = true;
+            }
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < order.Count; i++)
+            {
+                if (i > 0) sb.Append(",  ");
+                sb.Append(order[i]);
+                if (count[order[i]] > 1) sb.Append(" x").Append(count[order[i]]);
+                if (isNew[order[i]]) sb.Append(" <color=#F2C14E>NEW</color>");
+            }
+            return sb.ToString();
+        }
+
+        static string Hex(Color c) { return "#" + ColorUtility.ToHtmlStringRGB(c); }
+
+        public void ShowSummary(RunResult r)
+        {
+            HideAll();
+            summaryRoot.SetActive(true);
+            var sb = new System.Text.StringBuilder();
+            if (r.victory)
+            {
+                sumTitle.text = "VICTORY"; sumTitle.color = Green;
+                sumSub.text = "The Minotaur is defeated and the way home is open.";
+                sb.Append("<color=" + Hex(Green) + "><b>BROUGHT HOME</b></color>\n");
+                sb.Append(r.brought.Count > 0 ? Group(r.brought) : "<color=#9aa0b0>nothing</color>").Append("\n\n");
+                if (r.leftBehind.Count > 0)
+                    sb.Append("<color=" + Hex(Yellow) + "><b>LEFT BEHIND (stash full)</b></color>\n").Append(Group(r.leftBehind)).Append("\n\n");
+            }
+            else
+            {
+                sumTitle.text = r.abandoned ? "ABANDONED" : "YOU FELL"; sumTitle.color = Red;
+                sumSub.text = r.abandoned ? "You left the world mid-run. Everything you carried was lost." : "Everything you carried is lost.";
+                sb.Append("<color=" + Hex(Red) + "><b>LOST</b></color>\n");
+                sb.Append(r.lost.Count > 0 ? Group(r.lost) : "<color=#9aa0b0>nothing</color>").Append("\n\n");
+                sb.Append("<color=" + Hex(Green) + "><b>SAFE IN STASH</b></color>\n");
+                sb.Append(r.safe.Count > 0 ? Group(r.safe) : "<color=#9aa0b0>nothing</color>").Append("\n\n");
+            }
+            if (r.ironRestored) sb.Append("<color=" + Hex(Green) + ">Iron Sword restored</color>\n");
+            sb.Append("Stash:  " + r.stashWeapons + "/" + Loadout.StashCaps[0] + " Weapons    " + r.stashFoods + "/" + Loadout.StashCaps[1] + " Food");
+            sumBody.text = sb.ToString();
+        }
+
+        public void HideSummary() { if (summaryRoot != null) summaryRoot.SetActive(false); }
+
+        public void SetDeathDim(float alpha) { deathDim.color = new Color(0.12f, 0f, 0f, alpha); }
+
+        // Called every frame while the summary is open.
+        public void SummaryInput()
+        {
+            Vector2 m = InputX.MousePos;
+            bool on = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(returnBtn.rt, m, null);
+            returnBtn.bg.color = on ? new Color(0.6f, 0.46f, 0.16f, 1f) : new Color(0.45f, 0.34f, 0.12f, 1f);
+            bool click = InputX.HasMouse && InputX.MouseDown(0) && on;
+            bool key = InputX.Down(KeyCode.Return) || InputX.Down(KeyCode.KeypadEnter) || InputX.Down(KeyCode.Space);
+            if (click || key) run.UiReturn();
         }
     }
 }

@@ -1589,6 +1589,8 @@ namespace MedievalKnight
             yield return LoopWorldTests();
             Log("---- loop: pickups / eat / drop / carry window");
             yield return LoopPickupTests();
+            Log("---- loop: death, return, abandoned");
+            yield return LoopDeathTests();
         }
 
 
@@ -1764,6 +1766,8 @@ namespace MedievalKnight
             run.data.EnsureHeld();
             yield return W(0.2f);
             yield return Click(run.ui.EnterRect.position);
+            yield return W(0.1f);
+            if (run.ui.PromptShown) yield return Tap(Key.Enter);          // no food packed: answer the question
             float t0 = Time.realtimeSinceStartup;
             while (!run.InWorld && Time.realtimeSinceStartup - t0 < 4f) yield return null;
             yield return W(0.8f);
@@ -1862,6 +1866,91 @@ namespace MedievalKnight
             Check("loop pickup: after stepping away and back it is picked up again with its +2",
                 !Pickup.All.Contains(dropped) && d.carry.weapons[1].IsWeapon && d.carry.weapons[1].id == Weapons.Fang && d.carry.weapons[1].plus == 2);
             g.packsOff = false;
+        }
+
+
+        // Dying ends the run: no revive, no YOU DIED screen, YOU FELL with LOST / SAFE IN STASH, carry gone, RETURN TO BASE;
+        // only weapon dead -> Iron Sword restored; closing the game mid-run -> ABANDONED next time.
+        IEnumerator LoopDeathTests()
+        {
+            // --- a run with spare things at home
+            yield return StartLoopWorld(d =>
+            {
+                d.carry.foods[0] = Item.Food(Foods.Apple);
+                d.stash.Add(Item.Weapon(Weapons.Rapier, 2));          // not taken along: safe at home
+                d.stash.Add(Item.Food(Foods.Meat));
+            });
+            RunLoop run = g.run;
+            Loadout d0 = run.data;
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(0.3f);
+            bool dim = run.Dying && !run.SummaryOpen;
+            yield return W(0.8f);
+            bool noOldScreen = !g.hud.DeathVisible;
+            yield return W(1.2f);
+            yield return W(3f);
+            Check("loop death: the knight stays down (no revive after 5 s) and the old YOU DIED screen never shows",
+                k.Dead && noOldScreen && !g.hud.DeathVisible && run.State == LoopState.Summary);
+            Check("loop death: the screen dims first (dying, no summary yet) and then the summary YOU FELL shows",
+                dim && run.ui.SummaryVisible && run.ui.SummaryTitle == "YOU FELL" && Time.timeScale == 0f);
+            string body = run.ui.SummaryBody;
+            Check("loop death: LOST lists what was carried (Iron Sword, Apple) and SAFE IN STASH lists what stayed home (Rapier +2, Roast Meat)",
+                body.Contains("LOST") && body.Contains("Iron Sword") && body.Contains("Apple") && body.Contains("SAFE IN STASH")
+                && body.Contains("Swift Rapier +2") && body.Contains("Roast Meat") && !body.Contains("Iron Sword restored"));
+            string saved = File.ReadAllText(LoopSave.Path);
+            Check("loop death: the carry is empty, the stash that stayed home is intact and the save says the run is over",
+                d0.carry.Total == 0 && d0.stash.HasWeaponId(Weapons.Rapier) && !d0.stash.HasWeaponId(Weapons.Iron) && !d0.inRun && saved.Contains("\"inRun\":false"));
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+            Check("loop death: RETURN TO BASE: at the base, alive at full health, no enemies, PREPARE open with the Rapier +2 held",
+                run.PrepareOpen && !k.Dead && k.hp >= k.MaxHp - 0.01f && Enemy.All.Count == 0 && (k.transform.position - MapLayout.BasePoint).magnitude < 1f
+                && run.data.Held.id == Weapons.Rapier && run.data.Held.plus == 2 && !run.ui.SummaryVisible && Time.timeScale == 0f);
+            Check("loop death: the knight starts level 1 again and holds the Rapier model", g.progress.level == 1 && k.Weapon.id == Weapons.Rapier && k.SwordModel.name == "Swift Rapier");
+
+            // --- dying with the only weapon: a free Iron Sword is put back
+            yield return StartLoopWorld(null);
+            run = g.run;
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(2.4f);
+            Check("loop death: dying with the only Weapon restores a free Iron Sword (+0) in the stash and says so",
+                run.SummaryOpen && run.result.ironRestored && run.data.stash.HasWeaponId(Weapons.Iron) && run.ui.SummaryBody.Contains("Iron Sword restored")
+                && run.result.lost.Count == 1);
+            yield return Tap(Key.Enter);
+            yield return W(0.4f);
+            Check("loop death: Enter on the summary also returns to the base, with the Iron Sword packed (the loop can go on)",
+                run.PrepareOpen && run.data.Held.IsWeapon && run.data.Held.id == Weapons.Iron && run.data.Held.plus == 0);
+
+            // --- closing the game in the middle of a run
+            yield return Tap(Key.Escape);                                            // closes PREPARE (empty carry would not matter)
+            yield return W(0.2f);
+            run.data.carry.foods[0] = Item.Food(Foods.Meat);
+            run.data.carry.weapons[1] = Item.Weapon(Weapons.Dao);
+            run.data.stash.Add(Item.Weapon(Weapons.Greatsword));
+            g.SetInventory(true);
+            yield return W(0.2f);
+            yield return Click(run.ui.EnterRect.position);
+            yield return W(0.1f);
+            if (run.ui.PromptShown) yield return Tap(Key.Enter);
+            float t0 = Time.realtimeSinceStartup;
+            while (!run.InWorld && Time.realtimeSinceStartup - t0 < 4f) yield return null;
+            yield return W(0.5f);
+            Check("loop death: (setup) in a new run, the save says inRun", run.InWorld && File.ReadAllText(LoopSave.Path).Contains("\"inRun\":true"));
+            g.LeaveToMenu();                                                          // what Esc Esc / closing the window leaves behind
+            yield return W(0.3f);
+            Check("loop death: leaving mid-run does not touch the save (the next start finds inRun)", File.ReadAllText(LoopSave.Path).Contains("\"inRun\":true"));
+            Net.StartSingle("Test");
+            g.StartSession(true);
+            k = g.knight;
+            yield return W(0.5f);
+            run = g.run;
+            Check("loop death: starting again after a mid-run exit shows ABANDONED with what was carried listed as LOST",
+                run.SummaryOpen && run.result.abandoned && run.ui.SummaryTitle == "ABANDONED" && run.ui.SummaryBody.Contains("Dao") && run.ui.SummaryBody.Contains("Roast Meat")
+                && run.ui.SummarySubtitle.Contains("left the world mid-run"));
+            Check("loop death: after ABANDONED the carry is gone, the stash kept the Greatsword and the save is closed",
+                run.data.carry.Total == 0 && run.data.stash.HasWeaponId(Weapons.Greatsword) && !run.data.inRun && File.ReadAllText(LoopSave.Path).Contains("\"inRun\":false"));
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+            Check("loop death: RETURN TO BASE after ABANDONED opens PREPARE", run.PrepareOpen);
         }
 
         // Single Player from the menu: the base (no enemies, PREPARE open and pausing), Tab / Esc, no boss respawn.

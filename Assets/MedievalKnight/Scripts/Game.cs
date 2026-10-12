@@ -1064,7 +1064,7 @@ namespace MedievalKnight
             hud.HideLevelUp();
             SetInventory(false);
             progress.pendingChoices = 0;
-            if (Loop) return;                                     // the loop has its own end-of-run screen (RunLoop)
+            if (Loop) { run.OnKnightDown(); return; }             // the loop has its own end-of-run screen (RunLoop)
             hud.ShowDeath(progress.level, k.inventory.OwnedCount, Weapons.All.Length, k.souls, k);
         }
 

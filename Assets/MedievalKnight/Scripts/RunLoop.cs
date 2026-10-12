@@ -25,7 +25,11 @@ namespace MedievalKnight
         public bool PrepareOpen { get { return State == LoopState.Prepare && g.InventoryOpen; } }
         public bool CarryOpen { get { return State == LoopState.World && g.InventoryOpen; } }
         public bool Busy { get { return entering; } }               // fading into the world
-        public bool Dying { get { return false; } }                 // fallen, the screen is dimming
+        public bool Dying { get { return dying; } }                 // fallen, the screen is dimming
+        public RunResult result;                                    // the last finished run (summary screen, tests)
+        bool dying;
+        float dieStart;
+        const float DimSeconds = 1.5f;
 
         public RunLoop(Game game) { g = game; }
 
@@ -42,8 +46,20 @@ namespace MedievalKnight
             ui = LoopUi.Create(g.transform, this);
             if (LoopSave.LastLoadNote.Length > 0) g.hud.Notice(LoopSave.LastLoadNote, LoopUi.Yellow);
             g.knight.ResetForRun(MapLayout.BasePoint);
+            if (data.inRun)
+            {
+                // the game was closed in the middle of a run: that counts as a death (no save-scumming)
+                result = data.Die(true);
+                Save();
+                State = LoopState.Summary;
+                ui.ShowSummary(result);
+                Debug.Log("LOOP abandoned run: " + result.lost.Count + " items lost");
+                return;
+            }
             data.AutoPack();
             State = LoopState.Base;
+            ui.SetObjective("Press Tab to prepare, then enter the world");
+            g.knight.SetWeapon(data.Held.id, data.Held.plus);
             g.SetInventory(true);
         }
 
@@ -57,6 +73,12 @@ namespace MedievalKnight
         public void Tick()
         {
             if (entering && Time.unscaledTime >= enterAt) StartWorld();
+            if (dying)
+            {
+                float t = Mathf.Clamp01((Time.unscaledTime - dieStart) / DimSeconds);
+                ui.SetDeathDim(t * 0.6f);
+                if (t >= 1f) { dying = false; State = LoopState.Summary; ui.ShowSummary(result); }
+            }
             ui.SetStrip(data, State == LoopState.World);
         }
 
@@ -179,7 +201,7 @@ namespace MedievalKnight
             Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level);
         }
 
-        public void SummaryInput() { }
+        public void SummaryInput() { ui.SummaryInput(); }
 
         // Keys that only mean something while fighting: 1 / 2 swap the held weapon, C eats.
         public void WorldKeys()
@@ -204,7 +226,43 @@ namespace MedievalKnight
             g.knight.SetWeapon(it.id, it.plus);
             g.hud.Notice("Holding " + it.Name, Weapons.All[it.id].uiColor);
         }
-        public void OnDeath() { }
+        // The knight went down (Game.OnKnightDown). In the world that is the end of the run: the carry is gone and the
+        // result is saved at once (closing the game now changes nothing); the summary comes after the screen has dimmed.
+        public void OnKnightDown()
+        {
+            if (State != LoopState.World || dying) return;
+            dying = true;
+            dieStart = Time.unscaledTime;
+            result = data.Die(false);
+            Save();
+            ui.SetObjective("");
+            Debug.Log("LOOP fell: lost " + result.lost.Count + ", stash " + data.stash.Total + (result.ironRestored ? ", Iron Sword restored" : ""));
+        }
+
+        // Knight.DownRoutine finished falling. Dying at the base (the H test hit) is no loss: just stand up again.
+        public void OnDeath()
+        {
+            if (State == LoopState.World || State == LoopState.Summary) return;
+            g.knight.ResetForRun(MapLayout.BasePoint);
+            g.knight.SetWeapon(data.Held.id, data.Held.plus);
+        }
+
+        // RETURN TO BASE
+        public void UiReturn()
+        {
+            if (State != LoopState.Summary) return;
+            ui.HideSummary();
+            ui.SetDeathDim(0f);
+            g.ClearWorld();
+            g.knight.ResetForRun(MapLayout.BasePoint);
+            data.AutoPack();
+            g.knight.SetWeapon(data.Held.id, data.Held.plus);
+            Save();
+            State = LoopState.Base;
+            g.SnapCamera();
+            ui.SetObjective("Press Tab to prepare, then enter the world");
+            g.SetInventory(true);
+        }
         // ---------------------------------------------------------------- picking up, eating, dropping (in the world)
 
         float nextFullHint;
