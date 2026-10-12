@@ -41,3 +41,6 @@
 - **รอพีทเล่นมือ**: รอด 1 รอบ + ตาย 1 รอบ + ปิดเกมกลางโลก (ภาพหน้าจอของ selftest ไม่ถูกเขียนในสภาพแวดล้อมนี้ จึงยังไม่ได้เทียบหน้าตา PREPARE / สรุปกับ design §3 ด้วยตา)
 - phase 2 (โลกเก่า) ยังไม่เริ่ม; หัวข้อ "รอพีทตัดสิน" ใน vision.md ที่เกี่ยวข้องต้องตอบก่อน
 - เอกสาร: `Docs/reference/loop.md` (ใหม่), `files.md`, `controls.md`, `weapons-and-tab.md`, `map-and-spawning.md`, `CLAUDE.md` อัปเดตแล้ว
+
+## ส่งขึ้น Drive
+- zip `medieval-knight-win64.zip` (185 ไฟล์ โครง `MedievalKnight/...` เดิม, 38,656,107 bytes ≈ 36.9 MiB) copy ทับใน `G:\My Drive\PusomGames\` แล้ว จาก build ที่ผ่าน selftest 239 PASS + mptest FAIL=0
