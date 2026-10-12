@@ -272,7 +272,7 @@ namespace MedievalKnight
         {
             SavePrefs();
             Net.StartSingle(nameField.value);
-            Game.I.StartSession();
+            Game.I.StartSession(true);                        // Single Player = the base / world loop; Host and Join stay the v1 arena
         }
 
         void StartHost()

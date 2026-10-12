@@ -43,7 +43,9 @@ namespace MedievalKnight
         public bool LevelUpOpen { get { return LevelStep != 0; } }
         public bool InventoryOpen { get; private set; }
         public bool InSession { get; private set; }                    // false while the start menu is up
-        public bool PanelOpen { get { return LevelStep != 0 || InventoryOpen; } }
+        public RunLoop run;                                            // Phase 1 base / world loop (single player from the menu only)
+        public bool Loop { get { return InSession && run != null && Net.Mode == NetMode.Single; } }
+        public bool PanelOpen { get { return LevelStep != 0 || InventoryOpen || (Loop && run.SummaryOpen); } }
         // The panels freeze the game in single player only; online the world keeps running for everybody.
         public bool Paused { get { return PanelOpen && !Net.Multiplayer; } }
         public float MinotaurRespawnIn { get { return minoRespawnAt - Time.time; } }
@@ -122,7 +124,7 @@ namespace MedievalKnight
             else if (Args.selfTestDir != null || Args.single)
             {
                 Net.StartSingle(name);
-                StartSession();
+                StartSession(Args.loop && Args.selfTestDir == null);   // -single is the v1 arena; -single -loop is the Phase 1 loop
             }
             else menu.Show("");
 
@@ -151,7 +153,8 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- session (one run in the arena)
 
         // Net.Mode / Net.LocalPid / Net.LocalName are already set: single player, host or a client that was let in.
-        public void StartSession()
+        // loop: the Phase 1 base / world loop (single player only). Host, Join, -single and -selftest stay the v1 arena.
+        public void StartSession(bool loop = false)
         {
             if (InSession) return;
             InSession = true;
@@ -162,11 +165,13 @@ namespace MedievalKnight
             knight = SpawnKnight(Net.LocalPid, Net.LocalName, false);
             menu.Hide();
             hud.SetVisible(true);
-            if (Net.Authority) SpawnActors();
+            run = loop && Net.Mode == NetMode.Single ? new RunLoop(this) : null;
+            if (run == null && Net.Authority) SpawnActors();          // the loop builds the world when the player enters it
             camFocus = knight.transform.position;
             PlaceCamera(Vector3.zero);
             if (started) Sfx.I.Play(Snd.Ready); else readyPending = true;
-            Debug.Log("SESSION start: " + Net.Mode + ", player " + Net.LocalPid + " '" + Net.LocalName + "'");
+            Debug.Log("SESSION start: " + Net.Mode + ", player " + Net.LocalPid + " '" + Net.LocalName + "'" + (run != null ? " (loop)" : ""));
+            if (run != null) { run.Begin(); SnapCamera(); }
         }
 
         // Back to the start menu (Esc twice, the host closed the game, the connection dropped). The sockets are
@@ -174,6 +179,7 @@ namespace MedievalKnight
         public void EndSession(string message)
         {
             if (!InSession) { menu.Show(message); return; }
+            if (run != null) { run.Shutdown(); run = null; }
             InSession = false;
             foreach (Knight k in players) { k.gameObject.SetActive(false); Destroy(k.gameObject); }
             players.Clear();
@@ -200,8 +206,10 @@ namespace MedievalKnight
             if (Time.unscaledTime > leaveAskedAt + 3f)
             {
                 leaveAskedAt = Time.unscaledTime;
-                hud.Notice(Net.IsHost ? "Press Esc again to close the game for everyone and go to the menu"
-                    : "Press Esc again to leave to the menu", new Color(1f, 0.85f, 0.5f));
+                string ask = Net.IsHost ? "Press Esc again to close the game for everyone and go to the menu"
+                    : "Press Esc again to leave to the menu";
+                if (Loop && run.InWorld) ask = "Leaving now counts as a death. Press Esc again.";    // the save already says "in a run"
+                hud.Notice(ask, new Color(1f, 0.85f, 0.5f));
                 return;
             }
             LeaveToMenu();
@@ -516,7 +524,7 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- actors
 
-        void SpawnActors()
+        public void SpawnActors()
         {
             dummy = new GameObject("StrawDummy").AddComponent<Dummy>();
             dummy.transform.SetParent(actors, false);
@@ -934,11 +942,15 @@ namespace MedievalKnight
         public void SetInventory(bool open)
         {
             if (open == InventoryOpen || (open && (LevelStep != 0 || knight.Dead))) return;
+            if (Loop && open && (run.Busy || run.SummaryOpen || run.Dying)) return;     // fading into the world / summary / dying
             InventoryOpen = open;
-            if (open) hud.ShowInventory();
+            if (open)
+            {
+                if (Loop) run.OnInventoryOpened(); else hud.ShowInventory();
+            }
             else
             {
-                hud.HideInventory();
+                if (Loop) run.OnInventoryClosed(); else hud.HideInventory();
                 inputBlockUntil = Time.unscaledTime + 0.2f;
             }
         }
@@ -1041,7 +1053,14 @@ namespace MedievalKnight
             hud.HideLevelUp();
             SetInventory(false);
             progress.pendingChoices = 0;
+            if (Loop) return;                                     // the loop has its own end-of-run screen (RunLoop)
             hud.ShowDeath(progress.level, k.inventory.OwnedCount, Weapons.All.Length, k.souls, k);
+        }
+
+        // Phase 1 loop: the local knight fell. Called by Knight.DownRoutine once he is on the ground.
+        public void OnLoopDeath()
+        {
+            if (Loop) run.OnDeath();
         }
 
         // The local knight got back up: dying costs the level, EXP, cards and stat points (swords and Soul stay).
@@ -1091,7 +1110,7 @@ namespace MedievalKnight
         }
 
         // Removes every enemy, pickup, effect and floating number.
-        void ClearWorld()
+        public void ClearWorld()
         {
             foreach (Enemy e in new List<Enemy>(Enemy.All))
             {
@@ -1116,6 +1135,11 @@ namespace MedievalKnight
             if (Net.IsClient)
             {
                 hud.Notice("Only the host can restart (F5)", new Color(1f, 0.6f, 0.5f));
+                return false;
+            }
+            if (Loop)
+            {
+                hud.Notice("Restart (F5) is off in the loop", new Color(1f, 0.6f, 0.5f));   // it would wipe the stash
                 return false;
             }
             ResetAll();
@@ -1183,11 +1207,14 @@ namespace MedievalKnight
         {
             Net.Poll();                                           // network events first: they may start or end the session
             if (!InSession) return;
+            bool loop = Loop;
+            if (loop) run.Tick();                                 // Phase 1: fades, portal, end-of-run timers
 
             if (InputX.Down(KeyCode.Escape))
             {
                 // Esc closes the Tab window first; it does not count as the "Esc again" that leaves to the menu
-                if (InventoryOpen) SetInventory(false);
+                if (loop && run.OnEscape()) { }                   // closed the "enter without food?" question
+                else if (InventoryOpen) SetInventory(false);
                 else
                 {
                     LeaveKey();
@@ -1228,11 +1255,22 @@ namespace MedievalKnight
                 if (InventoryOpen)
                 {
                     if (!online) Time.timeScale = 0f;
-                    int pick = hud.InventoryInput();
-                    if (pick >= 0) EquipWeapon(pick);
+                    if (loop) run.InventoryInput();               // PREPARE at the base, the carry window in the world
+                    else
+                    {
+                        int pick = hud.InventoryInput();
+                        if (pick >= 0) EquipWeapon(pick);
+                    }
                     if (!online) return;
                 }
             }
+            if (loop && run.SummaryOpen)                          // YOU FELL / VICTORY: frozen until RETURN TO BASE
+            {
+                Time.timeScale = 0f;
+                run.SummaryInput();
+                return;
+            }
+            if (loop && run.InWorld && !PanelOpen && Time.unscaledTime >= inputBlockUntil && !knight.Dead) run.WorldKeys();
 
             // hit-stop is a single-player effect: online it would slow the whole world down for everyone
             Time.timeScale = !online && Time.unscaledTime < hitStopUntil ? 0.03f : 1f;
@@ -1240,13 +1278,14 @@ namespace MedievalKnight
             if (InputX.Down(KeyCode.F5) && RequestReset()) return;
             if (InputX.Down(KeyCode.H) && !PanelOpen) knight.TakeDamage(20f, knight.transform.position + knight.transform.forward, "Test hit");
 
-            FoodFullHints();
+            if (!loop) FoodFullHints();
             if (Net.Authority) SimulateWorld();
         }
 
         // Pickups, wave / boss spawning and enemy separation: single player and host only.
         void SimulateWorld()
         {
+            if (Loop && !run.InWorld) return;                     // at the base there is no world to simulate
             UpdatePickups();
 
             // --- co-op: everybody down at once ---
@@ -1260,7 +1299,7 @@ namespace MedievalKnight
 
             // --- spawning ---
             UpdatePacks();
-            if (minotaur == null && Time.time >= minoRespawnAt)
+            if (minotaur == null && Time.time >= minoRespawnAt && !Loop)    // the loop's world boss does not come back
             {
                 minotaur = Minotaur.Spawn(MinotaurHome, actors);
                 WorldBanner("The Minotaur returns!", new Color(1f, 0.5f, 0.35f));

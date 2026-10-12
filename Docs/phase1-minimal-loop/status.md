@@ -9,3 +9,4 @@
 - 2026-10-12 developer เริ่ม (พีทอนุมัติเอกสารแล้ว): ขั้น 1 เสร็จ (Args -loop/-save, InputX C, MapLayout.BasePoint) build ผ่าน
 - ขั้น 2 เสร็จ: Loadout.cs (Item/ItemBag/Loadout/RunResult) + selftest เคสข้อมูล 13 เคส; build ผ่าน selftest 153 PASS / 0 FAIL
 - ขั้น 3 เสร็จ: LoopSave.cs (JSON, .tmp/.bak/.corrupt, validate, Disabled ตอนเทสต์) + 9 เคส; selftest 162 PASS / 0 FAIL (รอบแรกมี 5 FAIL จากการสุ่มดรอป Banana Dao ของเคส v1 เดิม รันซ้ำผ่าน = flake)
+- ขั้น 4 เสร็จ: Game.Loop/StartSession(loop)/RunLoop โครง/LoopUi placeholder/Menu.StartSingle; Knight.ResetForRun/SetWeapon/ทางตายของ loop; selftest 170 PASS / 0 FAIL (เพิ่มสวิตช์เทสต์ -looponly รันเฉพาะเคส loop เร็ว)

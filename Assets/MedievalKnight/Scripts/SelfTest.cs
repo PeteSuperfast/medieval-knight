@@ -182,6 +182,13 @@ namespace MedievalKnight
             Random.InitState(12345);
             g.foodOverride = 0;                                         // no random food: the food test decides when some falls
             yield return W(1.3f);
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-looponly") >= 0)   // quick run of the Phase 1 cases only
+            {
+                yield return LoopTests();
+                Log("done (loop cases only), screenshots=" + shot + ", failed checks=" + fails);
+                Application.Quit();
+                yield break;
+            }
 
             // ------------------------------------------------ the knight starts in town, which is safe: the first pack comes when he leaves it
             {
@@ -1573,8 +1580,68 @@ namespace MedievalKnight
             Log("---- loop: save file");
             LoopSaveTests();
             yield return null;
+            Log("---- loop: base");
+            yield return LoopBaseTests();
         }
 
+
+
+        // The loop session used by the cases below: its own save file inside the test folder, a new game every time.
+        IEnumerator StartLoopSession()
+        {
+            string file = Path.Combine(dir, "save_loop.json");
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.PathOverride = file;
+            LoopSave.ResetMemory();
+            if (g.InSession) g.LeaveToMenu();
+            yield return W(0.3f);
+            Net.StartSingle("Test");
+            g.StartSession(true);
+            k = g.knight;
+            k.aimOverride = null;
+            yield return W(0.4f);
+        }
+
+        // Single Player from the menu: the base (no enemies, PREPARE open and pausing), Tab / Esc, no boss respawn.
+        IEnumerator LoopBaseTests()
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            Vector3 bp = MapLayout.BasePoint;
+            Check("loop base: the session is a loop (Game.Loop) and the knight stands at the base point",
+                g.Loop && run != null && run.State == LoopState.Prepare && (k.transform.position - bp).magnitude < 1f);
+            Check("loop base: there is no actor at the base (no enemies, no Minotaur, no dummy, no pickups)",
+                Enemy.All.Count == 0 && g.minotaur == null && g.dummy == null && Pickup.All.Count == 0);
+            Check("loop base: PREPARE is open on arrival and pauses the game", g.InventoryOpen && g.PanelOpen && Time.timeScale == 0f && run.ui.PrepareVisible);
+            yield return Tap(Key.Escape);
+            yield return W(0.2f);
+            Check("loop base: Esc closes PREPARE (back to the base, time runs again)",
+                !g.InventoryOpen && run.State == LoopState.Base && Time.timeScale > 0.5f && !run.ui.PrepareVisible && g.InSession);
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            Check("loop base: Tab opens PREPARE again", g.InventoryOpen && run.State == LoopState.Prepare && Time.timeScale == 0f);
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            Vector3 p0 = k.transform.position;
+            k.moveOverride = new Vector2(1f, 0f);
+            yield return W(0.8f);
+            k.moveOverride = null;
+            Check("loop base: the knight walks around the base after PREPARE is closed", (k.transform.position - p0).magnitude > 2f);
+            yield return W(4f);
+            Check("loop base: still no enemies 5 s later: no slime packs and no Minotaur at the base", Enemy.All.Count == 0 && g.minotaur == null && g.wave == 0);
+
+            // the v1 arena is untouched: -single / -selftest style sessions are not loops
+            g.LeaveToMenu();
+            yield return W(0.3f);
+            Net.StartSingle("Test");
+            g.StartSession();
+            k = g.knight;
+            yield return W(0.6f);
+            Check("loop base: StartSession() without the loop flag is the v1 arena (Game.Loop false, Minotaur and dummy exist)",
+                !g.Loop && g.run == null && g.minotaur != null && g.dummy != null && !g.InventoryOpen);
+            g.LeaveToMenu();
+            yield return W(0.3f);
+        }
 
         // Save / load with a file of its own inside the test folder; the real save file must not be touched.
         void LoopSaveTests()

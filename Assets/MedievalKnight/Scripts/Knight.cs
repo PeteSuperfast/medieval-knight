@@ -306,11 +306,18 @@ namespace MedievalKnight
         // F5: back to level 1, no upgrades, no stat points, only the starting sword.
         public void ResetAll()
         {
+            inventory.Reset();
+            ResetForRun(spawnPoint);
+            RebuildSword();
+        }
+
+        // Everything except the weapon (the caller sets that): level 1, no upgrades, Soul 0, full bars, standing at "at".
+        // Used by F5 (above) and by the Phase 1 loop at the start / end of every run.
+        public void ResetForRun(Vector3 at)
+        {
             CancelAction();
             progress = new Progress();
             souls = 0;                                                   // F5 clears Soul too (dying does not)
-            inventory.Reset();
-            RebuildSword();
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
             Dead = false; IsBlocking = false; Airborne = false;
             comboIndex = 0; knockVel = Vector3.zero; hurtTint = 0f;
@@ -319,8 +326,16 @@ namespace MedievalKnight
             for (int i = 0; i < 4; i++) { cd[i] = 0f; cdMax[i] = 0f; }
             invulnUntil = 0f; protectUntil = 0f;
             dashInvulnUntil = 0f; dashMoveEnd = 0f; dashReadyAt = 0f;
-            transform.position = spawnPoint;
+            transform.position = at;
             transform.rotation = Quaternion.identity;
+        }
+
+        // Phase 1 loop: the weapon in hand is the carried HELD one (inventory is only a one-weapon projection of it).
+        // The model is rebuilt only when it is a different weapon.
+        public void SetWeapon(int id, int plus)
+        {
+            inventory.SetSingle(id, plus);
+            if (swordModel == null || swordModel.name != Weapon.name) RebuildSword();
         }
 
         // Stops whatever the knight is doing (combo, skill, dash) and clears every flag those leave behind.
@@ -1210,6 +1225,11 @@ namespace MedievalKnight
             reviveAt = Time.time + (online ? Game.ReviveDelayCoop : Game.ReviveDelaySingle);
             Game.I.OnKnightDown(this);                      // YOU DIED screen (the numbers shown are the ones from before the reset)
             yield return FallRoutine();
+            if (Game.I.Loop)                                // Phase 1 loop: dying ends the run, nobody stands up here
+            {
+                Game.I.OnLoopDeath();
+                yield break;
+            }
             yield return new WaitForSeconds(Mathf.Max(0f, reviveAt - Time.time));
             Game.I.OnKnightRevive(this);                    // back to level 1 (swords and Soul stay)
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;

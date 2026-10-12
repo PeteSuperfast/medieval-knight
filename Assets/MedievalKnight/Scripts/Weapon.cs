@@ -263,6 +263,15 @@ namespace MedievalKnight
 
         public string NameOf(int id) { return Weapons.All[id].name + (plus[id] > 0 ? " +" + plus[id] : ""); }
 
+        // Phase 1 loop: the inventory is a projection of the one weapon in hand (carry slot HELD), with its +N.
+        public void SetSingle(int id, int plusN)
+        {
+            for (int i = 0; i < owned.Length; i++) { owned[i] = false; plus[i] = 0; }
+            owned[id] = true;
+            plus[id] = Mathf.Clamp(plusN, 0, Weapons.MaxPlus);
+            equipped = id;
+        }
+
         // Returns 0 = new sword, 1 = duplicate refined it (+1), 2 = duplicate of a maxed sword (worth EXP instead).
         public int Add(int id)
         {
@@ -310,6 +319,8 @@ namespace MedievalKnight
         public int weaponId;
         public int netId;                 // the same number on every machine in an online game
         public int owner = -1;            // -1: anyone can take it; otherwise only the player with this pid (co-op boss sword)
+        public int plus;                  // Phase 1 loop: the +N a dropped weapon keeps
+        public bool dropped;              // Phase 1 loop: thrown down by the player - not taken again until he has stepped away
         public bool hidden;               // somebody else's personal drop: it exists for the rules but is not shown here
         public bool fullShown;            // the "HP full" hint was already shown for this food
         public float age;
