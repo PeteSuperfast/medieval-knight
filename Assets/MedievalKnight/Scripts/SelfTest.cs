@@ -1835,6 +1835,8 @@ namespace MedievalKnight
             yield return Tap(Key.Tab);
             yield return W(0.2f);
             Check("loop pickup: Tab in the world opens the carry window and pauses (single player)", g.InventoryOpen && run.ui.CarryVisible && Time.timeScale == 0f && !run.ui.PrepareVisible);
+            Shot("loop_carry_window");
+            yield return W(0.3f);
             k.hp = k.MaxHp * 0.3f;
             int f1 = d.carry.Count(Section.Foods);
             yield return Click(run.ui.CarryCellRect(Section.Foods, 0).position);
@@ -1895,6 +1897,8 @@ namespace MedievalKnight
                 k.Dead && noOldScreen && !g.hud.DeathVisible && run.State == LoopState.Summary);
             Check("loop death: the screen dims first (dying, no summary yet) and then the summary YOU FELL shows",
                 dim && run.ui.SummaryVisible && run.ui.SummaryTitle == "YOU FELL" && Time.timeScale == 0f);
+            Shot("loop_you_fell");
+            yield return W(0.3f);
             string body = run.ui.SummaryBody;
             Check("loop death: LOST lists what was carried (Iron Sword, Apple) and SAFE IN STASH lists what stayed home (Rapier +2, Roast Meat)",
                 body.Contains("LOST") && body.Contains("Iron Sword") && body.Contains("Apple") && body.Contains("SAFE IN STASH")
@@ -2025,6 +2029,8 @@ namespace MedievalKnight
             yield return W(2.0f);
             Check("loop victory: staying 1.5 s inside the portal ends the run: VICTORY",
                 run.SummaryOpen && run.result.victory && run.ui.SummaryTitle == "VICTORY" && Time.timeScale == 0f);
+            Shot("loop_victory");
+            yield return W(0.3f);
             string body = run.ui.SummaryBody;
             Check("loop victory: BROUGHT HOME lists the Iron Sword, Swift Rapier +1 (with +N), the Horned King's Blade as NEW, Apple and Roast Meat",
                 body.Contains("BROUGHT HOME") && body.Contains("Iron Sword") && body.Contains("Swift Rapier +1") && body.Contains("Horned King's Blade") && body.Contains("NEW")
@@ -2087,6 +2093,9 @@ namespace MedievalKnight
             Check("loop base: there is no actor at the base (no enemies, no Minotaur, no dummy, no pickups)",
                 Enemy.All.Count == 0 && g.minotaur == null && g.dummy == null && Pickup.All.Count == 0);
             Check("loop base: PREPARE is open on arrival and pauses the game", g.InventoryOpen && g.PanelOpen && Time.timeScale == 0f && run.ui.PrepareVisible);
+            yield return W(0.2f);
+            Check("loop base: no Soul row on the HUD and the controls panel describes the loop (1 / 2 hold, C eat, Carry window)",
+                !g.hud.SoulRowVisible && g.hud.ControlsShown.Contains("Hold Weapon slot") && g.hud.ControlsShown.Contains("Carry window"));
             yield return Tap(Key.Escape);
             yield return W(0.2f);
             Check("loop base: Esc closes PREPARE (back to the base, time runs again)",
@@ -2113,6 +2122,9 @@ namespace MedievalKnight
             yield return W(0.6f);
             Check("loop base: StartSession() without the loop flag is the v1 arena (Game.Loop false, Minotaur and dummy exist)",
                 !g.Loop && g.run == null && g.minotaur != null && g.dummy != null && !g.InventoryOpen);
+            yield return W(0.2f);
+            Check("loop base: the v1 arena still shows Soul and the v1 controls (nothing of the loop leaks into it)",
+                g.hud.SoulRowVisible && !g.hud.ControlsShown.Contains("Carry window") && g.hud.ControlsShown.Contains("Restart (online: host)"));
             g.LeaveToMenu();
             yield return W(0.3f);
         }

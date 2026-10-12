@@ -1000,6 +1000,7 @@ namespace MedievalKnight
         {
             if (amount <= 0 || knight == null) return;
             knight.souls += amount;
+            if (Loop) return;                                     // Phase 1: Soul is not shown (nothing to spend it on yet)
             hud.Popup(popupAt + new Vector3(0.9f, -0.3f, 0f), "+" + amount + " Soul", Hud.SoulColor, 18);
             Fx.I.Burst(popupAt, 5, Hud.SoulColor, 1.5f, 3f, Vector3.up, 0.8f, 0.7f, -2f, 0.08f);
         }

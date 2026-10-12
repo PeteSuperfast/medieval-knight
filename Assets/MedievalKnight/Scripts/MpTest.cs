@@ -1271,6 +1271,11 @@ namespace MedievalKnight
             Check("Single Player starts an offline session", g.InSession && Net.Mode == NetMode.Single && !menu.Visible && g.knight != null && g.players.Count == 1);
             if (g.InSession)
             {
+                // Phase 1: Single Player goes to the base and PREPARE is open (it pauses); Esc closes it so the knight can walk
+                Check("Single Player goes into the Phase 1 base: Game.Loop, PREPARE open and pausing, no enemies",
+                    g.Loop && g.InventoryOpen && Time.timeScale == 0f && Enemy.All.Count == 0);
+                yield return Tap(Key.Escape);
+                yield return W(0.3f);
                 Vector3 p0 = g.knight.transform.position;
                 Keys(Key.W);
                 yield return W(0.6f);
@@ -1279,7 +1284,7 @@ namespace MedievalKnight
                 Check("the knight walks with the real W key after going through the menu (" + (g.knight.transform.position.z - p0.z).ToString("0.0") + " m)", g.knight.transform.position.z - p0.z > 1.5f);
                 yield return Tap(Key.Tab);
                 yield return W(0.2f);
-                Check("single player still pauses for the weapon panel", g.InventoryOpen && Time.timeScale == 0f);
+                Check("single player still pauses for the PREPARE panel", g.InventoryOpen && Time.timeScale == 0f);
                 yield return Tap(Key.Tab);
                 yield return W(0.3f);
                 Shot("single_player_from_menu");

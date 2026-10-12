@@ -85,7 +85,9 @@ namespace MedievalKnight
         Knight deathKnight;
         float deathShownAt;
         Image soulIcon;
-        Text soulText;
+        Text soulText, soulLabel;
+        string controlsV1;
+        bool loopTexts;
         int soulShown;
         float soulBumpAt = -10f;
         readonly Image[] staminaTicks = new Image[10];
@@ -153,7 +155,7 @@ namespace MedievalKnight
             expBar.label.fontSize = 18;
 
             // --- Soul, the fifth row of the top-left panel ---
-            Text soulLabel = MakeText("SoulLabel", new Vector2(0, 1), new Vector2(28, -156), new Vector2(90, 24), 15, TextAnchor.MiddleLeft);
+            soulLabel = MakeText("SoulLabel", new Vector2(0, 1), new Vector2(28, -156), new Vector2(90, 24), 15, TextAnchor.MiddleLeft);
             soulLabel.text = "SOUL";
             soulLabel.color = SoulColor;
             soulIcon = Panel("SoulIcon", new Vector2(0, 1), new Vector2(116, -158), new Vector2(14, 20), SoulColor);
@@ -254,6 +256,7 @@ namespace MedievalKnight
                 + "Walk over a dropped sword to take it\n"
                 + "M  Sound volume / mute\n"
                 + "H  Test hit   F5  Restart (online: host)   Esc  Menu";
+            controlsV1 = controlsText.text;
 
             // --- skill bar, bottom-centre ---
             for (int i = 0; i < 4; i++) slots[i] = MakeSlot(i);
@@ -945,6 +948,7 @@ namespace MedievalKnight
             UpdateBar(staminaBar, k.stamina, k.MaxStamina, dt, Time.unscaledTime - k.StaminaDeniedTime < 0.35f, null);
             UpdateStaminaTicks(k);
             UpdateSoul(k);
+            SetLoopTexts(g.Loop);
             if (deathRoot.activeSelf && deathKnight != null)
             {
                 // fades in over 0.6 s: dark red, a little less dark online (the others keep fighting)
@@ -1066,7 +1070,36 @@ namespace MedievalKnight
             }
         }
 
+        // Phase 1 loop: no Soul on screen (nothing to spend it on), the controls and the corner hint say what the keys do now.
+        void SetLoopTexts(bool loop)
+        {
+            if (loop == loopTexts) return;
+            loopTexts = loop;
+            soulLabel.gameObject.SetActive(!loop);
+            soulIcon.gameObject.SetActive(!loop);
+            soulText.gameObject.SetActive(!loop);
+            tabCornerHint.text = loop ? "Tab = Carry window" : "Tab = Inventory & Stats";
+            controlsText.text = !loop ? controlsV1
+                : "CONTROLS   (F1 hides this)\n"
+                + "WASD / Arrows    Move\n"
+                + "Mouse    Aim - the knight faces the cursor\n"
+                + "Left Click / J    Weapon combo\n"
+                + "     Side > Chop > Rising > Spin > Thrust\n"
+                + "Left Shift (hold)    Run\n"
+                + "Space    Dash - dodge, 0.5 s untouchable (25 stamina)\n"
+                + "Right Click (hold)    Shield block\n"
+                + "Q  Whirlwind          E  Dash Thrust\n"
+                + "R  Shield Bash        F  Ground Slam\n"
+                + "1 / 2    Hold Weapon slot 1 / 2         C  Eat\n"
+                + "Tab    Carry window  (at the base: PREPARE)\n"
+                + "Level-up cards: 1 / 2 / 3 or Click\n"
+                + "Walk over a drop to take it   -   Right Click in Tab drops\n"
+                + "M  Sound   Esc Esc  Menu (in the world: counts as a death)";
+        }
+
         public string SoulShown { get { return soulText.text; } }
+        public bool SoulRowVisible { get { return soulText.gameObject.activeSelf; } }
+        public string ControlsShown { get { return controlsText.text; } }
 
         void UpdateSoul(Knight k)
         {

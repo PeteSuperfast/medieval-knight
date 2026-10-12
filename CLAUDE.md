@@ -13,13 +13,14 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 - ไม่ทำ: บทสนทนา/เควสต์/NPC, อาวุธยิงไกลของผู้เล่น, crafting/ฟาร์ม/สร้างฐาน, class ใหม่, ร้านค้า/เศรษฐกิจ, โลกใหญ่กว่า 380x380 ม., เซิร์ฟเวอร์กลาง
 - งานที่ไม่อยู่ใน phase ปัจจุบัน → ลง `Docs/backlog.md` ไม่ลงมือ; ปรับของเดิมก่อนสร้างระบบใหม่
 - คำศัพท์: เรียกรวมว่า **"อาวุธ"** (ไม่ใช้ "ดาบ" เป็นคำรวม) โค้ดใหม่ใช้ `Weapon` ไม่ใช้ `Sword` (ของเดิมค่อยๆ เปลี่ยนเมื่อแก้ไฟล์นั้น)
-- phase: ~~0 แก้ mptest smooth~~ (เสร็จ) → 1 loop ขั้นต่ำคนเดียว (biome เดียว บอสโลก = Minotaur) → 2 โลกเก่า → 3 biome เพิ่ม + เกรดอาวุธ Rust→God → 4 co-op ของ loop ใหม่ → 5 เนื้อเรื่อง/ขัดเกลา ทำทีละ phase ต้องเล่นได้จริงก่อนไปต่อ
-- ระหว่าง phase 1–3 ห้ามทำให้ออนไลน์เดิมพัง (mptest ต้องผ่าน) แต่กลไกใหม่ทำแบบคนเดียวก่อนได้
-- หัวข้อ "รอพีทตัดสิน" ใน vision.md ต้องได้คำตอบก่อนเริ่ม phase ที่เกี่ยวข้อง
+- phase: ~~0~~ ~~1 loop ขั้นต่ำคนเดียว~~ (เสร็จ) → 2 โลกเก่า → 3 biome เพิ่ม + เกรดอาวุธ Rust→God → 4 co-op ของ loop ใหม่ → 5 เนื้อเรื่อง/ขัดเกลา ทำทีละ phase ต้องเล่นได้จริงก่อนไปต่อ
+- ระหว่าง phase 1–3 ห้ามทำให้ออนไลน์เดิมพัง (mptest ต้องผ่าน); หัวข้อ "รอพีทตัดสิน" ใน vision.md ต้องตอบก่อนเริ่ม phase ที่เกี่ยวข้อง
 
-## สถานะโค้ดตอนนี้ (ยังเป็นของ v1 จนกว่า phase 1 จะแทนที่)
+## สถานะโค้ดตอนนี้ (phase 1 เสร็จ 2026-10-12)
 
-ยังไม่มีฐาน/เลือกโลก/บอสโลก: เล่นในแมพเดียว ออกจากเมืองไปสู้สไลม์ที่เกิดเป็นแพ็ค และบอส Minotaur ในรังทางเหนือ เลเวล 1-25 การ์ดอัปเกรด + แต้มสเตตัส อาวุธ 6 เล่ม (ตอนนี้เป็นดาบทั้งหมด) อาหาร 2 ชนิด ตายแล้วเกิดใหม่ที่ spawn point (ระบบข้ามรอบเดิมจะถูกแทนตาม vision.md)
+**Single Player จากเมนู = loop phase 1** (`Game.Loop`): ฐาน → PREPARE (stash 12/8/16 ↔ carry 2/3/4) → โลกเดียว เลเวล 1 ใหม่ → ฆ่า Minotaur → portal 1.5 วิ = VICTORY (ของเข้า stash) / ตาย = ของที่พกหาย (YOU FELL) / ปิดเกมกลางโลก = ABANDONED; เซฟ JSON ในเครื่อง. ยังไม่มี: โลกเก่า, biome เพิ่ม, เกรดอาวุธ, co-op ของ loop
+
+Host / Join / `-single` / `-selftest` = สนาม v1 เดิม ห้ามให้ loop รั่วเข้าไป (ทุกจุดแก้อยู่หลัง `Game.Loop`)
 
 ## รายละเอียดอยู่ใน Docs\ (อ่านเฉพาะเรื่องที่เกี่ยวกับงาน)
 
@@ -28,6 +29,7 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 | `Docs/vision.md` | **กรอบเกม core loop เสาหลัก ไม่ทำ ลำดับ phase เรื่องรอตัดสิน** |
 | `Docs/backlog.md` | ไอเดียที่ยังไม่ทำ (นอก phase / รอคิว) |
 | `Docs/reference/files.md` | แต่ละสคริปต์ทำอะไร (ตารางโครงสร้างไฟล์ทั้งหมด) |
+| `Docs/reference/loop.md` | **loop phase 1: ไฟล์ กติกา ปุ่ม เซฟ วิธีเทสต์** |
 | `Docs/reference/controls.md` | ปุ่มควบคุมทั้งหมด |
 | `Docs/reference/map-and-spawning.md` | โซนแมพ collision การเกิดของแพ็คสไลม์ |
 | `Docs/reference/progression.md` | ตาราง EXP เลเวลอัป stamina แต้มสเตตัส Soul อาหาร |
@@ -35,7 +37,7 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 | `Docs/reference/sound.md` | เสียง 6 คลิปและจังหวะที่เล่น |
 | `Docs/reference/online-coop.md` | Net / protocol / authority / กฎ multiplayer / command line / mptest |
 | `Docs/reference/dev-guide.md` | วิธีเพิ่ม/ปรับของ (ท่าโจมตี อาวุธ เสียง ศัตรู แมพ) และขั้นตอนทดสอบเต็ม |
-| `Docs/big-map-update/` | อัปเดตแมพใหญ่ (เสร็จแล้ว ใช้เป็น biome แรก) |
+| `Docs/big-map-update/`, `Docs/phase1-minimal-loop/` | งานใหญ่ที่เสร็จแล้ว (แมพใหญ่ = biome แรก; loop phase 1) |
 | `Docs/ref/`, `Docs/style.md`, `_reference/` | ภาพอ้างอิงและสไตล์ (ไม่ได้ใช้ในเกมแล้ว) |
 
 ## สิ่งที่ต้องรู้ก่อนแก้โค้ด
@@ -51,7 +53,8 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 ## Build และทดสอบ
 
 - build: `build.bat` → `Builds\MedievalKnight.exe` (log ที่ `build.log`)
-- selftest (~3 นาที ต้องไม่มี `FAIL`): `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log` ดูบรรทัด `SELFTEST`
-- ออนไลน์ (host + client 3 + ตัวที่ต้องถูกปฏิเสธ 2 บนเครื่องเดียว ~70 วินาที): `powershell -ExecutionPolicy Bypass -File mptest.ps1` (เทสท่าโจมตี/สกิลอย่างละ 1, ภาพหน้าจอเก็บเฉพาะหลังมี FAIL)
-- เช็ค "A's walk looks smooth on B" เคยตกประจำ (แก้แล้ว 2026-10-12: `NetInterp` ใช้ offset แบบ window ~2 วินาทีแทนค่าที่ค่อยๆ คลายช้าๆ) ถ้าตกอีกแปลว่าบั๊กจริง
-- ขั้นตอนเต็มและสิ่งที่ยังไม่ครอบคลุม: `Docs/reference/dev-guide.md`, `Docs/reference/online-coop.md`
+- selftest (~3 นาที ต้องไม่มี `FAIL`): `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log`
+- ออนไลน์ (host + client 3 + ตัวที่ต้องถูกปฏิเสธ 2 ~70 วินาที): `powershell -ExecutionPolicy Bypass -File mptest.ps1`
+- เช็ค "A's walk looks smooth on B" (แก้แล้ว 2026-10-12 ด้วย `NetInterp` window ~2 วินาที) ถ้าตกอีกแปลว่าบั๊กจริง
+- loop: เคสอยู่ท้าย selftest; เร็ว ~100 วิ ต่อท้าย `-looponly`; `-menutest` เช็ค host `Enemy.All.Count >= 5` ตกอยู่ก่อนแล้ว (ไม่เกี่ยวกับ loop)
+- ขั้นตอนเต็ม: `Docs/reference/dev-guide.md`, `online-coop.md`

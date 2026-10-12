@@ -215,16 +215,20 @@ namespace MedievalKnight
                 string col = i == d.heldSlot && it.IsWeapon ? "#6FD16F" : "#C8CCD6";
                 sb.Append("<color=" + col + ">[" + (i + 1) + "] " + label + "</color>   ");
             }
+            // C eats the first food: its name and how many of that kind, plus how many other foods are packed
             Item food = Item.None;
-            int count = 0;
-            foreach (Item it in d.carry.foods) if (it.kind == ItemKind.Food) { if (food.IsNone) food = it; count++; }
-            foreach (Item it in d.carry.supplies) if (it.kind == ItemKind.Food) { if (food.IsNone) food = it; count++; }
-            sb.Append(count > 0 ? "<color=#F2C14E>[C] " + food.BaseName + " x" + count + "</color>" : "<color=#8A8F9C>[C] no food</color>");
+            int same = 0, other = 0;
+            foreach (Item it in d.carry.foods) if (it.kind == ItemKind.Food) { if (food.IsNone) food = it; if (it.id == food.id) same++; else other++; }
+            foreach (Item it in d.carry.supplies) if (it.kind == ItemKind.Food) { if (food.IsNone) food = it; if (it.id == food.id) same++; else other++; }
+            sb.Append(same > 0 ? "<color=#F2C14E>[C] " + food.BaseName + " x" + same + (other > 0 ? " (+" + other + ")" : "") + "</color>" : "<color=#8A8F9C>[C] no food</color>");
             strip.text = sb.ToString();
         }
 
         void Update()
         {
+            bool panel = (prepareRoot != null && prepareRoot.activeSelf) || (carryRoot != null && carryRoot.activeSelf) || (summaryRoot != null && summaryRoot.activeSelf);
+            if (objective.gameObject.activeSelf == panel) objective.gameObject.SetActive(!panel);
+            if (strip.gameObject.activeSelf == panel) strip.gameObject.SetActive(!panel);
             float t = Mathf.Clamp01((Time.unscaledTime - fadeStart) / fadeDur);
             float a = Mathf.Lerp(fadeFrom, fadeTarget, t);
             if (Mathf.Abs(fade.color.a - a) > 0.001f) fade.color = new Color(0f, 0f, 0f, a);
@@ -239,8 +243,8 @@ namespace MedievalKnight
             Image dim = Box("Dim", pr, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.03f, 0.5f));
             dim.rectTransform.anchorMin = Vector2.zero; dim.rectTransform.anchorMax = Vector2.one;
             dim.rectTransform.offsetMin = dim.rectTransform.offsetMax = Vector2.zero;
-            Image frame = Box("Frame", pr, Mid, Vector2.zero, new Vector2(1006, 606), FrameCol);
-            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(1000, 600), PanelBg).rectTransform;
+            Image frame = Box("Frame", pr, Mid, Vector2.zero, new Vector2(1006, 578), FrameCol);
+            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(1000, 572), PanelBg).rectTransform;
 
             Text title = Label("Title", p, TL, new Vector2(20, -14), new Vector2(300, 44), 36, TextAnchor.MiddleLeft, "PREPARE");
             title.fontStyle = FontStyle.Bold;
@@ -254,7 +258,7 @@ namespace MedievalKnight
             head0.fontStyle = FontStyle.Bold; head0.rectTransform.pivot = TL; head0.rectTransform.anchoredPosition = new Vector2(20, -62);
             Text head1 = Label("CarryHead", p, TL, Vector2.zero, new Vector2(400, 24), 18, TextAnchor.MiddleLeft, "CARRY INTO WORLD");
             head1.fontStyle = FontStyle.Bold; head1.rectTransform.pivot = TL; head1.rectTransform.anchoredPosition = new Vector2(540, -62);
-            Box("Divider", p, TL, new Vector2(520, -60), new Vector2(2, 420), FrameCol).rectTransform.pivot = TL;
+            Box("Divider", p, TL, new Vector2(520, -60), new Vector2(2, 380), FrameCol).rectTransform.pivot = TL;
 
             cells[0] = new Cell[3][];
             cells[1] = new Cell[3][];
@@ -262,7 +266,7 @@ namespace MedievalKnight
             sectionLabels[1] = new Text[3];
             string[] names = { "Weapons", "Food", "Supplies" };
             // stash
-            float[] labelY0 = { 90f, 238f, 328f };
+            float[] labelY0 = { 86f, 228f, 312f };
             for (int s = 0; s < 3; s++)
             {
                 int cap = Loadout.StashCaps[s];
@@ -274,7 +278,7 @@ namespace MedievalKnight
                     cells[0][s][i] = MakeCell(p, 0, (Section)s, i, new Vector2(20 + (i % 8) * 60f, -(labelY0[s] + 22f + (i / 8) * 60f)), 54f);
             }
             // carry
-            float[] labelY1 = { 90f, 222f, 354f };
+            float[] labelY1 = { 86f, 206f, 326f };
             for (int s = 0; s < 3; s++)
             {
                 int cap = Loadout.CarryCaps[s];
@@ -287,18 +291,18 @@ namespace MedievalKnight
             }
 
             info = Label("Info", p, TL, Vector2.zero, new Vector2(960, 40), 15, TextAnchor.UpperLeft);
-            info.rectTransform.pivot = TL; info.rectTransform.anchoredPosition = new Vector2(20, -486);
+            info.rectTransform.pivot = TL; info.rectTransform.anchoredPosition = new Vector2(20, -452);
             info.horizontalOverflow = HorizontalWrapMode.Wrap;
             warn = Label("Warn", p, TL, Vector2.zero, new Vector2(520, 30), 17, TextAnchor.MiddleLeft);
-            warn.rectTransform.pivot = TL; warn.rectTransform.anchoredPosition = new Vector2(20, -548);
+            warn.rectTransform.pivot = TL; warn.rectTransform.anchoredPosition = new Vector2(20, -512);
             warn.fontStyle = FontStyle.Bold;
             enterBtn = MakeButton("EnterButton", p, TL, Vector2.zero, new Vector2(300, 52), "ENTER WORLD", 26);
-            enterBtn.rt.pivot = TL; enterBtn.rt.anchoredPosition = new Vector2(560, -536);
+            enterBtn.rt.pivot = TL; enterBtn.rt.anchoredPosition = new Vector2(560, -498);
             backBtn = MakeButton("BackButton", p, TL, Vector2.zero, new Vector2(110, 52), "Esc: Back", 15);
-            backBtn.rt.pivot = TL; backBtn.rt.anchoredPosition = new Vector2(880, -536);
+            backBtn.rt.pivot = TL; backBtn.rt.anchoredPosition = new Vector2(880, -498);
             hint = Label("Hint", p, TL, Vector2.zero, new Vector2(960, 20), 12, TextAnchor.MiddleLeft,
                 "Click an item to move it   -   Right click a carried Weapon to hold it   -   Arrows / WASD: move cursor   Enter: move   Q / E: other side   Tab / Esc: close");
-            hint.color = Gray; hint.rectTransform.pivot = TL; hint.rectTransform.anchoredPosition = new Vector2(20, -588);
+            hint.color = Gray; hint.rectTransform.pivot = TL; hint.rectTransform.anchoredPosition = new Vector2(20, -552);
             prepareRoot.SetActive(false);
         }
 

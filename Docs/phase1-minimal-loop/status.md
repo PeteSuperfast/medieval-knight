@@ -1,17 +1,43 @@
 # phase1-minimal-loop — status
-- ทำถึงไหน: เขียน requirement.md (ร่าง) จากคำตอบของพีท 2026-10-12 ครบ 3 ข้อ
-- ตัดสินแล้ว: Iron Sword เล่มเดียวตอนเริ่ม / เลือกของที่พกได้ N ชิ้น / 3 แบบช่อง (อาวุธ อาหาร สัมภาระ) / ตายของหายยังไม่มีเก็บคืน / แจก Iron Sword ฟรีเสมอ / เก็บข้ามรอบเฉพาะอาวุธในคลัง
-- เหลือ: พีทอนุมัติ → developer (10 ขั้นใน tech.md §5)
-- รอใคร: พีท (อนุมัติ design.md + tech*.md)
-- 2026-10-12 13:36 พีทยืนยัน requirement (ok) → ส่ง designer แบบ background
-- 2026-10-12 designer เสร็จ design.md ผ่านด่าน 2 → decisions.md (7 ข้อ) → ส่ง architect
-- 2026-10-12 architect เสร็จ tech.md + tech-data-save/flow/test.md ผ่านด่าน 2 → decisions #8-15 → โพสต์ขออนุมัติ
-- 2026-10-12 developer เริ่ม (พีทอนุมัติเอกสารแล้ว): ขั้น 1 เสร็จ (Args -loop/-save, InputX C, MapLayout.BasePoint) build ผ่าน
-- ขั้น 2 เสร็จ: Loadout.cs (Item/ItemBag/Loadout/RunResult) + selftest เคสข้อมูล 13 เคส; build ผ่าน selftest 153 PASS / 0 FAIL
-- ขั้น 3 เสร็จ: LoopSave.cs (JSON, .tmp/.bak/.corrupt, validate, Disabled ตอนเทสต์) + 9 เคส; selftest 162 PASS / 0 FAIL (รอบแรกมี 5 FAIL จากการสุ่มดรอป Banana Dao ของเคส v1 เดิม รันซ้ำผ่าน = flake)
-- ขั้น 4 เสร็จ: Game.Loop/StartSession(loop)/RunLoop โครง/LoopUi placeholder/Menu.StartSingle; Knight.ResetForRun/SetWeapon/ทางตายของ loop; selftest 170 PASS / 0 FAIL (เพิ่มสวิตช์เทสต์ -looponly รันเฉพาะเคส loop เร็ว)
-- ขั้น 5 เสร็จ: LoopUi PREPARE เต็ม (คลัง/พก ย้ายด้วยคลิก+คีย์บอร์ด, HELD คลิกขวา, Carry is full, เตือนไม่มีอาหาร+ยืนยัน, ENTER WORLD) + 14 เคส loop prepare (รัน -looponly 49 PASS / 0 FAIL); ช่องคลังใช้ 54px (design 88px) เพราะ 12+8+16 ช่องต้องอยู่ในจอ
-- ขั้น 6 เสร็จ: ENTER WORLD (เซฟ inRun ก่อน, fade 0.5s, ResetForRun(TownSpawn), SetWeapon(HELD), SpawnActors), ปุ่ม 1/2, ข้อความ Esc, objective, แถบอาวุธซ้ายล่าง; looponly 58 PASS / 0 FAIL
-- ขั้น 7 เสร็จ: เก็บของเข้า Carry (+Pack full, รวม +N, อาหารไม่กินทันที), กิน C / คลิกใน Tab, หน้าต่าง Carry (Tab ในโลก), Drop (คลิกขวา, ห้ามทิ้งอาวุธชิ้นสุดท้าย, Pickup.dropped), selftest เต็ม 210 PASS / 0 FAIL (รอบแรก 1 FAIL 'ready voice line' เสียงดาบมาก่อนเช็ค = flake เดิมของ v1 รันซ้ำผ่าน)
-- ขั้น 8 เสร็จ: ตาย = จบรอบ (ไม่ revive ไม่มี YOU DIED เดิม, dim 1.5s, YOU FELL: LOST / SAFE IN STASH, Iron Sword restored, RETURN TO BASE), ABANDONED ตอนเปิดใหม่หลังออกกลางโลก; selftest เต็ม 223 PASS / 0 FAIL
-- ขั้น 9 เสร็จ: บอสโลก (Minotaur) ไม่ respawn ใน loop, Portal.cs (วงแหวน+ลำแสง+วงโหลด 24 ชิ้น), ค้าง 1.5 วิ = VICTORY, ของเข้า Stash (+N ติด, NEW), LEFT BEHIND, ตายหลังบอสล้ม = YOU FELL, ลูกศร Hud ชี้ portal + แบนเนอร์; selftest เต็ม 237 PASS / 0 FAIL
+
+## ทำถึงไหน
+**เสร็จทั้ง 10 ขั้นของ tech.md §5 (2026-10-12)** — developer ทำตามแผนที่พีทอนุมัติ ทุกขั้น build ผ่านและ commit แยก
+
+| ขั้น | เนื้อหา | ผล |
+|---|---|---|
+| 1 | `Args` -loop/-save, `InputX` C, `MapLayout.BasePoint` | build ผ่าน |
+| 2 | `Loadout.cs` + เคสข้อมูล | ★ selftest ผ่าน |
+| 3 | `LoopSave.cs` + เคสเซฟ/โหลด/ไฟล์เสีย | ★ ผ่าน |
+| 4 | `Game.Loop`, `StartSession(loop)`, `RunLoop` โครง, `Menu.StartSingle` | ★ ผ่าน |
+| 5 | PREPARE เต็ม (ย้าย / HELD / เตือนไม่มีอาหาร / ENTER WORLD) | เคส prepare ผ่าน |
+| 6 | เข้าโลก (เซฟ inRun, fade, เลเวล 1, HELD), ปุ่ม 1/2, Esc เตือน | เคส world ผ่าน |
+| 7 | เก็บของเข้า carry, Pack full, กิน C, หน้าต่าง Carry, Drop | ★ ผ่าน |
+| 8 | ตาย = จบรอบ, YOU FELL / ABANDONED, Iron restored | ★ ผ่าน |
+| 9 | บอสไม่ respawn, portal, VICTORY, LEFT BEHIND | ★ ผ่าน |
+| 10 | ซ่อน Soul, ปิด F5, ข้อความ F1, แก้ `-menutest`, เอกสาร | build + selftest + mptest + menutest |
+
+## ผลทดสอบตอนจบ
+- build: ผ่าน (errors=0)
+- selftest เต็ม: **239 PASS / 0 FAIL** (เคส loop 104 ข้อ ท้ายไฟล์; `-looponly` รันเฉพาะชุดนี้ ~100 วิ)
+- mptest.ps1: H PASS=61, A 4, B 2, C 2, X 1, V 1 — **FAIL=0 ทุก role**, exceptions=0
+- `-menutest`: PASS 16 / FAIL 1 — ส่วน Single Player (เข้าฐาน, PREPARE, เดิน, Esc Esc) ผ่านทั้งหมด; FAIL เดียว = "Start Hosting ... Enemy.All.Count >= 5" (เช็คเก่าก่อน big-map-update F: เมืองเป็นเขตปลอดภัย ไม่มีสไลม์ตอนเริ่ม จึงเหลือแค่หุ่น + Minotaur) ไม่เกี่ยวกับ loop ไม่ได้แก้ (นอก scope; ขอพีทตัดสินว่าจะลดเป็น >= 2 ไหม)
+- flake ที่เจอ: selftest เคส v1 สุ่มดรอป Banana Dao (1 ครั้ง 5 FAIL) และ "ready voice line" (1 ครั้ง) รันซ้ำผ่านทั้งคู่
+
+## ทำต่างจากเอกสาร (เหตุผล)
+1. **ช่องคลัง (stash) ใน PREPARE ขนาด 54 px** (design 88 px) — 12 + 8 + 16 ช่องต้องอยู่ในจอเดียว; ช่อง carry 88 px ตามเดิม
+2. **หน้าต่าง Tab ในโลกเป็น LoopUi (Carry window)** ไม่ได้ปรับ panel เดิมของ `Hud` (tech.md §3 บอกให้แก้ Hud) — แยกไฟล์ใหม่ ไม่แตะ v1; ผู้เล่นเห็น: ช่อง Weapons 2 / Food 3 / Supplies 4 + สเตตัสตัวละคร (ไม่มีตาราง Skills)
+3. **ลูกศรชี้ portal ใช้ลูกศรบนกลางจอเดิม** (ที่เดียวกับลูกศรรัง) ไม่ได้ทำลูกศรที่ขอบจอ; ป้าย RETURN PORTAL เป็นตัวหนังสือบนจอที่ตามตำแหน่ง portal
+4. **วงโหลด portal เป็น 24 ชิ้นบนพื้นรอบวง** (ไม่ใช่วง UI)
+5. แบนเนอร์ portal แสดงหลัง "MINOTAUR SLAIN!" และหลังเลือกการ์ดเลเวลอัปเสร็จ (การ์ดเลเวลอัปล้างแบนเนอร์)
+6. ตายที่ฐานด้วย `H` (test hit) = ลุกที่ฐานไม่เสียอะไร (ไม่มีในเอกสาร; กันค้าง)
+7. สวิตช์เทสต์ `-looponly` (SelfTest) เพิ่ม — รันเฉพาะเคส loop เร็วขึ้น ไม่มีผลต่อเกม
+
+## ตัดสินระหว่างทำ
+- decisions.md ทั้ง 15 ข้อยึดตามเดิม; Drop (คลิกขวา) ตาม #1; ห้ามทิ้งอาวุธชิ้นสุดท้ายในช่อง Weapons (#8)
+- Weapon ใน Supplies ถือไม่ได้จนกว่าย้ายเข้า Weapons (คลิกในหน้าต่าง Carry) ตาม #4
+- รวม +N: `min(5, a + b + 1)` ตาม #9; stash เต็มตอนรอด = LEFT BEHIND ตาม #10
+
+## เหลือ / รอ
+- **รอพีทเล่นมือ**: รอด 1 รอบ + ตาย 1 รอบ + ปิดเกมกลางโลก (ภาพหน้าจอของ selftest ไม่ถูกเขียนในสภาพแวดล้อมนี้ จึงยังไม่ได้เทียบหน้าตา PREPARE / สรุปกับ design §3 ด้วยตา)
+- phase 2 (โลกเก่า) ยังไม่เริ่ม; หัวข้อ "รอพีทตัดสิน" ใน vision.md ที่เกี่ยวข้องต้องตอบก่อน
+- เอกสาร: `Docs/reference/loop.md` (ใหม่), `files.md`, `controls.md`, `weapons-and-tab.md`, `map-and-spawning.md`, `CLAUDE.md` อัปเดตแล้ว
