@@ -5,8 +5,8 @@ namespace MedievalKnight
     // Smooth motion for something that another machine simulates (a remote knight, a client's copy of an enemy).
     // Samples arrive 15-20 times a second stamped with the sender's clock. The object is drawn a little in the
     // past ("delay"), between the two samples around that moment, so it glides instead of jumping.
-    // The sender's clock is mapped to the local one by the freshest sample seen so far (offset), which slowly
-    // relaxes so a clock that drifts or a connection that gets slower is followed.
+    // The sender's clock is mapped to the local one by the freshest sample seen in the last ~2 s (offset), so a
+    // clock that drifts or a connection that gets slower is followed within a couple of seconds.
     public class NetInterp
     {
         const int Size = 8;
@@ -16,8 +16,11 @@ namespace MedievalKnight
         readonly Vector3[] pos = new Vector3[Size];
         readonly float[] yaw = new float[Size];
         int count;
-        float offset;                   // sender time - local time
+        float offset;                   // sender time - local time: the largest of the last OffsetWindow samples (the fastest delivery)
         bool hasOffset;
+        const int OffsetWindow = 40;    // ~2 s: a single lucky-fast sample stops steering the clock mapping once it leaves the window
+        readonly float[] oHist = new float[OffsetWindow];
+        int oCount, oNext;
 
         public float delay = 0.1f;
         public Vector3 Latest { get { return count > 0 ? pos[count - 1] : Vector3.zero; } }
@@ -42,8 +45,12 @@ namespace MedievalKnight
         {
             if (count > 0 && senderTime <= time[count - 1]) return;      // the same or an older sample again
             float o = senderTime - localNow;
-            if (!hasOffset) { offset = o; hasOffset = true; }
-            else offset = Mathf.Max(offset - 0.0004f, o);
+            if (!hasOffset) { hasOffset = true; oCount = 0; oNext = 0; }
+            oHist[oNext] = o;
+            oNext = (oNext + 1) % OffsetWindow;
+            if (oCount < OffsetWindow) oCount++;
+            offset = oHist[0];
+            for (int i = 1; i < oCount; i++) if (oHist[i] > offset) offset = oHist[i];
             if (count == Size)
             {
                 for (int i = 1; i < Size; i++) { time[i - 1] = time[i]; pos[i - 1] = pos[i]; yaw[i - 1] = yaw[i]; }

@@ -13,7 +13,7 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 - ไม่ทำ: บทสนทนา/เควสต์/NPC, อาวุธยิงไกลของผู้เล่น, crafting/ฟาร์ม/สร้างฐาน, class ใหม่, ร้านค้า/เศรษฐกิจ, โลกใหญ่กว่า 380x380 ม., เซิร์ฟเวอร์กลาง
 - งานที่ไม่อยู่ใน phase ปัจจุบัน → ลง `Docs/backlog.md` ไม่ลงมือ; ปรับของเดิมก่อนสร้างระบบใหม่
 - คำศัพท์: เรียกรวมว่า **"อาวุธ"** (ไม่ใช้ "ดาบ" เป็นคำรวม) โค้ดใหม่ใช้ `Weapon` ไม่ใช้ `Sword` (ของเดิมค่อยๆ เปลี่ยนเมื่อแก้ไฟล์นั้น)
-- phase: 0 แก้ mptest smooth → 1 loop ขั้นต่ำคนเดียว (biome เดียว บอสโลก = Minotaur) → 2 โลกเก่า → 3 biome เพิ่ม + เกรดอาวุธ Rust→God → 4 co-op ของ loop ใหม่ → 5 เนื้อเรื่อง/ขัดเกลา ทำทีละ phase ต้องเล่นได้จริงก่อนไปต่อ
+- phase: ~~0 แก้ mptest smooth~~ (เสร็จ) → 1 loop ขั้นต่ำคนเดียว (biome เดียว บอสโลก = Minotaur) → 2 โลกเก่า → 3 biome เพิ่ม + เกรดอาวุธ Rust→God → 4 co-op ของ loop ใหม่ → 5 เนื้อเรื่อง/ขัดเกลา ทำทีละ phase ต้องเล่นได้จริงก่อนไปต่อ
 - ระหว่าง phase 1–3 ห้ามทำให้ออนไลน์เดิมพัง (mptest ต้องผ่าน) แต่กลไกใหม่ทำแบบคนเดียวก่อนได้
 - หัวข้อ "รอพีทตัดสิน" ใน vision.md ต้องได้คำตอบก่อนเริ่ม phase ที่เกี่ยวข้อง
 
@@ -53,5 +53,5 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 - build: `build.bat` → `Builds\MedievalKnight.exe` (log ที่ `build.log`)
 - selftest (~3 นาที ต้องไม่มี `FAIL`): `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log` ดูบรรทัด `SELFTEST`
 - ออนไลน์ (host + client 3 + ตัวที่ต้องถูกปฏิเสธ 2 บนเครื่องเดียว ~70 วินาที): `powershell -ExecutionPolicy Bypass -File mptest.ps1` (เทสท่าโจมตี/สกิลอย่างละ 1, ภาพหน้าจอเก็บเฉพาะหลังมี FAIL)
-- เช็ค "A's walk looks smooth on B" ใน mptest ตกมาตั้งแต่ commit `4b146ba` (รู้อยู่แล้ว ยังไม่ได้ตามหาสาเหตุ) — เป็นงาน phase 0
+- เช็ค "A's walk looks smooth on B" เคยตกประจำ (แก้แล้ว 2026-10-12: `NetInterp` ใช้ offset แบบ window ~2 วินาทีแทนค่าที่ค่อยๆ คลายช้าๆ) ถ้าตกอีกแปลว่าบั๊กจริง
 - ขั้นตอนเต็มและสิ่งที่ยังไม่ครอบคลุม: `Docs/reference/dev-guide.md`, `Docs/reference/online-coop.md`
