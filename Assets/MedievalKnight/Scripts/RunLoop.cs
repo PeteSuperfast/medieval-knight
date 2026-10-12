@@ -441,7 +441,9 @@ namespace MedievalKnight
             }
             Knight k = g.knight;
             Vector3 d = k.Pos - portal.transform.position; d.y = 0f;
-            bool inside = !k.Dead && d.magnitude <= Portal.Radius;
+            // the level-up cards (and the Tab window) come first: the ring does not fill behind an open panel
+            bool blocked = g.PanelOpen || g.progress.pendingChoices > 0;
+            bool inside = !blocked && !k.Dead && d.magnitude <= Portal.Radius;
             portalHold = inside ? portalHold + Time.unscaledDeltaTime : 0f;
             portal.SetProgress(portalHold / Portal.HoldSeconds);
             ui.SetPortalLabel(g.cam, portal.transform.position + Vector3.up * 4.2f, true);

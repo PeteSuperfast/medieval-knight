@@ -45,3 +45,4 @@
 ## ส่งขึ้น Drive
 - zip `medieval-knight-win64.zip` (185 ไฟล์ โครง `MedievalKnight/...` เดิม, 38,656,107 bytes ≈ 36.9 MiB) copy ทับใน `G:\My Drive\PusomGames\` แล้ว จาก build ที่ผ่าน selftest 239 PASS + mptest FAIL=0
 - 2026-10-13 พีทลองเล่นมือจริงแล้วถือว่าดี → Phase 1 ปิด; menutest host เกณฑ์ลดเป็น >= 2 (พีทสั่ง) menutest 17 PASS / 0 FAIL
+- 2026-10-13 แก้บั๊ก (พีทแจ้ง): ฆ่าบอสแล้วมี level-up card เด้งตอนยืนใน portal → หน้า VICTORY ทับ card กดไม่ได้. สาเหตุ: portalHold นับด้วย unscaledDeltaTime ทั้งที่เวลาหยุดตอนเปิด card. แก้: วงโหลด portal ไม่เดินเมื่อ PanelOpen หรือ pendingChoices>0 (RunLoop.TickPortal) + เคส selftest ใหม่ loop cases 0 FAIL

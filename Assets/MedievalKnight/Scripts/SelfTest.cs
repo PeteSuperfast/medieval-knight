@@ -2025,6 +2025,20 @@ namespace MedievalKnight
             k.transform.position = portalPos + new Vector3(Portal.Radius + 3f, 0f, 0f);
             yield return W(0.4f);
             Check("loop victory: stepping out before 1.5 s cancels it (the ring empties, still in the world)", run.portalHold == 0f && run.InWorld && run.portal.SegmentsLit == 0);
+            // a level-up card panel that opens while he stands in the portal must come first: no VICTORY screen on top of it
+            k.transform.position = portalPos + new Vector3(0.6f, 0f, 0f);
+            g.GrantExp(Progress.Need(g.progress.level) - g.progress.exp, k.transform.position + Vector3.up * 2f);
+            float tc = Time.realtimeSinceStartup;
+            while (!g.LevelUpOpen && Time.realtimeSinceStartup - tc < 3f) yield return null;
+            yield return W(2.0f);
+            Check("loop victory: standing in the portal with the level-up cards open does not end the run (cards first, ring empty)",
+                g.LevelUpOpen && run.InWorld && !run.SummaryOpen && run.portalHold == 0f);
+            tc = Time.realtimeSinceStartup;
+            while ((g.LevelUpOpen || g.progress.pendingChoices > 0) && Time.realtimeSinceStartup - tc < 10f)
+            {
+                if (g.LevelStep == 1) g.ChooseUpgrade(0); else if (g.LevelStep == 2) g.ChooseStat(0);
+                yield return W(0.45f);
+            }
             k.transform.position = portalPos + new Vector3(0.6f, 0f, 0f);
             yield return W(2.0f);
             Check("loop victory: staying 1.5 s inside the portal ends the run: VICTORY",
