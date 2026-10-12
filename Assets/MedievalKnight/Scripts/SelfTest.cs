@@ -1556,9 +1556,146 @@ namespace MedievalKnight
                 Shot("after_restart");
             }
 
+            yield return LoopTests();
+
             yield return W(0.4f);
             Log("done, screenshots=" + shot + ", failed checks=" + fails);
             Application.Quit();
+        }
+
+        // ================================================================ Phase 1 loop (base / world / save)
+        // Runs after every v1 case above, so those are not touched by the loop. See Docs/phase1-minimal-loop/tech-test.md.
+        IEnumerator LoopTests()
+        {
+            Log("---- loop: data rules");
+            LoopData();
+            yield return null;
+        }
+
+        // Pure data: Item / ItemBag / Loadout rules (no scene needed).
+        void LoopData()
+        {
+            Loadout l = Loadout.NewGame();
+            Check("loop data: a new stash holds exactly one Iron Sword (+0) and nothing else",
+                l.stash.Total == 1 && l.stash.weapons[0].IsWeapon && l.stash.weapons[0].id == Weapons.Iron && l.stash.weapons[0].plus == 0 && l.carry.Total == 0);
+            Check("loop data: stash slots are 12 / 8 / 16 and carry slots 2 / 3 / 4",
+                l.stash.weapons.Length == 12 && l.stash.foods.Length == 8 && l.stash.supplies.Length == 16
+                && l.carry.weapons.Length == 2 && l.carry.foods.Length == 3 && l.carry.supplies.Length == 4);
+
+            // category first, then Supplies, then Full - nothing is lost
+            var bag = new ItemBag(2, 3, 4);
+            bool order = true;
+            order &= bag.Add(Item.Weapon(Weapons.Iron)) == BagResult.Added && bag.weapons[0].IsWeapon;
+            order &= bag.Add(Item.Weapon(Weapons.Rapier)) == BagResult.Added && bag.weapons[1].IsWeapon;
+            order &= bag.Add(Item.Weapon(Weapons.Fang)) == BagResult.Added && bag.supplies[0].IsWeapon && bag.supplies[0].id == Weapons.Fang;   // Weapons full -> Supplies
+            order &= bag.Add(Item.Food(Foods.Apple)) == BagResult.Added && bag.foods[0].kind == ItemKind.Food;
+            order &= bag.Add(Item.Food(Foods.Apple)) == BagResult.Added && bag.Add(Item.Food(Foods.Meat)) == BagResult.Added;
+            order &= bag.Add(Item.Food(Foods.Apple)) == BagResult.Added && bag.supplies[1].kind == ItemKind.Food;                                 // Foods full -> Supplies
+            Check("loop data: a weapon / food goes to its own group first, then to Supplies", order);
+            bag.Add(Item.Food(Foods.Meat)); bag.Add(Item.Food(Foods.Meat));                      // Supplies now full (4)
+            int before = bag.Total;
+            Item extra = Item.Food(Foods.Apple);
+            Check("loop data: when both the group and Supplies are full the item is refused and nothing is lost",
+                bag.Add(extra) == BagResult.Full && bag.Total == before && !bag.CanAdd(extra));
+            Check("loop data: a duplicate weapon still fits a full bag (it merges)",
+                bag.CanAdd(Item.Weapon(Weapons.Fang, 0)) && bag.Add(Item.Weapon(Weapons.Fang, 0)) == BagResult.Merged && bag.supplies[0].plus == 1 && bag.Total == before);
+
+            // +N merge: (+0)+(+0) = +1, (+2)+(+0) = +3, capped at +5
+            Check("loop data: merge +0 and +0 gives +1, +2 and +0 gives +3, the result is capped at +5",
+                ItemBag.MergePlus(0, 0) == 1 && ItemBag.MergePlus(2, 0) == 3 && ItemBag.MergePlus(5, 0) == 5 && ItemBag.MergePlus(4, 3) == 5);
+
+            // moves
+            Loadout m = Loadout.NewGame();
+            m.stash.Add(Item.Weapon(Weapons.Rapier, 2));
+            m.stash.Add(Item.Food(Foods.Apple));
+            bool mv = m.MoveToCarry(Section.Weapons, 0) && m.carry.weapons[0].id == Weapons.Iron && m.stash.weapons[0].IsNone;
+            mv &= m.MoveToCarry(Section.Foods, 0) && m.carry.foods[0].kind == ItemKind.Food && m.stash.foods[0].IsNone;
+            mv &= !m.MoveToCarry(Section.Foods, 0);                                    // empty slot: nothing to move
+            mv &= m.MoveToStash(Section.Weapons, 0) && m.stash.weapons[0].id == Weapons.Iron && m.carry.weapons[0].IsNone;
+            Check("loop data: moving between stash and carry keeps the item and empties the source slot", mv);
+            m.MoveToCarry(Section.Weapons, 0); m.MoveToCarry(Section.Weapons, 1);    // carry weapons: Iron, Rapier +2
+            m.stash.Add(Item.Weapon(Weapons.Dao));
+            int daoAt = -1;
+            for (int i = 0; i < m.stash.weapons.Length; i++) if (m.stash.weapons[i].IsWeapon && m.stash.weapons[i].id == Weapons.Dao) daoAt = i;
+            Check("loop data: with both Weapons slots taken a moved weapon lands in Carry Supplies",
+                daoAt >= 0 && m.MoveToCarry(Section.Weapons, daoAt) && m.carry.supplies[0].id == Weapons.Dao && m.stash.weapons[daoAt].IsNone);
+            for (int i = 0; i < 5; i++) m.carry.Add(Item.Food(Foods.Meat));        // Foods (Apple + 2) full, Supplies (Dao + 3) full
+            m.stash.Add(Item.Weapon(Weapons.Boss));
+            int stashBefore = m.stash.Total;
+            int bossAt = -1;
+            for (int i = 0; i < m.stash.weapons.Length; i++) if (m.stash.weapons[i].IsWeapon && m.stash.weapons[i].id == Weapons.Boss) bossAt = i;
+            Check("loop data: carry full -> MoveToCarry returns false and nothing changes",
+                !m.MoveToCarry(Section.Weapons, bossAt) && m.stash.Total == stashBefore && m.stash.weapons[bossAt].id == Weapons.Boss);
+
+            // held slot
+            Loadout h = Loadout.NewGame();
+            h.AutoPack();
+            Check("loop data: AutoPack puts the first stash weapon into HELD (Iron on a new save)",
+                h.Held.IsWeapon && h.Held.id == Weapons.Iron && h.CanEnter && h.stash.weapons[0].IsNone);
+            h.carry.Add(Item.Weapon(Weapons.Rapier));
+            h.SetHeld(1);
+            Check("loop data: SetHeld picks the other weapon slot; an empty slot cannot be held", h.heldSlot == 1 && h.Held.id == Weapons.Rapier && !h.SetHeld(0 + 5));
+            h.carry.weapons[1] = Item.None;
+            h.EnsureHeld();
+            Check("loop data: when the held slot is emptied HELD moves to the other weapon", h.heldSlot == 0 && h.Held.id == Weapons.Iron);
+
+            // survive / die
+            Loadout s = Loadout.NewGame();
+            s.stash.Add(Item.Weapon(Weapons.Greatsword));
+            s.stash.Add(Item.Food(Foods.Meat));
+            s.MoveToCarry(Section.Weapons, 0);                                      // Iron
+            s.BeginRun();
+            s.carry.Add(Item.Weapon(Weapons.Boss));                                 // picked up in the run: NEW
+            s.carry.Add(Item.Weapon(Weapons.Iron));                                 // a duplicate of the carried one: Iron +1
+            s.carry.Add(Item.Food(Foods.Apple));
+            RunResult rs = s.Survive();
+            bool bossNew = false, ironPlus1 = false;
+            foreach (ResultLine ln in rs.brought)
+            {
+                if (ln.item.IsWeapon && ln.item.id == Weapons.Boss && ln.isNew) bossNew = true;
+                if (ln.item.IsWeapon && ln.item.id == Weapons.Iron && ln.item.plus == 1 && !ln.isNew) ironPlus1 = true;
+            }
+            Check("loop data: Survive moves every carried item into the stash, keeps +N, marks only unseen weapons NEW",
+                rs.victory && !s.inRun && s.carry.Total == 0 && bossNew && ironPlus1 && rs.leftBehind.Count == 0
+                && s.stash.HasWeaponId(Weapons.Boss) && s.stash.HasWeaponId(Weapons.Iron) && s.stash.HasWeaponId(Weapons.Greatsword)
+                && s.stash.Count(Section.Foods) == 2);
+
+            Loadout f = Loadout.NewGame();
+            for (int i = 0; i < 5; i++) f.stash.Add(Item.Weapon(i));                // Iron merges into +1: five weapon stacks
+            for (int i = 0; i < 8; i++) f.stash.Add(Item.Food(i % 2));
+            for (int i = 0; i < 16; i++) f.stash.Add(Item.Food(Foods.Apple));
+            f.carry.Add(Item.Food(Foods.Meat));
+            f.BeginRun();
+            RunResult rf = f.Survive();
+            Check("loop data: Survive with a full stash reports the item as LEFT BEHIND and loses it",
+                rf.leftBehind.Count == 1 && rf.leftBehind[0].item.kind == ItemKind.Food && f.carry.Total == 0);
+
+            Loadout d = Loadout.NewGame();
+            d.stash.Add(Item.Weapon(Weapons.Fang));
+            d.stash.Add(Item.Food(Foods.Apple));
+            d.MoveToCarry(Section.Weapons, 0);                                      // Iron
+            d.MoveToCarry(Section.Foods, 0);
+            d.BeginRun();
+            RunResult rd = d.Die(false);
+            Check("loop data: Die empties the carry, lists it as LOST, keeps the stash (Crimson Fang) and does not restore Iron",
+                !rd.victory && rd.lost.Count == 2 && d.carry.Total == 0 && !d.inRun && !rd.ironRestored
+                && rd.safe.Count == 1 && rd.safe[0].item.id == Weapons.Fang && d.stash.HasWeaponId(Weapons.Fang) && !d.stash.HasWeaponId(Weapons.Iron));
+
+            Loadout n = Loadout.NewGame();
+            n.AutoPack();
+            n.BeginRun();
+            RunResult rn = n.Die(false);
+            Check("loop data: dying with the only weapon gives a free Iron Sword back in the stash",
+                rn.ironRestored && n.stash.HasWeaponId(Weapons.Iron) && n.stash.weapons[0].plus == 0 && n.stash.Total == 1);
+
+            Loadout a = Loadout.NewGame();
+            a.AutoPack();
+            a.inRun = true;
+            RunResult ra = a.Die(true);
+            Check("loop data: an abandoned run is a death flagged abandoned", ra.abandoned && !ra.victory && ra.lost.Count == 1);
+
+            Loadout e = new Loadout();
+            Check("loop data: EnsureIron on an empty loadout adds one Iron Sword once", e.EnsureIron() && !e.EnsureIron() && e.stash.Total == 1);
         }
 #endif
     }
