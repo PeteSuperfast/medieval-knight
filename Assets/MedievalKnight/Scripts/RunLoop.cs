@@ -15,13 +15,15 @@ namespace MedievalKnight
         public LoopState State { get; private set; }
         bool dirty;                                                 // PREPARE changed the stash / carry since the last save
         bool askedNoFood;                                           // "Enter without food?" is on screen
+        bool entering;                                              // ENTER WORLD pressed: the screen is fading to black
+        float enterAt;
 
         public int EnterRequests;                                   // times ENTER WORLD went through (test read-out)
 
         public bool InWorld { get { return State == LoopState.World; } }
         public bool SummaryOpen { get { return State == LoopState.Summary; } }
         public bool PrepareOpen { get { return State == LoopState.Prepare && g.InventoryOpen; } }
-        public bool Busy { get { return false; } }                  // fading into the world
+        public bool Busy { get { return entering; } }               // fading into the world
         public bool Dying { get { return false; } }                 // fallen, the screen is dimming
 
         public RunLoop(Game game) { g = game; }
@@ -51,7 +53,11 @@ namespace MedievalKnight
         }
 
         // every frame, before the rest of Game.Update
-        public void Tick() { }
+        public void Tick()
+        {
+            if (entering && Time.unscaledTime >= enterAt) StartWorld();
+            ui.SetStrip(data, State == LoopState.World);
+        }
 
         // Esc: true when it only closed a question of the loop
         public bool OnEscape()
@@ -138,14 +144,62 @@ namespace MedievalKnight
             EnterWorld();
         }
 
+        // ENTER WORLD: the run is opened and saved first (closing the game from here on counts as a death), then the
+        // screen fades and the world is built.
         void EnterWorld()
         {
             EnterRequests++;
-            Debug.Log("LOOP enter world requested (held " + data.Held.Name + ")");
+            g.SetInventory(false);                                  // closes PREPARE (saves a changed pack)
+            data.BeginRun();
+            Save();
+            entering = true;
+            enterAt = Time.unscaledTime + 0.5f;
+            ui.FadeTo(1f, 0.5f);
+            Debug.Log("LOOP enter world (held " + data.Held.Name + ", carry " + data.carry.Total + " items)");
+        }
+
+        // Fully dark: build the world, level 1 with the held weapon, at the town gate spawn.
+        void StartWorld()
+        {
+            entering = false;
+            Knight k = g.knight;
+            g.ClearWorld();
+            k.ResetForRun(MapLayout.TownSpawn);
+            Item held = data.Held;
+            k.SetWeapon(held.id, held.plus);
+            g.SpawnActors();
+            State = LoopState.World;
+            g.SnapCamera();
+            ui.FadeTo(0f, 0.5f);
+            ui.SetObjective("Objective: Defeat the Minotaur to return");
+            Sfx.I.Play(Snd.Ready);
+            Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level);
         }
 
         public void SummaryInput() { }
-        public void WorldKeys() { }
+
+        // Keys that only mean something while fighting: 1 / 2 swap the held weapon, C eats.
+        public void WorldKeys()
+        {
+            if (g.knight.IsAttacking) return;
+            if (InputX.Down(KeyCode.Alpha1) || InputX.Down(KeyCode.Keypad1)) SwitchHeld(0);
+            else if (InputX.Down(KeyCode.Alpha2) || InputX.Down(KeyCode.Keypad2)) SwitchHeld(1);
+        }
+
+        public void SwitchHeld(int slot)
+        {
+            if (slot < 0 || slot >= data.carry.weapons.Length) return;
+            Item it = data.carry.weapons[slot];
+            if (!it.IsWeapon)
+            {
+                g.hud.Notice("Weapon slot " + (slot + 1) + " is empty", LoopUi.Yellow);
+                return;
+            }
+            if (slot == data.heldSlot) return;
+            data.heldSlot = slot;
+            g.knight.SetWeapon(it.id, it.plus);
+            g.hud.Notice("Holding " + it.Name, Weapons.All[it.id].uiColor);
+        }
         public void OnDeath() { }
     }
 }

@@ -47,6 +47,10 @@ namespace MedievalKnight
         readonly Text[][] sectionLabels = new Text[2][];
         Text warn, info, introText, hint;
         Btn enterBtn, backBtn;
+        // always on top: the fade, the objective line, the carried-weapons strip
+        Image fade;
+        float fadeFrom, fadeTarget, fadeStart, fadeDur = 1f;
+        Text objective, strip;
         Cell cursorCell;
         string prompt = "";
         float warnUntil;
@@ -129,6 +133,72 @@ namespace MedievalKnight
             root = canvas.GetComponent<RectTransform>();
 
             BuildPrepare();
+            BuildOverlays();
+        }
+
+        void BuildOverlays()
+        {
+            objective = Label("Objective", root, new Vector2(0.5f, 1f), new Vector2(0f, -74f), new Vector2(900, 28), 21, TextAnchor.MiddleCenter);
+            objective.fontStyle = FontStyle.Bold;
+            objective.color = Yellow;
+            strip = Label("Strip", root, new Vector2(0f, 0f), new Vector2(16f, 46f), new Vector2(700, 26), 18, TextAnchor.MiddleLeft);
+            strip.rectTransform.pivot = new Vector2(0f, 0.5f);
+            strip.fontStyle = FontStyle.Bold;
+            strip.text = "";
+            fade = Box("Fade", root, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0f, 0f));
+            fade.rectTransform.anchorMin = Vector2.zero; fade.rectTransform.anchorMax = Vector2.one;
+            fade.rectTransform.offsetMin = fade.rectTransform.offsetMax = Vector2.zero;
+        }
+
+        // ---------------------------------------------------------------- fade / objective / weapon strip
+
+        public float FadeAlpha { get { return fade.color.a; } }
+        public string ObjectiveText { get { return objective.text; } }
+        public string StripText { get { return strip.text; } }
+
+        // Black screen towards "alpha" (0 clear, 1 black) over "seconds" of real time.
+        public void FadeTo(float alpha, float seconds)
+        {
+            fadeFrom = fade.color.a;
+            fadeTarget = alpha;
+            fadeStart = Time.unscaledTime;
+            fadeDur = Mathf.Max(0.001f, seconds);
+        }
+
+        public void SetFade(float alpha)
+        {
+            fadeFrom = fadeTarget = alpha;
+            fadeStart = Time.unscaledTime - 10f;
+            fade.color = new Color(0f, 0f, 0f, alpha);
+        }
+
+        public void SetObjective(string text) { objective.text = text ?? ""; }
+
+        // "[1] Iron Sword +2   [2] Swift Rapier   [C] Apple x2" (the held weapon in green)
+        public void SetStrip(Loadout d, bool show)
+        {
+            if (!show) { strip.text = ""; return; }
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < d.carry.weapons.Length; i++)
+            {
+                Item it = d.carry.weapons[i];
+                string label = it.IsNone ? "-" : it.Name;
+                string col = i == d.heldSlot && it.IsWeapon ? "#6FD16F" : "#C8CCD6";
+                sb.Append("<color=" + col + ">[" + (i + 1) + "] " + label + "</color>   ");
+            }
+            Item food = Item.None;
+            int count = 0;
+            foreach (Item it in d.carry.foods) if (it.kind == ItemKind.Food) { if (food.IsNone) food = it; count++; }
+            foreach (Item it in d.carry.supplies) if (it.kind == ItemKind.Food) { if (food.IsNone) food = it; count++; }
+            sb.Append(count > 0 ? "<color=#F2C14E>[C] " + food.BaseName + " x" + count + "</color>" : "<color=#8A8F9C>[C] no food</color>");
+            strip.text = sb.ToString();
+        }
+
+        void Update()
+        {
+            float t = Mathf.Clamp01((Time.unscaledTime - fadeStart) / fadeDur);
+            float a = Mathf.Lerp(fadeFrom, fadeTarget, t);
+            if (Mathf.Abs(fade.color.a - a) > 0.001f) fade.color = new Color(0f, 0f, 0f, a);
         }
 
         // PREPARE: 1000 x 600. Stash (cells 54 px, 8 per row) on the left, the pack to take into the world (cells 88 px) on the right.

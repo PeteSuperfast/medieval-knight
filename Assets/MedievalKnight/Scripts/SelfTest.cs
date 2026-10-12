@@ -1585,6 +1585,8 @@ namespace MedievalKnight
             yield return LoopBaseTests();
             Log("---- loop: PREPARE");
             yield return LoopPrepareTests();
+            Log("---- loop: enter the world");
+            yield return LoopWorldTests();
         }
 
 
@@ -1700,16 +1702,54 @@ namespace MedievalKnight
             yield return Tap(Key.Escape);
             yield return W(0.1f);
             Check("loop prepare: Esc answers the question with Back: PREPARE stays open", !run.ui.PromptShown && run.PrepareOpen && g.InSession);
-            yield return Click(Mid(run.ui.EnterRect));
-            yield return W(0.1f);
-            yield return Tap(Key.Enter);
-            yield return W(0.1f);
-            Check("loop prepare: Enter on the question goes in", run.EnterRequests == enters + 1);
             d.carry.foods[0] = Item.Food(Foods.Apple);
             yield return W(0.2f);
             yield return Click(Mid(run.ui.EnterRect));
             yield return W(0.1f);
-            Check("loop prepare: with food packed ENTER WORLD goes in without a question", run.EnterRequests == enters + 2 && !run.ui.PromptShown);
+            Check("loop prepare: with food packed ENTER WORLD goes in without a question (PREPARE closes, the fade starts)",
+                run.EnterRequests == enters + 1 && !run.ui.PromptShown && run.Busy && !run.PrepareOpen);
+        }
+
+
+        // ENTER WORLD: the save says "in a run", the world is built at level 1 holding the HELD weapon, keys 1 / 2 swap, Esc warns.
+        IEnumerator LoopWorldTests()
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            d.carry.weapons[1] = Item.Weapon(Weapons.Rapier, 1);
+            d.heldSlot = 1;
+            yield return W(0.2f);
+            yield return Click(Mid(run.ui.EnterRect));
+            yield return W(0.1f);
+            bool asked = run.ui.PromptShown;
+            yield return Tap(Key.Enter);                                   // no food packed: the question, then Enter = go
+            yield return W(0.3f);
+            Check("loop world: no food packed -> the question first, Enter on it starts the fade", asked && run.Busy);
+            Check("loop world: while fading nothing is built yet and PREPARE cannot be reopened", run.Busy && !g.InventoryOpen && run.State == LoopState.Base);
+            yield return W(1.1f);
+            Check("loop world: ENTER WORLD builds the world: State World, level 1, Minotaur and dummy exist, time runs, fade gone",
+                run.State == LoopState.World && g.progress.level == 1 && g.minotaur != null && g.dummy != null && !g.InventoryOpen
+                && Time.timeScale > 0.5f && run.ui.FadeAlpha < 0.05f && !run.Busy);
+            Check("loop world: the knight holds the HELD weapon with its +N (Swift Rapier +1, model swapped) and stands at the town spawn",
+                k.Weapon.id == Weapons.Rapier && k.inventory.plus[Weapons.Rapier] == 1 && k.SwordModel.name == "Swift Rapier"
+                && (k.transform.position - MapLayout.TownSpawn).magnitude < 3f && !k.Dead);
+            string saved = File.Exists(LoopSave.Path) ? File.ReadAllText(LoopSave.Path) : "";
+            Check("loop world: the save file says inRun = true while the run is open", saved.Contains("\"inRun\":true") && d.inRun);
+            Check("loop world: objective line tells the player to defeat the Minotaur", run.ui.ObjectiveText.Contains("Defeat the Minotaur"));
+            yield return Tap(Key.Digit1);
+            yield return W(0.1f);
+            bool one = k.Weapon.id == Weapons.Iron && d.heldSlot == 0 && k.SwordModel.name == "Iron Sword";
+            yield return Tap(Key.Digit2);
+            yield return W(0.1f);
+            Check("loop world: key 1 holds weapon slot 1 (Iron Sword), key 2 holds slot 2 (Swift Rapier +1) and swaps the model",
+                one && k.Weapon.id == Weapons.Rapier && d.heldSlot == 1 && k.inventory.plus[Weapons.Rapier] == 1);
+            Check("loop world: the weapon strip shows both weapons and \"no food\"", run.ui.StripText.Contains("[1] Iron Sword") && run.ui.StripText.Contains("[2] Swift Rapier +1") && run.ui.StripText.Contains("[C] no food"));
+            yield return Tap(Key.Escape);
+            yield return W(0.2f);
+            Check("loop world: Esc in the world warns that leaving counts as a death (and does not leave yet)",
+                g.hud.NoticeShown.Contains("counts as a death") && g.InSession && run.InWorld);
+            Check("loop world: F5 does nothing in the loop (the stash would be wiped)", !g.RequestReset() && run.InWorld && g.progress.level == 1);
         }
 
         // Single Player from the menu: the base (no enemies, PREPARE open and pausing), Tab / Esc, no boss respawn.
