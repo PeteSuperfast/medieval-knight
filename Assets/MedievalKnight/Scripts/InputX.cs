@@ -65,6 +65,7 @@ namespace MedievalKnight
                 case KeyCode.LeftControl: return Key.LeftCtrl;
                 case KeyCode.RightControl: return Key.RightCtrl;
                 case KeyCode.V: return Key.V;
+                case KeyCode.C: return Key.C;
             }
             return Key.None;
         }

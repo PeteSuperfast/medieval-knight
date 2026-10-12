@@ -12,6 +12,7 @@ namespace MedievalKnight
         public const float Half = Game.ArenaHalf;
         public const float ChunkSize = 38f;                                   // 10 x 10 chunks
         public static readonly Vector3 TownSpawn = new Vector3(0f, 0f, -150f);   // where knights start and come back
+        public static readonly Vector3 BasePoint = new Vector3(0f, 0f, 0f);       // Phase 1 loop: the base is the empty central lawn
         public static readonly Vector3 TownCenter = new Vector3(0f, 0f, -145f);
         public static readonly Vector3 Gate = new Vector3(0f, 0f, -100f);
         public static readonly Vector3 DummyPos = new Vector3(25f, 0f, -140f);

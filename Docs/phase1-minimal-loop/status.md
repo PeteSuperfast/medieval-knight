@@ -6,3 +6,4 @@
 - 2026-10-12 13:36 พีทยืนยัน requirement (ok) → ส่ง designer แบบ background
 - 2026-10-12 designer เสร็จ design.md ผ่านด่าน 2 → decisions.md (7 ข้อ) → ส่ง architect
 - 2026-10-12 architect เสร็จ tech.md + tech-data-save/flow/test.md ผ่านด่าน 2 → decisions #8-15 → โพสต์ขออนุมัติ
+- 2026-10-12 developer เริ่ม (พีทอนุมัติเอกสารแล้ว): ขั้น 1 เสร็จ (Args -loop/-save, InputX C, MapLayout.BasePoint) build ผ่าน

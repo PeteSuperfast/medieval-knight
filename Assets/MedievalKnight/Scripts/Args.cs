@@ -14,8 +14,8 @@ namespace MedievalKnight
     //   -menutest <folder>      scripted menu test (MpTest.cs)
     public static class Args
     {
-        public static string selfTestDir, mpTestDir, menuTestDir, joinHost, name, bind, role = "", expectText = "";
-        public static bool host, single, refusals;
+        public static string selfTestDir, mpTestDir, menuTestDir, joinHost, name, bind, savePath, role = "", expectText = "";
+        public static bool host, single, refusals, loop;
         public static int port = Net.DefaultPort, netVersion = Net.Protocol, expect = 1;
         public static float joinDelay;
         static bool parsed;
@@ -35,6 +35,8 @@ namespace MedievalKnight
                 {
                     case "-host": host = true; break;
                     case "-single": single = true; break;
+                    case "-loop": loop = true; break;                                   // with -single: start the Phase 1 base / world loop
+                    case "-save": if (next != null) savePath = next; break;             // loop save file (tests use their own)
                     case "-selftest": if (next != null) selfTestDir = next; break;
                     case "-mptest": if (next != null) mpTestDir = next; break;
                     case "-menutest": if (next != null) menuTestDir = next; break;
