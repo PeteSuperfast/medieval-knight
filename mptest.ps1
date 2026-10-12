@@ -23,11 +23,9 @@ Start-Sleep -Seconds 3
 $procs += Launch 'A' @('-join', '127.0.0.1', '-name', 'Alice')
 $procs += Launch 'B' @('-join', '127.0.0.1', '-name', 'Bob')
 $procs += Launch 'C' @('-join', '127.0.0.1', '-name', 'Cara')
-# must not get in: lobby full, other network version, nobody listening on the port
+# must not get in: lobby full, other network version (nobody listening is covered by -menutest)
 $procs += Launch 'X' @('-join', '127.0.0.1', '-name', 'Fifth', '-expecttext', 'full', '-joindelay', '14')
 $procs += Launch 'V' @('-join', '127.0.0.1', '-name', 'OldBuild', '-netversion', '99', '-expecttext', 'version', '-joindelay', '16')
-$Port = $Port + 1   # nothing listens here
-$procs += Launch 'N' @('-join', '127.0.0.1', '-name', 'Nobody', '-expecttext', 'connect', '-joindelay', '2')
 
 $deadline = (Get-Date).AddSeconds(400)
 foreach ($p in $procs) {
@@ -36,7 +34,7 @@ foreach ($p in $procs) {
     if (-not $p.WaitForExit($left)) { $p.Kill(); "KILLED pid $($p.Id) (still running at the deadline)" }
 }
 
-foreach ($role in 'H', 'A', 'B', 'C', 'X', 'V', 'N') {
+foreach ($role in 'H', 'A', 'B', 'C', 'X', 'V') {
     $log = Join-Path $outDir "$role\player.log"
     if (-not (Test-Path $log)) { "$role : no log"; continue }
     $l = Get-Content $log
