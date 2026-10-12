@@ -185,6 +185,7 @@ namespace MedievalKnight
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-looponly") >= 0)   // quick run of the Phase 1 cases only
             {
                 yield return LoopTests();
+                yield return W(0.5f);
                 Log("done (loop cases only), screenshots=" + shot + ", failed checks=" + fails);
                 Application.Quit();
                 yield break;
@@ -1582,6 +1583,8 @@ namespace MedievalKnight
             yield return null;
             Log("---- loop: base");
             yield return LoopBaseTests();
+            Log("---- loop: PREPARE");
+            yield return LoopPrepareTests();
         }
 
 
@@ -1600,6 +1603,113 @@ namespace MedievalKnight
             k = g.knight;
             k.aimOverride = null;
             yield return W(0.4f);
+        }
+
+
+        IEnumerator RightClick(Vector2 pos)
+        {
+            SetMouse(pos, false, false);
+            yield return null; yield return null; yield return null;
+            SetMouse(pos, false, true);
+            yield return null; yield return null; yield return null;
+            SetMouse(pos, false, false);
+            yield return null;
+        }
+
+        static Vector2 Mid(RectTransform rt) { return rt.position; }
+
+        // PREPARE: moving items, HELD, the full-carry refusal, ENTER WORLD rules (nothing is entered in these cases).
+        IEnumerator LoopPrepareTests()
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            Check("loop prepare: a new save opens PREPARE with the Iron Sword already HELD in the carry and the intro line shown",
+                run.PrepareOpen && d.Held.IsWeapon && d.Held.id == Weapons.Iron && d.carry.weapons[0].IsWeapon && d.stash.Total == 0
+                && run.ui.IntroText.Contains("lost if you fall"));
+            Check("loop prepare: with no food packed the warning says so (and the button is enabled)",
+                run.ui.WarnText.Contains("No food packed") && d.CanEnter);
+
+            // give the stash something to move
+            d.stash.Add(Item.Weapon(Weapons.Rapier, 2));
+            d.stash.Add(Item.Weapon(Weapons.Fang));
+            d.stash.Add(Item.Food(Foods.Apple));
+            d.stash.Add(Item.Food(Foods.Meat));
+            yield return W(0.2f);
+            Shot("loop_prepare");
+            yield return W(0.3f);
+            yield return Click(Mid(run.ui.CellRect(0, Section.Weapons, 0)));
+            yield return W(0.1f);
+            Check("loop prepare: clicking a stash weapon moves it to the carry Weapons group (Rapier +2 in slot 2), the stash slot empties",
+                d.carry.weapons[1].IsWeapon && d.carry.weapons[1].id == Weapons.Rapier && d.carry.weapons[1].plus == 2 && d.stash.weapons[0].IsNone);
+            yield return RightClick(Mid(run.ui.CellRect(1, Section.Weapons, 1)));
+            yield return W(0.1f);
+            Check("loop prepare: right click on a carried Weapon makes it the HELD one", d.heldSlot == 1 && d.Held.id == Weapons.Rapier);
+            yield return Click(Mid(run.ui.CellRect(1, Section.Weapons, 1)));
+            yield return W(0.1f);
+            Check("loop prepare: clicking a carried item sends it back to the stash, HELD goes back to the Iron Sword",
+                d.carry.weapons[1].IsNone && d.stash.HasWeaponId(Weapons.Rapier) && d.heldSlot == 0 && d.Held.id == Weapons.Iron);
+
+            // food goes to its own group, the third weapon to Supplies when the Weapons group is full
+            yield return Click(Mid(run.ui.CellRect(0, Section.Foods, 0)));
+            yield return W(0.1f);
+            Check("loop prepare: a stash food goes to the carry Food group and the warning about food is gone",
+                d.carry.foods[0].kind == ItemKind.Food && !run.ui.WarnText.Contains("No food"));
+
+            // fill the carry, then try to add one more
+            for (int i = 0; i < 6; i++) d.carry.Add(Item.Weapon(i % 2 == 0 ? Weapons.Greatsword : Weapons.Dao));   // two weapons + Supplies (merge into one)
+            d.carry.Add(Item.Food(Foods.Meat)); d.carry.Add(Item.Food(Foods.Meat)); d.carry.Add(Item.Food(Foods.Meat));
+            d.carry.Add(Item.Food(Foods.Apple)); d.carry.Add(Item.Food(Foods.Apple)); d.carry.Add(Item.Food(Foods.Apple));
+            int carryBefore = d.carry.Total, stashBefore = d.stash.Total;
+            int at = -1;
+            for (int i = 0; i < d.stash.weapons.Length; i++) if (d.stash.weapons[i].IsWeapon) at = i;
+            yield return W(0.2f);
+            Check("loop prepare: (setup) the carry is full", !d.carry.CanAdd(Item.Weapon(Weapons.Boss)) && !d.carry.CanAdd(Item.Food(Foods.Apple)));
+            yield return Click(Mid(run.ui.CellRect(0, Section.Weapons, at)));
+            yield return W(0.1f);
+            Check("loop prepare: moving into a full carry is refused: nothing moves, the cells shake, the line says Carry is full",
+                d.carry.Total == carryBefore && d.stash.Total == stashBefore && run.ui.WarnText == "Carry is full");
+
+            // keyboard: the cursor starts on the first stash cell; Q / E switch side; Enter moves the item under it
+            d.carry.Clear();
+            d.carry.weapons[0] = Item.Weapon(Weapons.Iron);
+            d.heldSlot = 0;
+            yield return W(0.2f);
+            yield return Tap(Key.Q);
+            yield return Tap(Key.E);
+            int stashN = d.stash.Total;
+            yield return Tap(Key.Enter);
+            yield return W(0.1f);
+            Check("loop prepare: Enter moves the item under the keyboard cursor (stash -> carry)", d.stash.Total == stashN - 1 && d.carry.Total == 2);
+
+            // ENTER WORLD rules
+            d.carry.Clear();
+            yield return W(0.2f);
+            int enters = run.EnterRequests;
+            yield return Click(Mid(run.ui.EnterRect));
+            yield return W(0.1f);
+            Check("loop prepare: ENTER WORLD with no Weapon packed does nothing and says Pack a Weapon first",
+                run.EnterRequests == enters && run.ui.WarnText == "Pack a Weapon first" && run.PrepareOpen);
+            d.carry.weapons[0] = Item.Weapon(Weapons.Iron);
+            d.heldSlot = 0;
+            yield return W(0.2f);
+            yield return Click(Mid(run.ui.EnterRect));
+            yield return W(0.1f);
+            Check("loop prepare: with no food packed ENTER WORLD asks first (Enter without food?) and does not enter",
+                run.ui.PromptShown && run.EnterRequests == enters && run.PrepareOpen && run.ui.WarnText.Contains("Enter without food?"));
+            yield return Tap(Key.Escape);
+            yield return W(0.1f);
+            Check("loop prepare: Esc answers the question with Back: PREPARE stays open", !run.ui.PromptShown && run.PrepareOpen && g.InSession);
+            yield return Click(Mid(run.ui.EnterRect));
+            yield return W(0.1f);
+            yield return Tap(Key.Enter);
+            yield return W(0.1f);
+            Check("loop prepare: Enter on the question goes in", run.EnterRequests == enters + 1);
+            d.carry.foods[0] = Item.Food(Foods.Apple);
+            yield return W(0.2f);
+            yield return Click(Mid(run.ui.EnterRect));
+            yield return W(0.1f);
+            Check("loop prepare: with food packed ENTER WORLD goes in without a question", run.EnterRequests == enters + 2 && !run.ui.PromptShown);
         }
 
         // Single Player from the menu: the base (no enemies, PREPARE open and pausing), Tab / Esc, no boss respawn.
