@@ -48,6 +48,11 @@ namespace MedievalKnight
         Text warn, info, introText, hint;
         Btn enterBtn, backBtn;
         // always on top: the fade, the objective line, the carried-weapons strip
+        // the carry window (Tab in the world)
+        GameObject carryRoot;
+        readonly List<Cell> carryCells = new List<Cell>();
+        readonly Cell[][] carryGrid = new Cell[3][];
+        Text carryChar, carryInfo, carryHead;
         Image fade;
         float fadeFrom, fadeTarget, fadeStart, fadeDur = 1f;
         Text objective, strip;
@@ -133,6 +138,7 @@ namespace MedievalKnight
             root = canvas.GetComponent<RectTransform>();
 
             BuildPrepare();
+            BuildCarry();
             BuildOverlays();
         }
 
@@ -273,7 +279,7 @@ namespace MedievalKnight
             prepareRoot.SetActive(false);
         }
 
-        Cell MakeCell(Transform parent, int side, Section sec, int index, Vector2 pos, float size)
+        Cell MakeCell(Transform parent, int side, Section sec, int index, Vector2 pos, float size, List<Cell> list = null)
         {
             var c = new Cell { side = side, sec = sec, index = index };
             Image b = Box("Cell", parent, TL, pos, new Vector2(size, size), EmptyBorder);
@@ -301,7 +307,7 @@ namespace MedievalKnight
             c.tag.fontStyle = FontStyle.Bold;
             c.tag.color = Green;
             c.cursor = Box("Cursor", c.rt, Mid, Vector2.zero, new Vector2(size + 6f, size + 6f), new Color(1f, 1f, 1f, 0f));
-            allCells.Add(c);
+            (list ?? allCells).Add(c);
             return c;
         }
 
@@ -414,6 +420,7 @@ namespace MedievalKnight
         public void HideAll()
         {
             if (prepareRoot != null) prepareRoot.SetActive(false);
+            if (carryRoot != null) carryRoot.SetActive(false);
         }
 
         Item ItemOf(Loadout d, Cell c)
@@ -521,6 +528,106 @@ namespace MedievalKnight
                 c.cursor.color = c == cursorCell || c == hover ? new Color(1f, 1f, 1f, c == hover ? 0.28f : 0.5f) : new Color(1f, 1f, 1f, 0f);
             }
             if (now >= warnUntil) ShowDefaultWarn(d);
+        }
+        // ---------------------------------------------------------------- carry window (Tab in the world)
+
+        void BuildCarry()
+        {
+            RectTransform cr = Rect("Carry", root, Mid, Vector2.zero, Vector2.zero);
+            cr.anchorMin = Vector2.zero; cr.anchorMax = Vector2.one; cr.offsetMin = cr.offsetMax = Vector2.zero;
+            carryRoot = cr.gameObject;
+            Image dim = Box("Dim", cr, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.03f, 0.55f));
+            dim.rectTransform.anchorMin = Vector2.zero; dim.rectTransform.anchorMax = Vector2.one;
+            dim.rectTransform.offsetMin = dim.rectTransform.offsetMax = Vector2.zero;
+            Image frame = Box("Frame", cr, Mid, Vector2.zero, new Vector2(766, 476), FrameCol);
+            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(760, 470), PanelBg).rectTransform;
+
+            carryHead = Label("Title", p, TL, Vector2.zero, new Vector2(400, 40), 30, TextAnchor.MiddleLeft, "CARRY");
+            carryHead.fontStyle = FontStyle.Bold; carryHead.rectTransform.pivot = TL; carryHead.rectTransform.anchoredPosition = new Vector2(20, -10);
+            Text close = Label("Close", p, new Vector2(1f, 1f), new Vector2(-20f, -18f), new Vector2(200, 24), 15, TextAnchor.MiddleRight, "[Tab] close");
+            close.color = Gray; close.rectTransform.pivot = new Vector2(1f, 1f);
+
+            string[] names = { "Weapons", "Food", "Supplies" };
+            float[] ly = { 56f, 180f, 304f };
+            int[] caps = Loadout.CarryCaps;
+            for (int s = 0; s < 3; s++)
+            {
+                Text l = Label(names[s] + "Label", p, TL, Vector2.zero, new Vector2(300, 20), 14, TextAnchor.MiddleLeft, names[s]);
+                l.color = Gray; l.rectTransform.pivot = TL; l.rectTransform.anchoredPosition = new Vector2(20, -ly[s]);
+                carryGrid[s] = new Cell[caps[s]];
+                for (int i = 0; i < caps[s]; i++)
+                    carryGrid[s][i] = MakeCell(p, 2, (Section)s, i, new Vector2(20 + i * 96f, -(ly[s] + 22f)), 88f, carryCells);
+            }
+            carryChar = Label("Char", p, TL, Vector2.zero, new Vector2(320, 200), 15, TextAnchor.UpperLeft);
+            carryChar.rectTransform.pivot = TL; carryChar.rectTransform.anchoredPosition = new Vector2(420, -60);
+            carryInfo = Label("Info", p, TL, Vector2.zero, new Vector2(320, 90), 15, TextAnchor.UpperLeft);
+            carryInfo.rectTransform.pivot = TL; carryInfo.rectTransform.anchoredPosition = new Vector2(420, -300);
+            carryInfo.horizontalOverflow = HorizontalWrapMode.Wrap;
+            Text foot = Label("Foot", p, TL, Vector2.zero, new Vector2(720, 20), 12, TextAnchor.MiddleLeft,
+                "Click: hold a Weapon / eat   -   Right click: drop on the ground   -   1 / 2: hold   C: eat   Tab / Esc: close");
+            foot.color = Gray; foot.rectTransform.pivot = TL; foot.rectTransform.anchoredPosition = new Vector2(20, -440);
+            carryRoot.SetActive(false);
+        }
+
+        public bool CarryVisible { get { return carryRoot != null && carryRoot.activeSelf; } }
+        public RectTransform CarryCellRect(Section sec, int index) { return carryGrid[(int)sec][index].rt; }
+        public string CarryInfoText { get { return carryInfo.text; } }
+
+        public void ShowCarry(Loadout d, Knight k)
+        {
+            carryRoot.SetActive(true);
+            RefreshCarry(d, k);
+        }
+
+        void RefreshCarry(Loadout d, Knight k)
+        {
+            for (int s = 0; s < 3; s++)
+            {
+                Item[] arr = d.carry.Slots((Section)s);
+                for (int i = 0; i < arr.Length; i++) FillCell(carryGrid[s][i], arr[i], s == 0 && i == d.heldSlot && arr[i].IsWeapon);
+            }
+            Progress pr = k.progress;
+            carryChar.text = "<b>Lv " + pr.level + " / " + Progress.MaxLevel + "</b>   EXP " + (pr.IsMax ? "MAX" : Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level))
+                + "\n<b>Health</b> " + Mathf.CeilToInt(k.hp) + " / " + Mathf.CeilToInt(k.MaxHp)
+                + "     <b>Armor</b> " + Mathf.CeilToInt(k.armor) + " / " + Mathf.CeilToInt(k.MaxArmor)
+                + "\n<b>Stamina</b> " + Mathf.CeilToInt(k.stamina) + " / " + Mathf.CeilToInt(k.MaxStamina)
+                + "\nSword hit x" + k.DamageMult(-1).ToString("0.0") + "    Swing x" + k.SwingSpeed.ToString("0.0")
+                + "\nCrit " + (k.CritChance(-1) * 100f).ToString("0") + "% x" + k.CritMult(-1).ToString("0.0") + "    Reach x" + k.Weapon.reach.ToString("0.00")
+                + "\nKills " + pr.kills;
+        }
+
+        // Called every frame while the carry window is open.
+        public void CarryInput(Loadout d, Knight k)
+        {
+            Vector2 m = InputX.MousePos;
+            Cell hover = null;
+            if (InputX.HasMouse)
+                foreach (Cell c in carryCells)
+                    if (RectTransformUtility.RectangleContainsScreenPoint(c.rt, m, null)) hover = c;
+            bool clickL = InputX.HasMouse && InputX.MouseDown(0), clickR = InputX.HasMouse && InputX.MouseDown(1);
+            if (hover != null && clickL) run.UiCarryUse(hover.sec, hover.index);
+            else if (hover != null && clickR) run.UiCarryDrop(hover.sec, hover.index);
+            if (InputX.Down(KeyCode.Alpha1) || InputX.Down(KeyCode.Keypad1)) run.SwitchHeld(0);
+            if (InputX.Down(KeyCode.Alpha2) || InputX.Down(KeyCode.Keypad2)) run.SwitchHeld(1);
+            if (InputX.Down(KeyCode.C)) run.EatFirst();
+            if (!run.CarryOpen) return;
+            RefreshCarry(d, k);
+            Item it = hover != null ? d.carry.Slots(hover.sec)[hover.index] : Item.None;
+            if (it.IsNone) carryInfo.text = "<color=#9aa0b0>Point at an item to see what it does.</color>";
+            else if (it.IsWeapon)
+            {
+                WeaponDef w = Weapons.All[it.id];
+                carryInfo.text = "<b><color=#" + ColorUtility.ToHtmlStringRGB(w.uiColor) + ">" + it.Name + "</color></b>  <color=#9aa0b0>" + w.rarity + "</color>\n"
+                    + "DMG x" + (w.damage * (1f + Weapons.DamagePerPlus * it.plus)).ToString("0.00") + "  SPD x" + w.speed.ToString("0.00")
+                    + "\nCRIT +" + (w.critChance * 100f).ToString("0") + "% / +" + w.critMult.ToString("0.0") + "x  REACH x" + w.reach.ToString("0.00");
+            }
+            else
+            {
+                FoodDef f = Foods.All[it.id];
+                carryInfo.text = "<b>" + f.name + "</b>\nHeals " + Mathf.RoundToInt(f.healFrac * 100f) + "% of your max health. Click or press C to eat.";
+            }
+            foreach (Cell c in carryCells)
+                c.cursor.color = c == hover ? new Color(1f, 1f, 1f, 0.3f) : new Color(1f, 1f, 1f, 0f);
         }
     }
 }

@@ -12,3 +12,4 @@
 - ขั้น 4 เสร็จ: Game.Loop/StartSession(loop)/RunLoop โครง/LoopUi placeholder/Menu.StartSingle; Knight.ResetForRun/SetWeapon/ทางตายของ loop; selftest 170 PASS / 0 FAIL (เพิ่มสวิตช์เทสต์ -looponly รันเฉพาะเคส loop เร็ว)
 - ขั้น 5 เสร็จ: LoopUi PREPARE เต็ม (คลัง/พก ย้ายด้วยคลิก+คีย์บอร์ด, HELD คลิกขวา, Carry is full, เตือนไม่มีอาหาร+ยืนยัน, ENTER WORLD) + 14 เคส loop prepare (รัน -looponly 49 PASS / 0 FAIL); ช่องคลังใช้ 54px (design 88px) เพราะ 12+8+16 ช่องต้องอยู่ในจอ
 - ขั้น 6 เสร็จ: ENTER WORLD (เซฟ inRun ก่อน, fade 0.5s, ResetForRun(TownSpawn), SetWeapon(HELD), SpawnActors), ปุ่ม 1/2, ข้อความ Esc, objective, แถบอาวุธซ้ายล่าง; looponly 58 PASS / 0 FAIL
+- ขั้น 7 เสร็จ: เก็บของเข้า Carry (+Pack full, รวม +N, อาหารไม่กินทันที), กิน C / คลิกใน Tab, หน้าต่าง Carry (Tab ในโลก), Drop (คลิกขวา, ห้ามทิ้งอาวุธชิ้นสุดท้าย, Pickup.dropped), selftest เต็ม 210 PASS / 0 FAIL (รอบแรก 1 FAIL 'ready voice line' เสียงดาบมาก่อนเช็ค = flake เดิมของ v1 รันซ้ำผ่าน)

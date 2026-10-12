@@ -1587,6 +1587,8 @@ namespace MedievalKnight
             yield return LoopPrepareTests();
             Log("---- loop: enter the world");
             yield return LoopWorldTests();
+            Log("---- loop: pickups / eat / drop / carry window");
+            yield return LoopPickupTests();
         }
 
 
@@ -1750,6 +1752,116 @@ namespace MedievalKnight
             Check("loop world: Esc in the world warns that leaving counts as a death (and does not leave yet)",
                 g.hud.NoticeShown.Contains("counts as a death") && g.InSession && run.InWorld);
             Check("loop world: F5 does nothing in the loop (the stash would be wiped)", !g.RequestReset() && run.InWorld && g.progress.level == 1);
+        }
+
+
+        // A loop session already inside the world: Iron Sword (+ whatever "setup" puts in the carry), town spawn, no packs.
+        IEnumerator StartLoopWorld(System.Action<Loadout> setup)
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            if (setup != null) setup(run.data);
+            run.data.EnsureHeld();
+            yield return W(0.2f);
+            yield return Click(run.ui.EnterRect.position);
+            float t0 = Time.realtimeSinceStartup;
+            while (!run.InWorld && Time.realtimeSinceStartup - t0 < 4f) yield return null;
+            yield return W(0.8f);
+            k = g.knight;
+            g.packsOff = true;
+        }
+
+        // Pickups go into the carry (own group first, then Supplies), a full pack leaves them lying, C eats, Tab shows the
+        // carry window (click eats / holds, right click drops), a dropped item waits until the knight steps away.
+        IEnumerator LoopPickupTests()
+        {
+            yield return StartLoopWorld(d => d.carry.foods[0] = Item.Food(Foods.Apple));
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            Check("loop pickup: (setup) in the world with a full-health knight, Iron Sword + one Apple packed", run.InWorld && k.hp >= k.MaxHp - 0.01f && d.carry.Total == 2);
+            Vector3 here = k.transform.position;
+
+            g.SpawnPickup(Weapons.Fang, here + new Vector3(0.4f, 0f, 0f));
+            yield return W(0.8f);
+            Check("loop pickup: walking over a dropped weapon puts it in the carry Weapons group; the pickup is gone; the notice says so",
+                d.carry.weapons[1].IsWeapon && d.carry.weapons[1].id == Weapons.Fang && Pickup.All.Count == 0 && g.lastNotice.StartsWith("Picked up Crimson Fang"));
+
+            g.SpawnPickup(Weapons.Fang, here + new Vector3(0.4f, 0f, 0f));
+            yield return W(0.8f);
+            Check("loop pickup: a duplicate refines the carried weapon (+1) instead of taking a slot", d.carry.weapons[1].plus == 1 && d.carry.Count(Section.Weapons) == 2 && g.lastNotice.Contains("refined to +1"));
+
+            g.SpawnFood(Foods.Meat, here + new Vector3(-0.4f, 0f, 0f));
+            yield return W(0.8f);
+            Check("loop pickup: food is stored (not eaten) even at full health, into the Food group",
+                d.carry.foods[1].kind == ItemKind.Food && d.carry.foods[1].id == Foods.Meat && k.hp >= k.MaxHp - 0.01f && Pickup.All.Count == 0);
+
+            // C eats the first food; at full health it says HP full and keeps it
+            int foods0 = d.carry.Count(Section.Foods);
+            int hints0 = g.fullHints;
+            yield return Tap(Key.C);
+            yield return W(0.2f);
+            Check("loop pickup: C at full health does not eat (HP full) and the food stays", d.carry.Count(Section.Foods) == foods0 && g.fullHints == hints0 + 1);
+            k.hp = k.MaxHp * 0.4f;
+            float hpBefore = k.hp;
+            yield return Tap(Key.C);
+            yield return W(0.2f);
+            Check("loop pickup: C with missing health eats the first food (the Apple: +15% max health) and uses it up",
+                d.carry.Count(Section.Foods) == foods0 - 1 && d.carry.foods[0].IsNone && Mathf.Abs(k.hp - (hpBefore + 0.15f * k.MaxHp)) < 0.5f && g.lastFoodHeal > 0);
+
+            // the pack is full: Weapons 2/2, Food 3/3, Supplies 4/4
+            d.carry.foods[0] = Item.Food(Foods.Apple); d.carry.foods[2] = Item.Food(Foods.Apple);
+            for (int i = 0; i < 4; i++) d.carry.supplies[i] = Item.Food(Foods.Meat);
+            Check("loop pickup: (setup) the pack is full", d.carry.Count(Section.Weapons) == 2 && d.carry.Count(Section.Foods) == 3 && d.carry.Count(Section.Supplies) == 4);
+            int fullHints = run.PackFullHints;
+            Pickup boss = g.SpawnPickup(Weapons.Boss, here + new Vector3(0.4f, 0f, 0f));
+            Pickup apple = g.SpawnFood(Foods.Apple, here + new Vector3(-0.4f, 0f, 0.4f));
+            yield return W(1.0f);
+            Check("loop pickup: with a full pack the item stays on the ground and Pack full is shown",
+                boss != null && apple != null && Pickup.All.Contains(boss) && Pickup.All.Contains(apple) && run.PackFullHints > fullHints
+                && g.lastNotice.StartsWith("Pack full! Can't pick up"));
+            g.SpawnPickup(Weapons.Fang, here + new Vector3(0.4f, 0f, 0f));
+            yield return W(0.8f);
+            Check("loop pickup: a duplicate still merges when the pack is full (Crimson Fang +2)", d.carry.weapons[1].plus == 2);
+
+            // Tab window in the world
+            foreach (Pickup pk in new List<Pickup>(Pickup.All)) { pk.gameObject.SetActive(false); Destroy(pk.gameObject); }
+            yield return W(0.2f);
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            Check("loop pickup: Tab in the world opens the carry window and pauses (single player)", g.InventoryOpen && run.ui.CarryVisible && Time.timeScale == 0f && !run.ui.PrepareVisible);
+            k.hp = k.MaxHp * 0.3f;
+            int f1 = d.carry.Count(Section.Foods);
+            yield return Click(run.ui.CarryCellRect(Section.Foods, 0).position);
+            yield return W(0.2f);
+            Check("loop pickup: clicking a food in the carry window eats it", d.carry.Count(Section.Foods) == f1 - 1 && k.hp > k.MaxHp * 0.3f + 1f);
+            yield return Click(run.ui.CarryCellRect(Section.Weapons, 0).position);
+            yield return W(0.2f);
+            Check("loop pickup: clicking a Weapon slot holds it (Iron Sword) and swaps the model", d.heldSlot == 0 && k.Weapon.id == Weapons.Iron);
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            Check("loop pickup: Tab closes the carry window", !g.InventoryOpen && !run.ui.CarryVisible && Time.timeScale > 0.5f);
+
+            // Drop: right click in the window; the last Weapon stays
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            yield return RightClick(run.ui.CarryCellRect(Section.Weapons, 1).position);
+            yield return W(0.2f);
+            Pickup dropped = Pickup.All.Count == 1 ? Pickup.All[0] : null;
+            Check("loop pickup: right click on a carried Weapon drops it at the knight's feet as a pickup that keeps its +2",
+                dropped != null && dropped.kind == PickupKind.Sword && dropped.weaponId == Weapons.Fang && dropped.plus == 2 && dropped.dropped && d.carry.weapons[1].IsNone);
+            yield return RightClick(run.ui.CarryCellRect(Section.Weapons, 0).position);
+            yield return W(0.2f);
+            Check("loop pickup: the last Weapon in the Weapons slots cannot be dropped", d.carry.weapons[0].IsWeapon && Pickup.All.Count == 1 && g.hud.NoticeShown.Contains("last Weapon"));
+            yield return Tap(Key.Tab);
+            yield return W(1.2f);
+            Check("loop pickup: the dropped weapon is not taken back while the knight stands on it", Pickup.All.Contains(dropped) && d.carry.weapons[1].IsNone);
+            k.transform.position = dropped.transform.position + new Vector3(5f, 0f, 0f);
+            yield return W(0.5f);
+            k.transform.position = dropped.transform.position + new Vector3(0.3f, 0f, 0f);
+            yield return W(0.8f);
+            Check("loop pickup: after stepping away and back it is picked up again with its +2",
+                !Pickup.All.Contains(dropped) && d.carry.weapons[1].IsWeapon && d.carry.weapons[1].id == Weapons.Fang && d.carry.weapons[1].plus == 2);
+            g.packsOff = false;
         }
 
         // Single Player from the menu: the base (no enemies, PREPARE open and pausing), Tab / Esc, no boss respawn.

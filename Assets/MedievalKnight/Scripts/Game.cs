@@ -834,17 +834,28 @@ namespace MedievalKnight
         // A knight who walks over a sword takes it (decided where the world is simulated).
         void UpdatePickups()
         {
+            bool loop = Loop;                                      // Phase 1: pickups go into the carry (or stay when it is full)
             for (int i = Pickup.All.Count - 1; i >= 0; i--)
             {
                 Pickup p = Pickup.All[i];
                 if (p.age < 0.35f) continue;
+                if (loop && p.dropped)
+                {
+                    // thrown down by the player: lies there until he has stepped away from it
+                    bool near = false;
+                    for (int n = 0; n < players.Count; n++)
+                        if (!players[n].Dead && FlatDist(p.transform.position, players[n].Pos) <= Pickup.CollectRadius + 0.25f) near = true;
+                    if (!near) p.dropped = false;
+                    continue;
+                }
                 for (int n = 0; n < players.Count; n++)
                 {
                     Knight k = players[n];
                     if (k.Dead || k.Airborne || (p.owner >= 0 && p.owner != k.pid)) continue;
-                    if (p.kind == PickupKind.Food && k.hp >= k.MaxHp - 0.5f) continue;     // food is for those who need it
+                    if (!loop && p.kind == PickupKind.Food && k.hp >= k.MaxHp - 0.5f) continue;     // food is for those who need it
                     Vector3 d = p.transform.position - k.Pos; d.y = 0f;
                     if (d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
+                    if (loop) { if (run.TryCollect(p)) break; continue; }
                     Collect(k, p);
                     break;
                 }

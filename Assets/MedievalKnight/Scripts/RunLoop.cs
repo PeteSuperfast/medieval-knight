@@ -23,6 +23,7 @@ namespace MedievalKnight
         public bool InWorld { get { return State == LoopState.World; } }
         public bool SummaryOpen { get { return State == LoopState.Summary; } }
         public bool PrepareOpen { get { return State == LoopState.Prepare && g.InventoryOpen; } }
+        public bool CarryOpen { get { return State == LoopState.World && g.InventoryOpen; } }
         public bool Busy { get { return entering; } }               // fading into the world
         public bool Dying { get { return false; } }                 // fallen, the screen is dimming
 
@@ -76,8 +77,9 @@ namespace MedievalKnight
 
         public void OnInventoryOpened()
         {
-            if (State == LoopState.Base) State = LoopState.Prepare;
             askedNoFood = false;
+            if (State == LoopState.World) { ui.ShowCarry(data, g.knight); return; }
+            if (State == LoopState.Base) State = LoopState.Prepare;
             ui.ShowPrepare(data);
         }
 
@@ -96,6 +98,7 @@ namespace MedievalKnight
         public void InventoryInput()
         {
             if (State == LoopState.Prepare) ui.PrepareInput(data);
+            else if (State == LoopState.World) ui.CarryInput(data, g.knight);
         }
 
         // A cell was clicked (or Enter on it): the item goes to the other side.
@@ -184,6 +187,7 @@ namespace MedievalKnight
             if (g.knight.IsAttacking) return;
             if (InputX.Down(KeyCode.Alpha1) || InputX.Down(KeyCode.Keypad1)) SwitchHeld(0);
             else if (InputX.Down(KeyCode.Alpha2) || InputX.Down(KeyCode.Keypad2)) SwitchHeld(1);
+            if (InputX.Down(KeyCode.C)) EatFirst();
         }
 
         public void SwitchHeld(int slot)
@@ -201,5 +205,134 @@ namespace MedievalKnight
             g.hud.Notice("Holding " + it.Name, Weapons.All[it.id].uiColor);
         }
         public void OnDeath() { }
+        // ---------------------------------------------------------------- picking up, eating, dropping (in the world)
+
+        float nextFullHint;
+        public int PackFullHints;                                   // times "Pack full!" was shown (test read-out)
+
+        // The held weapon in the carry is what the knight swings: refresh it (after a merge, a drop, a swap).
+        void SyncHeld()
+        {
+            data.EnsureHeld();
+            Item h = data.Held;
+            if (h.IsWeapon) g.knight.SetWeapon(h.id, h.plus);
+        }
+
+        // A knight stands on an item. Taken into the carry (true) or left lying (false: the pack is full).
+        public bool TryCollect(Pickup p)
+        {
+            Item it = p.kind == PickupKind.Food ? Item.Food(p.weaponId) : Item.Weapon(p.weaponId, p.plus);
+            Vector3 at = p.transform.position;
+            Knight k = g.knight;
+            if (!data.carry.CanAdd(it))
+            {
+                if (Time.unscaledTime >= nextFullHint)
+                {
+                    nextFullHint = Time.unscaledTime + 1.5f;
+                    PackFullHints++;
+                    g.lastNotice = "Pack full! Can't pick up " + it.Name;
+                    g.hud.Notice(g.lastNotice, LoopUi.Yellow);
+                    g.hud.Popup(k.transform.position + new Vector3(0f, 2.7f, 0f), "Pack full", LoopUi.Yellow, 18);
+                }
+                return false;
+            }
+            bool maxed = false;
+            if (it.IsWeapon)
+            {
+                foreach (Item c in data.carry.weapons) if (c.IsWeapon && c.id == it.id && c.plus >= Weapons.MaxPlus) maxed = true;
+                foreach (Item c in data.carry.supplies) if (c.IsWeapon && c.id == it.id && c.plus >= Weapons.MaxPlus) maxed = true;
+            }
+            BagResult r = data.carry.Add(it);
+            p.gameObject.SetActive(false);
+            Object.Destroy(p.gameObject);
+            Color col = it.IsWeapon ? Weapons.All[it.id].uiColor : Foods.All[it.id].color;
+            string text;
+            if (it.IsWeapon && r == BagResult.Merged)
+            {
+                if (maxed)
+                {
+                    text = it.BaseName + " is already +" + Weapons.MaxPlus + "   -   duplicate turned into EXP";
+                    g.GrantExp(Weapons.DuplicateExp, at + Vector3.up * 2f);
+                }
+                else
+                {
+                    int now = 0;
+                    foreach (Item c in data.carry.weapons) if (c.IsWeapon && c.id == it.id) now = c.plus;
+                    foreach (Item c in data.carry.supplies) if (c.IsWeapon && c.id == it.id) now = c.plus;
+                    text = it.BaseName + " refined to +" + now + "   (duplicate: +5% damage)";
+                }
+            }
+            else if (it.IsWeapon) text = "Picked up " + it.Name;
+            else text = "Picked up " + it.Name + "   -   press C to eat";
+            g.lastNotice = text;
+            g.hud.Notice(text, col);
+            Fx.I.Ring(new Vector3(at.x, 0.06f, at.z), 0.4f, 2.6f, new Color(col.r, col.g, col.b, 0.9f), 0.45f);
+            Fx.I.Burst(at + Vector3.up, 16, col, 2f, 7f, Vector3.up, 0.9f, 0.6f, 6f, 0.12f);
+            Debug.Log("PICKUP " + text);
+            SyncHeld();
+            return true;
+        }
+
+        public bool Eat(Section sec, int index)
+        {
+            Item it = data.carry.Slots(sec)[index];
+            Knight k = g.knight;
+            if (it.kind != ItemKind.Food || k.Dead) return false;
+            if (k.hp >= k.MaxHp - 0.5f)
+            {
+                g.hud.Popup(k.transform.position + new Vector3(0f, 2.7f, 0f), "HP full", new Color(0.75f, 0.75f, 0.78f), 16);
+                g.hud.Notice("HP full", new Color(0.75f, 0.75f, 0.78f));
+                g.fullHints++;
+                return false;
+            }
+            data.carry.Slots(sec)[index] = Item.None;
+            g.CollectFood(it.id, k.transform.position);              // heals, shows "+N", plays the sound
+            g.hud.Notice(g.lastNotice, Foods.All[it.id].color);
+            return true;
+        }
+
+        // C: the first food (Food group first, then Supplies)
+        public bool EatFirst()
+        {
+            for (int i = 0; i < data.carry.foods.Length; i++) if (data.carry.foods[i].kind == ItemKind.Food) return Eat(Section.Foods, i);
+            for (int i = 0; i < data.carry.supplies.Length; i++) if (data.carry.supplies[i].kind == ItemKind.Food) return Eat(Section.Supplies, i);
+            g.hud.Notice("No food to eat", LoopUi.Yellow);
+            return false;
+        }
+
+        // Carry window, left click: hold a Weapon, eat a food, or move a Weapon from Supplies into a free Weapons slot.
+        public void UiCarryUse(Section sec, int index)
+        {
+            Item it = data.carry.Slots(sec)[index];
+            if (it.IsNone) return;
+            if (it.kind == ItemKind.Food) { Eat(sec, index); return; }
+            if (sec == Section.Weapons) { SwitchHeld(index); return; }
+            if (data.MoveWithinCarry(index)) { SyncHeld(); g.hud.Notice(it.Name + " moved to a Weapon slot", LoopUi.Green); }
+            else g.hud.Notice("No free Weapon slot  -  drop a Weapon first", LoopUi.Yellow);
+        }
+
+        // Carry window, right click: the item goes down on the ground in front of the knight. It is not taken again
+        // until the knight has stepped away from it. The last Weapon in the Weapons slots stays.
+        public bool UiCarryDrop(Section sec, int index)
+        {
+            Item it = data.carry.Slots(sec)[index];
+            if (it.IsNone) return false;
+            if (it.IsWeapon && sec == Section.Weapons && data.carry.Count(Section.Weapons) <= 1)
+            {
+                g.hud.Notice("Can't drop your last Weapon", LoopUi.Yellow);
+                return false;
+            }
+            data.carry.Slots(sec)[index] = Item.None;
+            Transform t = g.knight.transform;
+            Vector3 at = t.position + t.forward * 1.3f;
+            Pickup p = it.IsWeapon ? g.SpawnPickup(it.id, at) : g.SpawnFood(it.id, at);
+            p.plus = it.plus;
+            p.dropped = true;
+            g.lastNotice = "Dropped " + it.Name;
+            g.hud.Notice(g.lastNotice, LoopUi.Gray);
+            Debug.Log("DROP " + it.Name);
+            SyncHeld();
+            return true;
+        }
     }
 }
