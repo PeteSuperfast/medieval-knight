@@ -670,7 +670,12 @@ namespace MedievalKnight
             if (e is Minotaur)
             {
                 minotaur = null;
-                minoRespawnAt = Time.time + MinotaurRespawn;
+                if (Loop)                                              // the loop's world boss stays dead: the portal opens instead
+                {
+                    minoRespawnAt = float.MaxValue;
+                    run.OnBossKilled(e.transform.position);
+                }
+                else minoRespawnAt = Time.time + MinotaurRespawn;
             }
             if (e.expReward > 0f)
             {

@@ -60,7 +60,7 @@ namespace MedievalKnight
         Btn returnBtn;
         Image fade;
         float fadeFrom, fadeTarget, fadeStart, fadeDur = 1f;
-        Text objective, strip;
+        Text objective, strip, portalLabel;
         Cell cursorCell;
         string prompt = "";
         float warnUntil;
@@ -157,6 +157,11 @@ namespace MedievalKnight
             strip.rectTransform.pivot = new Vector2(0f, 0.5f);
             strip.fontStyle = FontStyle.Bold;
             strip.text = "";
+            portalLabel = Label("PortalLabel", root, new Vector2(0f, 0f), Vector2.zero, new Vector2(300, 28), 22, TextAnchor.MiddleCenter, "RETURN PORTAL");
+            portalLabel.rectTransform.pivot = Mid;
+            portalLabel.fontStyle = FontStyle.Bold;
+            portalLabel.color = new Color(0.435f, 0.784f, 1f);
+            portalLabel.gameObject.SetActive(false);
             fade = Box("Fade", root, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0f, 0f));
             fade.rectTransform.anchorMin = Vector2.zero; fade.rectTransform.anchorMax = Vector2.one;
             fade.rectTransform.offsetMin = fade.rectTransform.offsetMax = Vector2.zero;
@@ -185,6 +190,18 @@ namespace MedievalKnight
         }
 
         public void SetObjective(string text) { objective.text = text ?? ""; }
+
+        public bool PortalLabelShown { get { return portalLabel.gameObject.activeSelf; } }
+
+        // "RETURN PORTAL" floating over the portal (world point -> screen).
+        public void SetPortalLabel(Camera cam, Vector3 world, bool show)
+        {
+            if (!show || cam == null) { if (portalLabel.gameObject.activeSelf) portalLabel.gameObject.SetActive(false); return; }
+            Vector3 sp = cam.WorldToScreenPoint(world);
+            bool on = sp.z > 0f;
+            if (portalLabel.gameObject.activeSelf != on) portalLabel.gameObject.SetActive(on);
+            if (on) portalLabel.rectTransform.anchoredPosition = new Vector2(sp.x, sp.y) / Mathf.Max(0.01f, canvas.scaleFactor);
+        }
 
         // "[1] Iron Sword +2   [2] Swift Rapier   [C] Apple x2" (the held weapon in green)
         public void SetStrip(Loadout d, bool show)

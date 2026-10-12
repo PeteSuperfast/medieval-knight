@@ -29,6 +29,11 @@ namespace MedievalKnight
         public RunResult result;                                    // the last finished run (summary screen, tests)
         bool dying;
         float dieStart;
+        public bool BossDown { get; private set; }                  // the world boss has fallen: the portal is open
+        public Portal portal;
+        public float portalHold;                                    // seconds the knight has stood in the portal
+        float bannerAt;
+        bool bannerPending;
         const float DimSeconds = 1.5f;
 
         public RunLoop(Game game) { g = game; }
@@ -65,6 +70,7 @@ namespace MedievalKnight
 
         public void Shutdown()
         {
+            DropPortal();
             if (ui != null) Object.Destroy(ui.gameObject);
             ui = null;
         }
@@ -73,6 +79,7 @@ namespace MedievalKnight
         public void Tick()
         {
             if (entering && Time.unscaledTime >= enterAt) StartWorld();
+            if (State == LoopState.World) TickPortal();
             if (dying)
             {
                 float t = Mathf.Clamp01((Time.unscaledTime - dieStart) / DimSeconds);
@@ -187,6 +194,7 @@ namespace MedievalKnight
         void StartWorld()
         {
             entering = false;
+            DropPortal();
             Knight k = g.knight;
             g.ClearWorld();
             k.ResetForRun(MapLayout.TownSpawn);
@@ -253,6 +261,7 @@ namespace MedievalKnight
             if (State != LoopState.Summary) return;
             ui.HideSummary();
             ui.SetDeathDim(0f);
+            DropPortal();
             g.ClearWorld();
             g.knight.ResetForRun(MapLayout.BasePoint);
             data.AutoPack();
@@ -391,6 +400,66 @@ namespace MedievalKnight
             Debug.Log("DROP " + it.Name);
             SyncHeld();
             return true;
+        }
+        // ---------------------------------------------------------------- the world boss and the portal
+
+        void DropPortal()
+        {
+            if (portal != null) Object.Destroy(portal.gameObject);
+            portal = null;
+            BossDown = false;
+            bannerPending = false;
+            portalHold = 0f;
+            if (ui != null) ui.SetPortalLabel(null, Vector3.zero, false);
+            if (g != null && g.hud != null) g.hud.SetArrowTarget(null, "Lair", 30f);
+        }
+
+        // Game.OnEnemyKilled: the Minotaur is dead. No respawn (Game takes care of that); the way home opens where he fell.
+        public void OnBossKilled(Vector3 at)
+        {
+            if (State != LoopState.World || BossDown) return;
+            BossDown = true;
+            Vector3 p = new Vector3(Mathf.Clamp(at.x, -Game.ArenaHalf + 4f, Game.ArenaHalf - 4f), 0f, Mathf.Clamp(at.z, -Game.ArenaHalf + 4f, Game.ArenaHalf - 4f));
+            portal = Portal.Create(g.transform, p);
+            portalHold = 0f;
+            bannerAt = Time.unscaledTime + 1.7f;                    // after the Minotaur's own "MINOTAUR SLAIN!" has gone
+            bannerPending = true;
+            ui.SetObjective("Objective: Step into the Portal");
+            g.hud.SetArrowTarget(p, "Portal", 6f);
+            Sfx.I.Play(Snd.Ready, 0.8f);
+            Debug.Log("LOOP boss down: portal at (" + p.x.ToString("0.0") + ", " + p.z.ToString("0.0") + ")");
+        }
+
+        // Standing inside the portal for 1.5 s ends the run well (the loading ring fills; stepping out starts it again).
+        void TickPortal()
+        {
+            if (!BossDown || portal == null || dying) return;
+            if (bannerPending && Time.unscaledTime >= bannerAt && !g.PanelOpen && g.progress.pendingChoices == 0)     // (the level-up cards come first and clear banners)
+            {
+                bannerPending = false;
+                g.hud.Banner("THE MINOTAUR HAS FALLEN.  Portal open. Collect your loot, then step in.", LoopUi.Green, 4f);
+            }
+            Knight k = g.knight;
+            Vector3 d = k.Pos - portal.transform.position; d.y = 0f;
+            bool inside = !k.Dead && d.magnitude <= Portal.Radius;
+            portalHold = inside ? portalHold + Time.unscaledDeltaTime : 0f;
+            portal.SetProgress(portalHold / Portal.HoldSeconds);
+            ui.SetPortalLabel(g.cam, portal.transform.position + Vector3.up * 4.2f, true);
+            if (portalHold >= Portal.HoldSeconds) Victory();
+        }
+
+        void Victory()
+        {
+            portalHold = 0f;
+            result = data.Survive();
+            Save();
+            State = LoopState.Summary;
+            ui.SetObjective("");
+            ui.SetPortalLabel(null, Vector3.zero, false);
+            g.hud.SetArrowTarget(null, "Lair", 30f);
+            ui.ShowSummary(result);
+            Sfx.I.Play(Snd.Ready);
+            Debug.Log("LOOP victory: " + result.brought.Count + " items home, " + result.leftBehind.Count + " left behind");
         }
     }
 }

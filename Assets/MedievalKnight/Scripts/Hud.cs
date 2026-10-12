@@ -95,7 +95,10 @@ namespace MedievalKnight
         readonly CardUi[] cards = new CardUi[3];
         readonly RowUi[] rows = new RowUi[Weapons.All.Length];
         bool showControls = true;
-        float bannerTime, actionTime, noticeTime, levelOpenedAt, invOpenedAt;
+        float bannerTime, actionTime, noticeTime, levelOpenedAt, invOpenedAt, bannerLength = 1.6f;
+        Vector3? arrowPoint;
+        string arrowName = "Lair";
+        float arrowMin = 30f;
         Color bannerColor, actionColor, noticeColor;
         readonly List<PopupUi> popups = new List<PopupUi>();
         readonly Stack<PopupUi> popupPool = new Stack<PopupUi>();
@@ -598,11 +601,23 @@ namespace MedievalKnight
             noticeTime = 3.5f;
         }
 
-        public void Banner(string text, Color color)
+        public void Banner(string text, Color color, float seconds = 1.6f)
         {
             bannerText.text = text;
             bannerColor = color;
-            bannerTime = 1.6f;
+            bannerTime = seconds;
+            bannerLength = seconds;
+        }
+
+        public string BannerShown { get { return bannerTime > 0f ? bannerText.text : ""; } }
+
+        // Phase 1 loop: the arrow under the banner points at this world point instead of the Minotaur's lair (null: the lair).
+        // It shows when the point is farther than minDistance.
+        public void SetArrowTarget(Vector3? point, string label, float minDistance)
+        {
+            arrowPoint = point;
+            arrowName = label;
+            arrowMin = minDistance;
         }
 
         // Small line above the skill bar: the attack / skill just used.
@@ -969,15 +984,17 @@ namespace MedievalKnight
             // boss bar: only when the Minotaur is within 45 m (the map is big); the arrow to the lair covers the rest
             Minotaur m = g.minotaur;
             bool bossFar = m != null && !m.Dead && Vector3.Distance(m.transform.position, k.Pos) > 45f;
-            if (bossPanel.activeSelf == bossFar) bossPanel.SetActive(!bossFar);
-            Vector3 toLair = MapLayout.Lair - k.Pos; toLair.y = 0f;
-            bool arrowOn = toLair.magnitude >= 30f && !k.Dead;
+            bool loopIdle = g.Loop && (!g.run.InWorld || m == null || m.Dead);        // Phase 1: nothing to show at the base or after the boss
+            bool hideBoss = bossFar || loopIdle;
+            if (bossPanel.activeSelf == hideBoss) bossPanel.SetActive(!hideBoss);
+            Vector3 toLair = (arrowPoint.HasValue ? arrowPoint.Value : MapLayout.Lair) - k.Pos; toLair.y = 0f;
+            bool arrowOn = toLair.magnitude >= arrowMin && !k.Dead && !(g.Loop && !g.run.InWorld);
             if (lairArrow.gameObject.activeSelf != arrowOn) { lairArrow.gameObject.SetActive(arrowOn); lairText.gameObject.SetActive(arrowOn); }
             if (arrowOn)
             {
                 // the camera never turns: north on the map is the top of the screen
                 lairArrow.localRotation = Quaternion.Euler(0f, 0f, -Mathf.Atan2(toLair.x, toLair.z) * Mathf.Rad2Deg);
-                lairText.text = "Lair  " + Mathf.RoundToInt(toLair.magnitude) + " m";
+                lairText.text = arrowName + "  " + Mathf.RoundToInt(toLair.magnitude) + " m";
             }
             if (m != null && !m.Dead)
             {
@@ -1004,7 +1021,7 @@ namespace MedievalKnight
                 Color c = bannerColor;
                 c.a = Mathf.Clamp01(bannerTime / 0.35f);
                 bannerText.color = c;
-                float pop = 1f + Mathf.Clamp01((bannerTime - 1.45f) / 0.15f) * 0.25f;
+                float pop = 1f + Mathf.Clamp01((bannerTime - (bannerLength - 0.15f)) / 0.15f) * 0.25f;
                 bannerText.rectTransform.localScale = Vector3.one * pop;
             }
             else if (bannerText.text.Length > 0) bannerText.text = "";

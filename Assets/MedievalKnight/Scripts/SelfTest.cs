@@ -1591,6 +1591,8 @@ namespace MedievalKnight
             yield return LoopPickupTests();
             Log("---- loop: death, return, abandoned");
             yield return LoopDeathTests();
+            Log("---- loop: boss, portal, victory");
+            yield return LoopVictoryTests();
         }
 
 
@@ -1951,6 +1953,127 @@ namespace MedievalKnight
             yield return Click(run.ui.ReturnRect.position);
             yield return W(0.4f);
             Check("loop death: RETURN TO BASE after ABANDONED opens PREPARE", run.PrepareOpen);
+        }
+
+
+        // Kill the world boss with a direct hit (the Minotaur has no invulnerable phase).
+        void KillMinotaur()
+        {
+            Minotaur m = g.minotaur;
+            if (m != null && !m.Dead) m.TakeHit(999999f, 1f, m.transform.position + Vector3.back * 2f, false, 0f, 0f, "selftest", k);
+        }
+
+        // The Minotaur dies: portal (no respawn), loot is picked up into the carry, 1.5 s inside the portal = VICTORY and
+        // everything goes into the stash with its +N; a full stash says LEFT BEHIND; dying after the boss is still YOU FELL.
+        IEnumerator LoopVictoryTests()
+        {
+            yield return StartLoopWorld(d =>
+            {
+                d.carry.weapons[1] = Item.Weapon(Weapons.Rapier, 1);
+                d.carry.foods[0] = Item.Food(Foods.Apple);
+                d.stash.Add(Item.Weapon(Weapons.Fang));                        // stays at home
+            });
+            RunLoop run = g.run;
+            Loadout d0 = run.data;
+            Check("loop victory: (setup) no portal while the boss lives, his bar and the lair arrow are the v1 ones",
+                run.InWorld && !run.BossDown && run.portal == null && g.minotaur != null && !g.minotaur.Dead);
+            g.foodOverride = -1; g.dropOverride = -1;                       // the selftest turned random food off: the boss drops 2 Roast Meat as in the game
+            Vector3 lairPos = g.minotaur.transform.position;
+            KillMinotaur();
+            yield return W(2.2f);
+            yield return ClearLevelUps();                                   // the boss gives a lot of EXP: the level-up cards pause the game
+            yield return W(0.5f);
+            Check("loop victory: when the Minotaur dies the portal opens where he fell, the objective changes and a banner says so",
+                run.BossDown && run.portal != null && g.minotaur == null && run.ui.ObjectiveText.Contains("Step into the Portal")
+                && g.hud.BannerShown.Contains("MINOTAUR HAS FALLEN") && g.hud.BannerShown.Contains("Portal open")
+                && (run.portal.transform.position - lairPos).magnitude < 6f && run.ui.PortalLabelShown);
+            Check("loop victory: the boss's loot is on the ground (Horned King's Blade and 2 Roast Meat) - the run did not end by itself",
+                run.InWorld && Pickup.All.Count >= 3 && g.hud.LairArrowText.StartsWith("Portal"));
+            // the old respawn would bring him back after MinotaurRespawn (20 s) + the check interval
+            yield return W(0.3f);
+            yield return ClearLevelUps();
+            float tRespawn = Time.time;
+            yield return W(Game.MinotaurRespawn + 3f);
+            yield return ClearLevelUps();
+            Check("loop victory: the Minotaur does not respawn in the loop (still none after 23 s) and the run goes on",
+                g.minotaur == null && run.InWorld && run.BossDown);
+
+            // collect the loot (Weapons are full -> the blade lands in Supplies, the meat in Food)
+            Vector3 portalPos = run.portal.transform.position;
+            foreach (Pickup pk in new List<Pickup>(Pickup.All))
+            {
+                if (pk == null) continue;
+                k.transform.position = pk.transform.position;
+                yield return W(0.45f);
+            }
+            Check("loop victory: the loot went into the carry (Horned King's Blade in Supplies, Roast Meat in Food)",
+                d0.carry.HasWeaponId(Weapons.Boss) && d0.carry.Count(Section.Foods) >= 2 && Pickup.All.Count == 0);
+
+            // step in, step out (cancels), step in again
+            k.transform.position = portalPos + new Vector3(Portal.Radius + 3f, 0f, 0f);
+            yield return W(0.3f);
+            Check("loop victory: standing outside the portal does nothing", run.portalHold == 0f && run.InWorld);
+            k.transform.position = portalPos + new Vector3(0.6f, 0f, 0f);
+            yield return W(0.8f);
+            float partial = run.portalHold;
+            int lit = run.portal.SegmentsLit;
+            Check("loop victory: standing inside fills the loading ring (about 0.8 s of 1.5 s, still in the world)", partial > 0.5f && partial < 1.4f && lit > 5 && run.InWorld);
+            k.transform.position = portalPos + new Vector3(Portal.Radius + 3f, 0f, 0f);
+            yield return W(0.4f);
+            Check("loop victory: stepping out before 1.5 s cancels it (the ring empties, still in the world)", run.portalHold == 0f && run.InWorld && run.portal.SegmentsLit == 0);
+            k.transform.position = portalPos + new Vector3(0.6f, 0f, 0f);
+            yield return W(2.0f);
+            Check("loop victory: staying 1.5 s inside the portal ends the run: VICTORY",
+                run.SummaryOpen && run.result.victory && run.ui.SummaryTitle == "VICTORY" && Time.timeScale == 0f);
+            string body = run.ui.SummaryBody;
+            Check("loop victory: BROUGHT HOME lists the Iron Sword, Swift Rapier +1 (with +N), the Horned King's Blade as NEW, Apple and Roast Meat",
+                body.Contains("BROUGHT HOME") && body.Contains("Iron Sword") && body.Contains("Swift Rapier +1") && body.Contains("Horned King's Blade") && body.Contains("NEW")
+                && body.Contains("Apple") && body.Contains("Roast Meat") && !body.Contains("LEFT BEHIND"));
+            Check("loop victory: the stash holds all of it (Iron, Rapier +1, Fang that stayed home, Blade), the carry is empty and the save says the run is over",
+                d0.stash.HasWeaponId(Weapons.Iron) && d0.stash.HasWeaponId(Weapons.Rapier) && d0.stash.HasWeaponId(Weapons.Fang) && d0.stash.HasWeaponId(Weapons.Boss)
+                && d0.carry.Total == 0 && !d0.inRun && File.ReadAllText(LoopSave.Path).Contains("\"inRun\":false")
+                && RapierPlus(d0) == 1);
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.5f);
+            Check("loop victory: RETURN TO BASE: PREPARE is open at the base, nothing of the world is left, the portal is gone",
+                run.PrepareOpen && run.portal == null && !run.BossDown && Enemy.All.Count == 0 && Pickup.All.Count == 0 && !run.ui.PortalLabelShown);
+
+            // --- a full stash: what does not fit is left behind
+            yield return StartLoopWorld(d =>
+            {
+                for (int i = 0; i < Loadout.StashCaps[1]; i++) d.stash.foods[i] = Item.Food(Foods.Apple);
+                for (int i = 0; i < Loadout.StashCaps[2]; i++) d.stash.supplies[i] = Item.Food(Foods.Meat);
+                d.carry.foods[0] = Item.Food(Foods.Apple);
+                d.carry.foods[1] = Item.Food(Foods.Apple);
+            });
+            run = g.run;
+            KillMinotaur();
+            yield return W(0.4f);
+            yield return W(1.0f);
+            yield return ClearLevelUps();
+            k.transform.position = run.portal.transform.position + new Vector3(0.5f, 0f, 0f);
+            yield return W(2.0f);
+            Check("loop victory: with a full stash the food that does not fit is shown as LEFT BEHIND (stash full) in yellow and is lost",
+                run.SummaryOpen && run.result.victory && run.result.leftBehind.Count == 2 && run.ui.SummaryBody.Contains("LEFT BEHIND (stash full)") && run.data.carry.Total == 0);
+
+            // --- falling after the boss but before the portal is still a death
+            yield return StartLoopWorld(d => d.carry.foods[0] = Item.Food(Foods.Apple));
+            run = g.run;
+            KillMinotaur();
+            yield return W(0.4f);
+            yield return W(1.0f);
+            yield return ClearLevelUps();
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(2.4f);
+            Check("loop victory: dying after the boss fell but before the portal is YOU FELL (the run is only won in the portal)",
+                run.SummaryOpen && !run.result.victory && run.ui.SummaryTitle == "YOU FELL" && run.result.lost.Count == 2);
+        }
+
+        static int RapierPlus(Loadout l)
+        {
+            foreach (Item it in l.stash.weapons) if (it.IsWeapon && it.id == Weapons.Rapier) return it.plus;
+            foreach (Item it in l.stash.supplies) if (it.IsWeapon && it.id == Weapons.Rapier) return it.plus;
+            return -1;
         }
 
         // Single Player from the menu: the base (no enemies, PREPARE open and pausing), Tab / Esc, no boss respawn.

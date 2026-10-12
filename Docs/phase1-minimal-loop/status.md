@@ -14,3 +14,4 @@
 - ขั้น 6 เสร็จ: ENTER WORLD (เซฟ inRun ก่อน, fade 0.5s, ResetForRun(TownSpawn), SetWeapon(HELD), SpawnActors), ปุ่ม 1/2, ข้อความ Esc, objective, แถบอาวุธซ้ายล่าง; looponly 58 PASS / 0 FAIL
 - ขั้น 7 เสร็จ: เก็บของเข้า Carry (+Pack full, รวม +N, อาหารไม่กินทันที), กิน C / คลิกใน Tab, หน้าต่าง Carry (Tab ในโลก), Drop (คลิกขวา, ห้ามทิ้งอาวุธชิ้นสุดท้าย, Pickup.dropped), selftest เต็ม 210 PASS / 0 FAIL (รอบแรก 1 FAIL 'ready voice line' เสียงดาบมาก่อนเช็ค = flake เดิมของ v1 รันซ้ำผ่าน)
 - ขั้น 8 เสร็จ: ตาย = จบรอบ (ไม่ revive ไม่มี YOU DIED เดิม, dim 1.5s, YOU FELL: LOST / SAFE IN STASH, Iron Sword restored, RETURN TO BASE), ABANDONED ตอนเปิดใหม่หลังออกกลางโลก; selftest เต็ม 223 PASS / 0 FAIL
+- ขั้น 9 เสร็จ: บอสโลก (Minotaur) ไม่ respawn ใน loop, Portal.cs (วงแหวน+ลำแสง+วงโหลด 24 ชิ้น), ค้าง 1.5 วิ = VICTORY, ของเข้า Stash (+N ติด, NEW), LEFT BEHIND, ตายหลังบอสล้ม = YOU FELL, ลูกศร Hud ชี้ portal + แบนเนอร์; selftest เต็ม 237 PASS / 0 FAIL
