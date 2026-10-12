@@ -8,3 +8,4 @@
 - 2026-10-12 architect เสร็จ tech.md + tech-data-save/flow/test.md ผ่านด่าน 2 → decisions #8-15 → โพสต์ขออนุมัติ
 - 2026-10-12 developer เริ่ม (พีทอนุมัติเอกสารแล้ว): ขั้น 1 เสร็จ (Args -loop/-save, InputX C, MapLayout.BasePoint) build ผ่าน
 - ขั้น 2 เสร็จ: Loadout.cs (Item/ItemBag/Loadout/RunResult) + selftest เคสข้อมูล 13 เคส; build ผ่าน selftest 153 PASS / 0 FAIL
+- ขั้น 3 เสร็จ: LoopSave.cs (JSON, .tmp/.bak/.corrupt, validate, Disabled ตอนเทสต์) + 9 เคส; selftest 162 PASS / 0 FAIL (รอบแรกมี 5 FAIL จากการสุ่มดรอป Banana Dao ของเคส v1 เดิม รันซ้ำผ่าน = flake)

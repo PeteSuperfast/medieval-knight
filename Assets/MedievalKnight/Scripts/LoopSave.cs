@@ -1,0 +1,166 @@
+using System;
+using System.IO;
+using UnityEngine;
+
+namespace MedievalKnight
+{
+    // Reads / writes the Phase 1 stash + carry as one JSON file on this machine (persistentDataPath, or -save <file>).
+    // Automated runs never touch the real file: with no -save they keep the data in memory only (Disabled).
+    public static class LoopSave
+    {
+        public const int Version = 1;
+        public const string FileName = "medieval-knight-save.json";
+
+        [Serializable] class ItemDto { public int k, id, p; }
+        [Serializable] class BagDto { public ItemDto[] w, f, s; }
+        [Serializable] class SaveDto { public int v; public bool inRun, intro; public int held; public BagDto stash, carry; }
+
+        public static string PathOverride;                 // test hook: use this file (SelfTest sets it)
+        public static bool ForceMemory;                    // test hook: keep everything in memory
+        public static string LastError = "";               // the most recent problem ("" = none)
+        public static string LastLoadNote = "";            // set by Load: what happened to a damaged file
+        static string memory;                              // the "file" while Disabled
+        static string pathCache;
+
+        // Scripted runs without -save must not overwrite the player's real save.
+        public static bool Disabled
+        {
+            get { return ForceMemory || (PathOverride == null && Args.savePath == null && Args.Scripted); }
+        }
+
+        public static string Path
+        {
+            get
+            {
+                if (PathOverride != null) return PathOverride;
+                if (Args.savePath != null) return Args.savePath;
+                if (pathCache == null) pathCache = System.IO.Path.Combine(Application.persistentDataPath, FileName);
+                return pathCache;
+            }
+        }
+
+        // Forget the in-memory copy (tests start from a new game).
+        public static void ResetMemory() { memory = null; }
+
+        // ---------------------------------------------------------------- JSON <-> Loadout
+
+        static ItemDto[] ToDto(Item[] arr)
+        {
+            var d = new ItemDto[arr.Length];
+            for (int i = 0; i < arr.Length; i++) d[i] = new ItemDto { k = (int)arr[i].kind, id = arr[i].id, p = arr[i].plus };
+            return d;
+        }
+
+        static BagDto ToDto(ItemBag b) { return new BagDto { w = ToDto(b.weapons), f = ToDto(b.foods), s = ToDto(b.supplies) }; }
+
+        static void FromDto(ItemDto[] src, Item[] dst)
+        {
+            for (int i = 0; i < dst.Length; i++)
+            {
+                dst[i] = Item.None;
+                if (src == null || i >= src.Length || src[i] == null) continue;
+                if (src[i].k < 0 || src[i].k > (int)ItemKind.Food) continue;
+                dst[i] = new Item { kind = (ItemKind)src[i].k, id = src[i].id, plus = src[i].p };
+            }
+        }
+
+        static void FromDto(BagDto src, ItemBag dst)
+        {
+            FromDto(src != null ? src.w : null, dst.weapons);
+            FromDto(src != null ? src.f : null, dst.foods);
+            FromDto(src != null ? src.s : null, dst.supplies);
+        }
+
+        public static string ToJson(Loadout l)
+        {
+            var dto = new SaveDto { v = Version, inRun = l.inRun, intro = l.introShown, held = l.heldSlot, stash = ToDto(l.stash), carry = ToDto(l.carry) };
+            return JsonUtility.ToJson(dto);
+        }
+
+        // null = not a save of this version (garbage, empty, another version).
+        public static Loadout FromJson(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            SaveDto dto;
+            try { dto = JsonUtility.FromJson<SaveDto>(json); }
+            catch (Exception) { return null; }
+            if (dto == null || dto.v != Version || dto.stash == null || dto.carry == null) return null;
+            var l = new Loadout { inRun = dto.inRun, introShown = dto.intro, heldSlot = dto.held };
+            FromDto(dto.stash, l.stash);
+            FromDto(dto.carry, l.carry);
+            l.Sanitize();
+            return l;
+        }
+
+        // ---------------------------------------------------------------- file
+
+        static string TryRead(string file)
+        {
+            try { return File.Exists(file) ? File.ReadAllText(file) : null; }
+            catch (Exception e) { LastError = "Could not read the save: " + e.Message; return null; }
+        }
+
+        // The saved loadout, or a new game (Iron Sword only). LastLoadNote says when a damaged file was set aside.
+        public static Loadout Load()
+        {
+            LastLoadNote = "";
+            if (Disabled)
+            {
+                Loadout m = FromJson(memory);
+                return m ?? Loadout.NewGame();
+            }
+            string file = Path;
+            string text = TryRead(file);
+            Loadout l = FromJson(text);
+            if (l != null) return l;
+            string bakText = TryRead(file + ".bak");
+            l = FromJson(bakText);
+            if (l != null)
+            {
+                if (text != null) LastLoadNote = "The save file was damaged - restored the previous one.";
+                return l;
+            }
+            if (text != null)
+            {
+                try
+                {
+                    string bad = file + ".corrupt";
+                    if (File.Exists(bad)) File.Delete(bad);
+                    File.Move(file, bad);
+                }
+                catch (Exception e) { LastError = "Could not set the damaged save aside: " + e.Message; }
+                LastLoadNote = "The save file was damaged - started a new one.";
+            }
+            return Loadout.NewGame();
+        }
+
+        // false = it could not be written (the game goes on; the caller shows "Could not save").
+        public static bool Save(Loadout l)
+        {
+            string json = ToJson(l);
+            if (Disabled) { memory = json; return true; }
+            string file = Path, tmp = file + ".tmp";
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(file);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(tmp, json);
+                if (File.Exists(file))
+                {
+                    File.Copy(file, file + ".bak", true);
+                    File.Delete(file);
+                }
+                File.Move(tmp, file);
+                LastError = "";
+                return true;
+            }
+            catch (Exception e)
+            {
+                LastError = "Could not save: " + e.Message;
+                Debug.LogWarning("LOOPSAVE " + LastError);
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch (Exception) { }
+                return false;
+            }
+        }
+    }
+}

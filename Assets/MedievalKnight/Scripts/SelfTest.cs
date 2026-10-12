@@ -1570,6 +1570,94 @@ namespace MedievalKnight
             Log("---- loop: data rules");
             LoopData();
             yield return null;
+            Log("---- loop: save file");
+            LoopSaveTests();
+            yield return null;
+        }
+
+
+        // Save / load with a file of its own inside the test folder; the real save file must not be touched.
+        void LoopSaveTests()
+        {
+            string real = Path.Combine(Application.persistentDataPath, LoopSave.FileName);
+            bool hadReal = File.Exists(real);
+            System.DateTime realTime = hadReal ? File.GetLastWriteTimeUtc(real) : System.DateTime.MinValue;
+            string file = Path.Combine(dir, "save_test.json");
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.PathOverride = file;
+            LoopSave.ResetMemory();
+
+            Check("loop save: no file -> a new game with one Iron Sword and no note", LoopSave.Load().stash.Total == 1 && LoopSave.LastLoadNote == "");
+
+            Loadout l = Loadout.NewGame();
+            l.stash.Add(Item.Weapon(Weapons.Boss, 3));
+            l.stash.Add(Item.Weapon(Weapons.Dao, 5));
+            l.stash.Add(Item.Food(Foods.Meat));
+            l.stash.supplies[3] = Item.Food(Foods.Apple);
+            l.carry.Add(Item.Weapon(Weapons.Rapier, 1));
+            l.carry.Add(Item.Weapon(Weapons.Fang, 2));
+            l.carry.Add(Item.Food(Foods.Apple));
+            l.carry.supplies[2] = Item.Weapon(Weapons.Greatsword, 4);
+            l.heldSlot = 1; l.inRun = true; l.introShown = true;
+            bool saved = LoopSave.Save(l);
+            Loadout r = LoopSave.Load();
+            bool same = saved && r != null && r.heldSlot == 1 && r.inRun && r.introShown;
+            foreach (Section sec in new[] { Section.Weapons, Section.Foods, Section.Supplies })
+                for (int i = 0; i < l.stash.Slots(sec).Length; i++)
+                    same &= l.stash.Slots(sec)[i].Same(r.stash.Slots(sec)[i]) && (i >= l.carry.Slots(sec).Length || l.carry.Slots(sec)[i].Same(r.carry.Slots(sec)[i]));
+            Check("loop save: writing then loading gives the same value in every slot, held slot, inRun and intro flag", same);
+            Check("loop save: the file used is the one given (not persistentDataPath) and the JSON carries inRun",
+                LoopSave.Path == file && file != real && File.Exists(file) && File.ReadAllText(file).Contains("\"inRun\":true"));
+
+            // damaged main file, good .bak: the second Save made the .bak out of the first one
+            Loadout l2 = Loadout.NewGame();
+            l2.stash.Add(Item.Food(Foods.Apple));
+            LoopSave.Save(l2);                                                 // main = l2, .bak = l
+            File.WriteAllText(file, "{ this is not json ");
+            Loadout fromBak = LoopSave.Load();
+            Check("loop save: a damaged main file with a good .bak loads the .bak (previous save)",
+                fromBak != null && fromBak.inRun && fromBak.stash.HasWeaponId(Weapons.Boss) && LoopSave.LastLoadNote.Contains("damaged"));
+
+            // garbage everywhere: the file is set aside as .corrupt and a new game starts
+            File.WriteAllText(file, "garbage");
+            File.WriteAllText(file + ".bak", "more garbage");
+            Loadout fresh = LoopSave.Load();
+            Check("loop save: garbage in both files starts a new game (Iron only) and keeps the bad file as .corrupt",
+                fresh.stash.Total == 1 && fresh.stash.HasWeaponId(Weapons.Iron) && !fresh.inRun && File.Exists(file + ".corrupt") && !File.Exists(file));
+
+            // ids / plus out of range are repaired, a save with no weapon gets an Iron Sword
+            File.WriteAllText(file, "{\"v\":1,\"inRun\":false,\"intro\":false,\"held\":7,"
+                + "\"stash\":{\"w\":[{\"k\":1,\"id\":99,\"p\":0},{\"k\":1,\"id\":2,\"p\":9},{\"k\":2,\"id\":0,\"p\":0}],\"f\":[{\"k\":2,\"id\":1,\"p\":0},{\"k\":2,\"id\":77,\"p\":0}],\"s\":[]},"
+                + "\"carry\":{\"w\":[],\"f\":[{\"k\":1,\"id\":0,\"p\":0}],\"s\":[]}}");
+            Loadout rep = LoopSave.Load();
+            bool noBad = true;
+            foreach (Item it in rep.stash.All()) noBad &= it.Valid;
+            foreach (Item it in rep.carry.All()) noBad &= it.Valid;
+            Check("loop save: out-of-range ids / plus, a food in the Weapons group and a weapon in Foods are dropped; Iron is restored; held slot repaired",
+                noBad && rep.stash.HasWeaponId(Weapons.Iron) && rep.stash.Count(Section.Foods) == 1 && rep.carry.Total == 0 && rep.heldSlot == 0
+                && !rep.stash.HasWeaponId(Weapons.Greatsword));
+
+            // two stacks of the same weapon in a hand-edited file become one (+N rule)
+            File.WriteAllText(file, "{\"v\":1,\"inRun\":false,\"intro\":false,\"held\":0,"
+                + "\"stash\":{\"w\":[{\"k\":1,\"id\":0,\"p\":1},{\"k\":1,\"id\":0,\"p\":0}],\"f\":[],\"s\":[]},\"carry\":{\"w\":[],\"f\":[],\"s\":[]}}");
+            Loadout dup = LoopSave.Load();
+            Check("loop save: two stacks of one weapon in the file are merged with the +N rule (+1 and +0 -> +2)",
+                dup.stash.Count(Section.Weapons) == 1 && dup.stash.weapons[0].plus == ItemBag.MergePlus(1, 0));
+
+            Check("loop save: the player's real save file was not touched by the test",
+                File.Exists(real) == hadReal && (!hadReal || File.GetLastWriteTimeUtc(real) == realTime));
+
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.PathOverride = null;
+            LoopSave.ResetMemory();
+            LoopSave.ForceMemory = true;
+            Loadout mem = Loadout.NewGame();
+            mem.inRun = true;
+            LoopSave.Save(mem);
+            Check("loop save: ForceMemory keeps the data in memory only (no file written)",
+                LoopSave.Disabled && LoopSave.Load().inRun && !File.Exists(file));
+            LoopSave.ForceMemory = false;
+            LoopSave.ResetMemory();
         }
 
         // Pure data: Item / ItemBag / Loadout rules (no scene needed).
