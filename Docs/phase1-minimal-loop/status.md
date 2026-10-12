@@ -1,5 +1,6 @@
 # phase1-minimal-loop — status
 - ทำถึงไหน: เขียน requirement.md (ร่าง) จากคำตอบของพีท 2026-10-12 ครบ 3 ข้อ
 - ตัดสินแล้ว: Iron Sword เล่มเดียวตอนเริ่ม / เลือกของที่พกได้ N ชิ้น / 3 แบบช่อง (อาวุธ อาหาร สัมภาระ) / ตายของหายยังไม่มีเก็บคืน / แจก Iron Sword ฟรีเสมอ / เก็บข้ามรอบเฉพาะอาวุธในคลัง
-- เหลือ: พีทยืนยัน requirement + ตารางค่าเริ่มต้นท้ายไฟล์ → designer (+ blender-artist ถ้ามีฉากฐานใหม่) → architect → อนุมัติ → developer
-- รอใคร: พีท (ยืนยัน requirement.md)
+- เหลือ: designer → architect → ตรวจ → พีทอนุมัติ → developer
+- รอใคร: designer (design.md)
+- 2026-10-12 13:36 พีทยืนยัน requirement (ok) → ส่ง designer แบบ background
