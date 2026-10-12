@@ -44,3 +44,4 @@
 
 ## ส่งขึ้น Drive
 - zip `medieval-knight-win64.zip` (185 ไฟล์ โครง `MedievalKnight/...` เดิม, 38,656,107 bytes ≈ 36.9 MiB) copy ทับใน `G:\My Drive\PusomGames\` แล้ว จาก build ที่ผ่าน selftest 239 PASS + mptest FAIL=0
+- 2026-10-13 พีทลองเล่นมือจริงแล้วถือว่าดี → Phase 1 ปิด; menutest host เกณฑ์ลดเป็น >= 2 (พีทสั่ง) menutest 17 PASS / 0 FAIL

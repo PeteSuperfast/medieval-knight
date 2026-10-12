@@ -56,5 +56,5 @@ Host / Join / `-single` / `-selftest` = สนาม v1 เดิม ห้า�
 - selftest (~3 นาที ต้องไม่มี `FAIL`): `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log`
 - ออนไลน์ (host + client 3 + ตัวที่ต้องถูกปฏิเสธ 2 ~70 วินาที): `powershell -ExecutionPolicy Bypass -File mptest.ps1`
 - เช็ค "A's walk looks smooth on B" (แก้แล้ว 2026-10-12 ด้วย `NetInterp` window ~2 วินาที) ถ้าตกอีกแปลว่าบั๊กจริง
-- loop: เคสอยู่ท้าย selftest; เร็ว ~100 วิ ต่อท้าย `-looponly`; `-menutest` เช็ค host `Enemy.All.Count >= 5` ตกอยู่ก่อนแล้ว (ไม่เกี่ยวกับ loop)
+- loop: เคสอยู่ท้าย selftest; เร็ว ~100 วิ ต่อท้าย `-looponly`; `-menutest` เช็ค host `Enemy.All.Count >= 2` (ลดจาก 5 เมื่อ 2026-10-13 เพราะเมืองเป็นเขตปลอดภัย ตอนเริ่มเหลือแค่หุ่น + Minotaur)
 - ขั้นตอนเต็ม: `Docs/reference/dev-guide.md`, `online-coop.md`

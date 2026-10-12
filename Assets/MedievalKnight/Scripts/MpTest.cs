@@ -1245,7 +1245,7 @@ namespace MedievalKnight
             yield return Click(menu.ButtonRect(Menu.Page.Host, "start"));
             yield return W(1.0f);
             Check("Start Hosting starts a session as host '" + (g.knight != null ? g.knight.playerName : "?") + "' on port " + Net.Port + " (menu says '" + menu.Message + "')",
-                g.InSession && Net.IsHost && !menu.Visible && g.knight != null && g.knight.playerName == "Tester 1" && Net.Port == Args.port && Enemy.All.Count >= 5);
+                g.InSession && Net.IsHost && !menu.Visible && g.knight != null && g.knight.playerName == "Tester 1" && Net.Port == Args.port && Enemy.All.Count >= 2);
             yield return W(0.8f);
             Shot("hosting_alone");
             yield return null;
