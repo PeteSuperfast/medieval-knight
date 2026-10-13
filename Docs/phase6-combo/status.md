@@ -54,3 +54,13 @@
 - เอกสารอัปเดต: CLAUDE.md, controls, dev-guide, online-coop, files (ทุกไฟล์ <= 10KB)
 - สร้าง medieval-knight-win64.zip ในโฟลเดอร์เกม (ไม่ได้อัป Drive ตามสั่ง)
 - รอ: พีทลองเล่นว่ารู้สึกดีไหม
+
+## ผลตรวจ director ด่าน 2 (developer phase 6)
+- 5 ขั้น (898275d..fbacb38); git diff --stat 12 ไฟล์ ตรงรายการใน tech.md (Knight/Net/Game/TeamRun/SelfTest/MpTest + docs) ไม่มีไฟล์นอกแผน
+- ผลเทสที่ developer รายงาน: build ผ่าน, selftest เต็ม 382 PASS / 0 FAIL, mptest.ps1 -arena FAIL=0, mptest-loop FAIL=0, -menutest 0
+- ทำเพิ่มเล็กน้อย: โหมด -p6only + hook เทสต์ (ไม่กระทบเกมเพลย์) | ต่างจากแผน: ชาร์จนับ 1 วิจากตอนกด (ตรง design-combo)
+- ข้อสังเกต: ยังไม่ได้ดูเอฟเฟกต์ด้วยตา; ยังไม่อัป Drive; Heavy ต่อคอมโบยาก (ชาร์จ ≥1 วิ เกินหน้าต่าง 0.9 วิ) ให้พีทตัดสินหลังลองเล่น
+- ปูส้ม: ผ่าน -> โพสต์ให้พีท
+
+## รอใคร (ปัจจุบัน)
+- รอพีทลองเล่น + สั่งอัป Drive
