@@ -205,6 +205,7 @@ namespace MedievalKnight
         public int pileCount;                                                 // items in its pile after the run
         public int worldLeft;                                                 // returns it has left after the run
         public bool inOldWorld;                                               // the run was played in an old world
+        public int worldCount;                                                // old worlds that exist after the run
         public readonly List<ResultLine> overflow = new List<ResultLine>();   // did not fit in the pile (MaxPile): gone
         public readonly List<CrumbLine> crumbs = new List<CrumbLine>();       // victory: every old world's counter
         public string WorldCode { get { return OldWorld.CodeOf(worldSeed); } }
@@ -500,6 +501,7 @@ namespace MedievalKnight
             }
             r.stashWeapons = stash.Count(Section.Weapons) + CountWeaponsInSupplies(stash);
             r.stashFoods = stash.Count(Section.Foods);
+            r.worldCount = worlds.Count;
             inRun = false;
             runWorld = 0;
             runPosValid = false;

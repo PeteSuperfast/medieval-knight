@@ -1601,6 +1601,92 @@ namespace MedievalKnight
             yield return LoopDeathTests();
             Log("---- loop: boss, portal, victory");
             yield return LoopVictoryTests();
+            Log("---- old world: fall, abandoned, return");
+            yield return OldWorldRunTests();
+        }
+
+        // Phase 2, the run's end: a fall makes an old world (G shows it), the spot is autosaved while walking, closing the
+        // game mid-run puts the loot where the knight was, a return counts every old world down (and crumbles the last one).
+        IEnumerator OldWorldRunTests()
+        {
+            // --- falling in a new world
+            yield return StartLoopWorld(d =>
+            {
+                d.carry.foods[0] = Item.Food(Foods.Apple);
+                d.stash.Add(Item.Weapon(Weapons.Rapier, 2));              // stays at home
+            });
+            RunLoop run = g.run;
+            Loadout d0 = run.data;
+            k.transform.position = MapLayout.TownSpawn + new Vector3(14f, 0f, 6f);
+            g.SnapCamera();
+            yield return W(0.3f);
+            Vector3 fellAt = k.Pos;
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(3.5f);
+            OldWorld w = d0.worlds.Count == 1 ? d0.worlds[0] : null;
+            Check("old world run: falling in a new world makes one old world at the spot with the carried Iron Sword and Apple in its pile, 3 returns left",
+                w != null && w.pile.Count == 2 && w.left == 3 && Mathf.Abs(w.x - fellAt.x) < 1f && Mathf.Abs(w.z - fellAt.z) < 1f
+                && run.result.worldNote == WorldNote.Created && !d0.inRun && d0.runWorld == 0);
+            Check("old world run: YOU FELL says OLD WORLD CREATED with its code and the item count",
+                run.SummaryOpen && run.ui.SummaryBody.Contains("OLD WORLD CREATED") && w != null && run.ui.SummaryBody.Contains(w.Code)
+                && run.ui.SummaryBody.Contains("2 items lie where you fell") && run.ui.SummaryBody.Contains("Old worlds only fade when you return alive"));
+            Shot("old_world_created");
+            string saved = File.ReadAllText(LoopSave.Path);
+            Check("old world run: the save file holds the old world (and the run is closed)", saved.Contains("\"ow\":[{\"seed\":") && saved.Contains("\"inRun\":false"));
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+
+            // --- the spot is autosaved while walking; closing the game mid-run leaves the loot there
+            yield return StartLoopWorld(d => { d.carry.foods[0] = Item.Food(Foods.Meat); d.carry.weapons[1] = Item.Weapon(Weapons.Fang, 1); });
+            run = g.run;
+            d0 = run.data;
+            Check("old world run: (setup) a new run has no spot saved yet", d0.inRun && !d0.runPosValid && d0.runWorld == 0);
+            k.transform.position = MapLayout.TownSpawn + new Vector3(-20f, 0f, 9f);
+            yield return W(11.5f);
+            Check("old world run: after about 10 s and more than 5 m of walking the spot is saved in memory and in the file",
+                d0.runPosValid && Mathf.Abs(d0.runX - k.Pos.x) < 1.5f && File.ReadAllText(LoopSave.Path).Contains("\"rpos\":true"));
+            k.transform.position = MapLayout.TownSpawn + new Vector3(-26f, 0f, 14f);
+            yield return W(0.2f);
+            Vector3 lastAt = k.Pos;
+            g.LeaveToMenu();                                                          // closing the game: the exact spot is saved on the way out
+            yield return W(0.3f);
+            Net.StartSingle("Test");
+            g.StartSession(true);
+            k = g.knight;
+            yield return W(0.5f);
+            run = g.run;
+            OldWorld aw = run.data.worlds.Count == 1 ? run.data.worlds[0] : null;
+            Check("old world run: ABANDONED puts what was carried (Fang +1, Roast Meat, Iron Sword) in an old world at the last spot",
+                run.SummaryOpen && run.result.abandoned && aw != null && aw.pile.Count == 3 && Mathf.Abs(aw.x - lastAt.x) < 1f && Mathf.Abs(aw.z - lastAt.z) < 1f
+                && run.ui.SummaryBody.Contains("OLD WORLD CREATED") && run.ui.SummaryBody.Contains("3 items lie"));
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+
+            // --- a run that ends well counts every old world down; the one at 1 crumbles with its pile
+            yield return StartLoopWorld(d =>
+            {
+                var near = new OldWorld { seed = 0x0A11, left = 1, fellUnix = 100 };
+                near.pile.Add(Item.Weapon(Weapons.Fang)); near.pile.Add(Item.Food(Foods.Apple)); near.pile.Add(Item.Food(Foods.Meat));
+                var far = new OldWorld { seed = 0x0B22, left = 3, fellUnix = 200 };
+                far.pile.Add(Item.Weapon(Weapons.Dao));
+                d.worlds.Add(near); d.worlds.Add(far);
+            });
+            run = g.run;
+            d0 = run.data;
+            g.foodOverride = -1; g.dropOverride = -1;
+            KillMinotaur();
+            yield return W(1.2f);
+            yield return ClearLevelUps();
+            k.transform.position = run.portal.transform.position + new Vector3(0.5f, 0f, 0f);
+            yield return W(2.0f);
+            Check("old world run: VICTORY lists OLD WORLDS: #0A11 1 -> 0 CRUMBLED with its 3 items lost, #0B22 3 -> 2 left",
+                run.SummaryOpen && run.result.victory && run.ui.SummaryBody.Contains("OLD WORLDS") && run.ui.SummaryBody.Contains("#0A11  1 -> 0  CRUMBLED, 3 items lost forever")
+                && run.ui.SummaryBody.Contains("#0B22  3 -> 2 left"));
+            Check("old world run: the crumbled world is gone from the data and waits in unseen, the other has 2 left",
+                d0.worlds.Count == 1 && d0.worlds[0].seed == 0x0B22 && d0.worlds[0].left == 2 && d0.unseen.Count == 1 && d0.unseen[0].seed == 0x0A11 && d0.unseen[0].items == 3);
+            Shot("old_world_victory");
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
         }
 
 
@@ -1609,11 +1695,11 @@ namespace MedievalKnight
         IEnumerator StartLoopSession()
         {
             string file = Path.Combine(dir, "save_loop.json");
-            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
             LoopSave.PathOverride = file;
-            LoopSave.ResetMemory();
-            if (g.InSession) g.LeaveToMenu();
+            if (g.InSession) g.LeaveToMenu();                       // (leaving mid-run writes the spot into the save: do it before the file is cleared)
             yield return W(0.3f);
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.ResetMemory();
             Net.StartSingle("Test");
             g.StartSession(true);
             k = g.knight;

@@ -50,11 +50,15 @@ namespace MedievalKnight
             data = LoopSave.Load();
             ui = LoopUi.Create(g.transform, this);
             if (LoopSave.LastLoadNote.Length > 0) g.hud.Notice(LoopSave.LastLoadNote, LoopUi.Yellow);
+            else if (data.trimNote.Length > 0) g.hud.Notice(data.trimNote, LoopUi.Yellow);
             g.knight.ResetForRun(MapLayout.BasePoint);
+            ResetWorldMultipliers();
             if (data.inRun)
             {
-                // the game was closed in the middle of a run: that counts as a death (no save-scumming)
-                result = data.Die(true);
+                // the game was closed in the middle of a run: that counts as a death (no save-scumming). The loot lies
+                // where the knight last was (autosaved while he walked); no spot saved = at the town gate.
+                float ax = data.runPosValid ? data.runX : MapLayout.TownSpawn.x, az = data.runPosValid ? data.runZ : MapLayout.TownSpawn.z;
+                result = data.Die(true, ax, az, Loadout.NowUnix());
                 Save();
                 State = LoopState.Summary;
                 ui.ShowSummary(result);
@@ -70,6 +74,8 @@ namespace MedievalKnight
 
         public void Shutdown()
         {
+            SavePosition(true);                                     // closing the game mid-run: ABANDONED knows where the loot lies
+            ResetWorldMultipliers();
             DropPortal();
             if (ui != null) Object.Destroy(ui.gameObject);
             ui = null;
@@ -80,6 +86,7 @@ namespace MedievalKnight
         {
             if (entering && Time.unscaledTime >= enterAt) StartWorld();
             if (State == LoopState.World) TickPortal();
+            if (State == LoopState.World) TickPosition();
             if (dying)
             {
                 float t = Mathf.Clamp01((Time.unscaledTime - dieStart) / DimSeconds);
@@ -200,6 +207,9 @@ namespace MedievalKnight
             k.ResetForRun(MapLayout.TownSpawn);
             Item held = data.Held;
             k.SetWeapon(held.id, held.plus);
+            SetWorldMultipliers(data.Find(data.runWorld) != null);   // before the enemies are made: they read the scale when they appear
+            lastSavedPos = k.Pos;
+            nextPosSave = Time.unscaledTime + PosSaveEvery;
             g.SpawnActors();
             State = LoopState.World;
             g.SnapCamera();
@@ -241,7 +251,8 @@ namespace MedievalKnight
             if (State != LoopState.World || dying) return;
             dying = true;
             dieStart = Time.unscaledTime;
-            result = data.Die(false);
+            Vector3 at = g.knight.Pos;
+            result = data.Die(false, at.x, at.z, Loadout.NowUnix());
             Save();
             ui.SetObjective("");
             Debug.Log("LOOP fell: lost " + result.lost.Count + ", stash " + data.stash.Total + (result.ironRestored ? ", Iron Sword restored" : ""));
@@ -255,12 +266,50 @@ namespace MedievalKnight
             g.knight.SetWeapon(data.Held.id, data.Held.plus);
         }
 
+        // ---------------------------------------------------------------- old worlds: difficulty, autosaved position
+
+        void SetWorldMultipliers(bool oldWorld)
+        {
+            g.worldHpMul = oldWorld ? OldWorld.HpMul : 1f;
+            g.worldDmgMul = oldWorld ? OldWorld.DmgMul : 1f;
+            g.worldPackMul = oldWorld ? OldWorld.PackMul : 1f;
+        }
+
+        void ResetWorldMultipliers()
+        {
+            if (g != null) SetWorldMultipliers(false);
+        }
+
+        const float PosSaveEvery = 10f, PosSaveMoved = 5f;
+        float nextPosSave;
+        Vector3 lastSavedPos;
+
+        // While a run is open the file knows where the knight is, so closing the game (ABANDONED) leaves the loot there.
+        void TickPosition()
+        {
+            if (dying || !data.inRun || g.knight == null || g.knight.Dead || Time.unscaledTime < nextPosSave) return;
+            nextPosSave = Time.unscaledTime + PosSaveEvery;
+            Vector3 d = g.knight.Pos - lastSavedPos; d.y = 0f;
+            if (data.runPosValid && d.magnitude <= PosSaveMoved) return;
+            SavePosition(false);
+        }
+
+        void SavePosition(bool onExit)
+        {
+            if (data == null || State != LoopState.World || dying || !data.inRun || g == null || g.knight == null || g.knight.Dead) return;
+            Vector3 p = g.knight.Pos;
+            data.runX = p.x; data.runZ = p.z; data.runPosValid = true;
+            lastSavedPos = p;
+            if (onExit) LoopSave.Save(data); else Save();
+        }
+
         // RETURN TO BASE
         public void UiReturn()
         {
             if (State != LoopState.Summary) return;
             ui.HideSummary();
             ui.SetDeathDim(0f);
+            ResetWorldMultipliers();
             DropPortal();
             g.ClearWorld();
             g.knight.ResetForRun(MapLayout.BasePoint);

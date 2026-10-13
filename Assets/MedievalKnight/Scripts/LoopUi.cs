@@ -14,6 +14,8 @@ namespace MedievalKnight
             Yellow = new Color(0.949f, 0.757f, 0.306f), Gold = new Color(0.851f, 0.643f, 0.255f), Disabled = new Color(0.333f, 0.333f, 0.333f),
             PanelBg = new Color(0.063f, 0.078f, 0.094f, 0.85f), FrameCol = new Color(0.227f, 0.267f, 0.314f),
             SlotBg = new Color(0.12f, 0.12f, 0.17f, 1f), EmptyBorder = new Color(0.2f, 0.23f, 0.28f), Gray = new Color(0.7f, 0.72f, 0.78f);
+        // Phase 2: the old-world theme #5E5878 (frames) and a lighter tone of it that reads on the dark panels (text), loot gold #F5C25A
+        public static readonly Color OldFrame = new Color(0.369f, 0.345f, 0.471f), OldText = new Color(0.68f, 0.64f, 0.86f), LootGold = new Color(0.961f, 0.761f, 0.353f);
 
         class Cell
         {
@@ -668,13 +670,13 @@ namespace MedievalKnight
             RectTransform sr = Rect("Summary", root, Mid, Vector2.zero, Vector2.zero);
             sr.anchorMin = Vector2.zero; sr.anchorMax = Vector2.one; sr.offsetMin = sr.offsetMax = Vector2.zero;
             summaryRoot = sr.gameObject;
-            Image frame = Box("Frame", sr, Mid, Vector2.zero, new Vector2(706, 486), FrameCol);
-            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(700, 480), PanelBg).rectTransform;
+            Image frame = Box("Frame", sr, Mid, Vector2.zero, new Vector2(706, 596), FrameCol);
+            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(700, 590), PanelBg).rectTransform;
             sumTitle = Label("Title", p, new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(660, 56), 46, TextAnchor.MiddleCenter, "VICTORY");
             sumTitle.fontStyle = FontStyle.Bold;
             sumSub = Label("Sub", p, new Vector2(0.5f, 1f), new Vector2(0f, -88f), new Vector2(660, 26), 19, TextAnchor.MiddleCenter);
             sumSub.color = Gray;
-            sumBody = Label("Body", p, TL, Vector2.zero, new Vector2(640, 280), 19, TextAnchor.UpperLeft);
+            sumBody = Label("Body", p, TL, Vector2.zero, new Vector2(640, 390), 19, TextAnchor.UpperLeft);
             sumBody.rectTransform.pivot = TL; sumBody.rectTransform.anchoredPosition = new Vector2(30, -124);
             sumBody.horizontalOverflow = HorizontalWrapMode.Wrap;
             returnBtn = MakeButton("ReturnButton", p, new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(340, 56), "RETURN TO BASE", 26);
@@ -739,9 +741,54 @@ namespace MedievalKnight
                 sb.Append("<color=" + Hex(Green) + "><b>SAFE IN STASH</b></color>\n");
                 sb.Append(r.safe.Count > 0 ? Group(r.safe) : "<color=#9aa0b0>nothing</color>").Append("\n\n");
             }
+            AppendWorldNotes(sb, r);
             if (r.ironRestored) sb.Append("<color=" + Hex(Green) + ">Iron Sword restored</color>\n");
             sb.Append("Stash:  " + r.stashWeapons + "/" + Loadout.StashCaps[0] + " Weapons    " + r.stashFoods + "/" + Loadout.StashCaps[1] + " Food");
             sumBody.text = sb.ToString();
+        }
+
+        // Phase 2: what the run did to the old worlds (a new pile / the pile grew / counters going down / crumbled).
+        static void AppendWorldNotes(System.Text.StringBuilder sb, RunResult r)
+        {
+            string violet = Hex(OldText), gold = Hex(LootGold);
+            if (!r.victory)
+            {
+                if (r.worldNote == WorldNote.Created)
+                {
+                    sb.Append("<color=" + violet + "><b>OLD WORLD CREATED  " + r.WorldCode + "</b></color>\n");
+                    sb.Append(r.pileCount + (r.pileCount == 1 ? " item lies" : " items lie") + " where you fell.  Crumbles after " + r.worldLeft + " returns.\n");
+                }
+                else if (r.worldNote == WorldNote.Added)
+                {
+                    sb.Append("<color=" + violet + "><b>ADDED TO OLD WORLD  " + r.WorldCode + "</b></color>\n");
+                    sb.Append("The pile now holds " + r.pileCount + (r.pileCount == 1 ? " item" : " items") + ", " + r.worldLeft + (r.worldLeft == 1 ? " return" : " returns")
+                        + " left (the counter is not reset).\n");
+                }
+                else if (r.inOldWorld)
+                    sb.Append("<color=" + violet + ">" + r.WorldCode + " is still there: " + r.pileCount + " in the pile, " + r.worldLeft + " returns left.</color>\n");
+                if (r.overflow.Count > 0)
+                    sb.Append("<color=" + Hex(Red) + ">" + r.overflow.Count + " items did not fit in the pile (limit " + OldWorld.MaxPile + ") and are gone.</color>\n");
+                if (r.worldCount > 0) sb.Append("<color=" + Hex(Gray) + ">Old worlds only fade when you return alive.</color>\n");
+                sb.Append("\n");
+                return;
+            }
+            if (r.worldNote == WorldNote.Recovered)
+                sb.Append("<color=" + Hex(Green) + ">" + r.WorldCode + ": all loot recovered. World closed.</color>\n");
+            else if (r.worldNote == WorldNote.StillInPile)
+                sb.Append("<color=" + gold + ">" + r.WorldCode + ": " + r.pileCount + (r.pileCount == 1 ? " item" : " items") + " still in the pile</color>\n");
+            if (r.crumbs.Count > 0)
+            {
+                sb.Append("<color=" + violet + "><b>OLD WORLDS</b></color>\n");
+                foreach (CrumbLine c in r.crumbs)
+                {
+                    if (c.crumbled)
+                        sb.Append("<color=" + Hex(Red) + ">" + c.Code + "  " + c.before + " -> 0  CRUMBLED" + (c.itemsLost > 0 ? ", " + c.itemsLost
+                            + (c.itemsLost == 1 ? " item" : " items") + " lost forever" : "") + "</color>\n");
+                    else
+                        sb.Append(c.Code + "  " + c.before + " -> " + c.after + " left" + (c.after == 1 ? "  <color=" + Hex(Yellow) + ">last return!</color>" : "") + "\n");
+                }
+                sb.Append("\n");
+            }
         }
 
         public void HideSummary() { if (summaryRoot != null) summaryRoot.SetActive(false); }
