@@ -29,3 +29,8 @@
 
 ## รอใคร (ปัจจุบัน)
 - รอ developer ส่งรายงาน → director ด่าน 2 (build, selftest 0 FAIL, mptest.ps1 + mptest-loop.ps1 FAIL=0, -menutest, git diff --stat ตรงรายการไฟล์ใน tech.md) → โพสต์ "💻 Developer:"
+
+## Developer 2026-10-13: ขั้น 1 เสร็จ (ข้อมูลท่า)
+- AttackDef ฟิลด์ใหม่ + Attacks[5..11] + ComboLen=5 + NetKind/AttackFromNetKind (30..36) + DebugMove + Protocol 3->4 + ClientHit map ชื่อท่า
+- build ผ่าน; selftest -looponly 0 FAIL (207 PASS); mptest.ps1 FAIL=0 (H61 A4 B2 C2 X1 V1)
+- เหลือ: ขั้น 2 (เลือกท่า+หน่วง+Dash Slash) 3 (charge) 4 (ออนไลน์) 5 (เอกสาร+รันครบ)

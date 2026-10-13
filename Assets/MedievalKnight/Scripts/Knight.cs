@@ -24,6 +24,13 @@ namespace MedievalKnight
         public float damage = 10f;
         public float pierce = 0f;               // share of damage that ignores armor
         public float shake = 0.1f, knock = 3.5f;
+        // phase 6 (0 / false = no effect: the five original attacks do not change)
+        public float sideStep = 0f;             // m: total sideways step during the strike (towards the pressed side)
+        public float backStep = 0f;             // m: total step backwards during the strike
+        public bool shieldJab;                  // the shield is pushed forward from the wind-up to the end of the strike
+        public float hitStop = 0f;              // s: 0 = the usual 0.05 / 0.075
+        public float stun = 0f;                 // s: stun sent with the hit
+        public bool heavy;                      // charged attack: not part of the combo table
     }
 
     public class SkillDef
@@ -75,6 +82,18 @@ namespace MedievalKnight
         };
         public static Color UiColor(int pid) { return Color.Lerp(MainColors[pid & 3], Color.white, 0.35f); }
 
+        // The combo cycles over the first five attacks only. Attacks[5..11] are direction / dash / charge variants that
+        // take the place of position 1 or 3 of the cycle; they are never appended to it.
+        public const int ComboLen = 5, HeavyIndex = 11;
+        // Net kind of an attack: 0..4 as before, 5..11 -> 30..36 (10..13 are skills, 20 is the dash; the same numbers go in Hit.src).
+        public static int NetKind(int index) { return index < ComboLen ? index : index + 25; }
+        // Attack index of a net kind / hit source, or -1 when it is not an attack.
+        public static int AttackFromNetKind(int kind)
+        {
+            if (kind >= 0 && kind < ComboLen) return kind;
+            return kind >= 30 && kind < 30 + Attacks.Length - ComboLen ? kind - 25 : -1;
+        }
+
         public static readonly AttackDef[] Attacks =
         {
             new AttackDef { name = "Side Slash", damage = 10f, fxColor = new Color(1f, 1f, 1f) },
@@ -105,6 +124,53 @@ namespace MedievalKnight
                 leanWind = -9f, leanStrike = 14f,
                 fxColor = new Color(0.7f, 0.92f, 1f), reach = 3.7f, halfArc = 18f,
                 damage = 20f, pierce = 0.5f, shake = 0.15f, knock = 6f },
+
+            // --- phase 6 (index 5..11). Net kind = 25 + index (30..36). Values: Docs/combat-tweaks/design-combo.md ---
+            new AttackDef { name = "Dash Slash", yawWind = 115f, yawStrike = -105f, pitchWind = 28f, pitchStrike = -32f,
+                windupTime = 0.05f, strikeTime = 0.10f, recoverTime = 0.20f, lunge = 5f,
+                leanWind = 4f, leanStrike = 16f,
+                fxColor = new Color(0.65f, 0.9f, 1f), reach = 3.4f, halfArc = 60f,
+                damage = 15f, shake = 0.14f, knock = 4f },
+
+            new AttackDef { name = "Advance Cleave", kind = AttackKind.Chop, yawWind = -60f, yawStrike = 35f, pitchWind = -95f, pitchStrike = 30f,
+                handWind = 0.3f, handStrike = 0.62f,
+                windupTime = 0.12f, strikeTime = 0.10f, recoverTime = 0.22f, lunge = 4f,
+                leanWind = -4f, leanStrike = 18f,
+                fxColor = new Color(1f, 0.85f, 0.6f), reach = 3.0f, halfArc = 50f,
+                damage = 13f, shake = 0.14f, knock = 4f },
+
+            new AttackDef { name = "Sidestep Slash", yawWind = -100f, yawStrike = 100f, pitchWind = 2f, pitchStrike = 4f,
+                windupTime = 0.08f, strikeTime = 0.10f, recoverTime = 0.18f, lunge = 0f, sideStep = 2f,
+                leanWind = -4f, leanStrike = 8f,
+                fxColor = new Color(0.8f, 1f, 0.7f), reach = 2.7f, halfArc = 100f,
+                damage = 11f, shake = 0.1f, knock = 3.5f },
+
+            new AttackDef { name = "Shield Jab", kind = AttackKind.Thrust, yawWind = 4f, yawStrike = 0f, pitchWind = -4f, pitchStrike = 0f,
+                handWind = 0.2f, handStrike = 0.5f,
+                windupTime = 0.08f, strikeTime = 0.08f, recoverTime = 0.16f, lunge = 0f, backStep = 1.5f, shieldJab = true,
+                leanWind = -4f, leanStrike = 10f,
+                fxColor = new Color(1f, 0.9f, 0.5f), reach = 2.2f, halfArc = 60f,
+                damage = 6f, shake = 0.16f, knock = 7f },
+
+            new AttackDef { name = "Vault Chop", kind = AttackKind.Chop, yawWind = 8f, yawStrike = 0f, pitchWind = -125f, pitchStrike = 45f,
+                handWind = 0.3f, handStrike = 0.62f,
+                windupTime = 0.20f, strikeTime = 0.09f, recoverTime = 0.30f, lunge = 4.5f,
+                leanWind = -14f, leanStrike = 22f, hopWind = 0.7f, hopStrike = 0.55f,
+                fxColor = new Color(1f, 0.8f, 0.55f), reach = 3.0f, halfArc = 40f,
+                damage = 20f, shake = 0.25f, knock = 5f },
+
+            new AttackDef { name = "Retreat Slash", yawWind = -115f, yawStrike = 105f, pitchWind = 28f, pitchStrike = -32f,
+                windupTime = 0.08f, strikeTime = 0.10f, recoverTime = 0.15f, lunge = 0f, backStep = 2.5f,
+                leanWind = 8f, leanStrike = -8f,
+                fxColor = new Color(0.8f, 0.85f, 1f), reach = 2.8f, halfArc = 90f,
+                damage = 11f, shake = 0.11f, knock = 5f },
+
+            new AttackDef { name = "Heavy Strike", kind = AttackKind.Chop, yawWind = 0f, yawStrike = 0f, pitchWind = -125f, pitchStrike = 50f,
+                handWind = 0.5f, handStrike = 0.7f,
+                windupTime = 0.04f, strikeTime = 0.10f, recoverTime = 0.40f, lunge = 2f,
+                leanWind = -16f, leanStrike = 22f,
+                fxColor = new Color(1f, 0.78f, 0.35f), reach = 3.4f, halfArc = 90f,
+                damage = 40f, pierce = 0.3f, shake = 0.4f, knock = 9f, hitStop = 0.1f, stun = 0.5f, heavy = true },
         };
 
         public static readonly SkillDef[] Skills =
@@ -737,7 +803,7 @@ namespace MedievalKnight
             if (Net.IsHost && !Game.I.Loop) Game.I.PushEnemiesFrom(spawnPoint);       // same courtesy the local knight gets (not in the loop: he stands where he lay)
         }
 
-        // Replays an attack / skill of the remote player for show. kind: 0..4 = sword attack, 10..13 = skill.
+        // Replays an attack / skill of the remote player for show. kind: 0..4 and 30..36 = sword attack, 10..13 = skill; target.x < 0 = the sidestep goes left.
         // It starts one interpolation delay late, so it lines up with the delayed position on screen.
         public void PlayRemoteAct(int kind, float speed, Vector3 target)
         {
@@ -751,20 +817,21 @@ namespace MedievalKnight
                 ActionsSeen++;
                 return;
             }
-            bool skill = kind >= 10;
-            int index = skill ? kind - 10 : kind;
+            bool phase6 = kind >= 30 && kind < 30 + Attacks.Length - ComboLen;       // 30..36 = attack index 5..11
+            bool skill = !phase6 && kind >= 10;
+            int index = phase6 ? kind - 25 : skill ? kind - 10 : kind;
             if (index < 0 || index >= (skill ? Skills.Length : Attacks.Length)) return;
             StopAct();
             slamTarget = target;
             LastAction = skill ? Skills[index].name : Attacks[index].name;
             ActionsSeen++;
-            act = StartCoroutine(RemoteAct(skill, index, Mathf.Clamp(speed, MinSwingSpeed, MaxSwingSpeed)));
+            act = StartCoroutine(RemoteAct(skill, index, Mathf.Clamp(speed, MinSwingSpeed, MaxSwingSpeed), target.x < 0f ? -1 : 1));
         }
 
-        IEnumerator RemoteAct(bool skill, int index, float speed)
+        IEnumerator RemoteAct(bool skill, int index, float speed, int side)
         {
             if (interp.delay > 0f) yield return new WaitForSeconds(interp.delay);
-            if (!skill) yield return AttackRoutine(Attacks[index], speed);
+            if (!skill) yield return AttackRoutine(Attacks[index], speed, side);
             else
             {
                 Sfx.I.Grunt(true, Volume);
@@ -799,6 +866,12 @@ namespace MedievalKnight
 
         // Used by SelfTest to trigger actions without input devices.
         public void DebugAttack(int index) { if (!Dead && !IsAttacking) TryStartAttack(index); }
+        // Plays Attacks[index] (also 5..11) right away, side = +1 right / -1 left (Sidestep Slash); skips the combo and any delay.
+        public void DebugMove(int index, int side = 1)
+        {
+            if (Dead || IsAttacking || index < 0 || index >= Attacks.Length) return;
+            StartAttack(index, index < ComboLen ? index : 0, side);
+        }
         public bool DebugSkill(int index) { return !Dead && !IsAttacking && TrySkill(index); }
 
         void Deny(string what)
@@ -817,14 +890,20 @@ namespace MedievalKnight
                 if (Time.time - lastAttackEnd > 0.9f) comboIndex = 0;   // combo timed out
                 index = comboIndex;
             }
+            if (fromCombo) comboIndex = (index + 1) % ComboLen;
+            StartAttack(index, index, 1);
+        }
+
+        // slot = the combo position shown in the HUD (0-based); side = +1 / -1 for the sidestep.
+        void StartAttack(int index, int slot, int side)
+        {
             AttackDef a = Attacks[index];
             float speed = SwingSpeed;
-            if (fromCombo) comboIndex = (index + 1) % Attacks.Length;
             LastAction = a.name;
             ActionsSeen++;
-            Game.I.hud.Action((index + 1) + "  " + a.name, a.fxColor);
-            Net.SendAct(index, speed, Vector3.zero);
-            StartCoroutine(AttackRoutine(a, speed));
+            Game.I.hud.Action((slot + 1) + "  " + a.name, a.fxColor);
+            Net.SendAct(NetKind(index), speed, new Vector3(side < 0 ? -1f : 1f, 0f, 0f));
+            StartCoroutine(AttackRoutine(a, speed, side));
         }
 
         bool TrySkill(int i)
@@ -918,19 +997,22 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- basic attacks
 
-        IEnumerator AttackRoutine(AttackDef a, float speed)
+        IEnumerator AttackRoutine(AttackDef a, float speed, int side = 1)
         {
             IsAttacking = true;
             IsBlocking = false;
             lockFacing = true;
             Vector3 dir = transform.forward;
+            float mir = a.sideStep > 0f && side < 0 ? -1f : 1f;           // the Sidestep Slash is drawn for the right; mirrored for the left
+            float yawW = a.yawWind * mir, yawS = a.yawStrike * mir;
+            if (a.shieldJab) shieldPush = true;
 
             // 1) wind-up
             float y0 = swYaw, p0 = swPitch, h0 = swHand, lean0 = rigLean, hop0 = rigHop;
             for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.windupTime)
             {
                 float e = 1f - (1f - t) * (1f - t);                       // ease out
-                swYaw = Mathf.Lerp(y0, a.yawWind, e);
+                swYaw = Mathf.Lerp(y0, yawW, e);
                 swPitch = Mathf.Lerp(p0, a.pitchWind, e);
                 swHand = Mathf.Lerp(h0, a.handWind, e);
                 rigLean = Mathf.Lerp(lean0, a.leanWind, e);
@@ -940,26 +1022,33 @@ namespace MedievalKnight
 
             // 2) strike
             dir = transform.forward;
-            SpawnAttackFx(a);
+            SpawnAttackFx(a, mir);
             SwingSound();
             Sfx.I.Grunt(a.damage >= 16f, Volume);                     // chop / spin / thrust always, light slashes sometimes
             if (a.lunge > 2.5f) Fx.I.Dust(transform.position, 5);
+            Vector3 sideDir = Quaternion.Euler(0f, 90f, 0f) * dir * (side < 0 ? -1f : 1f);
             bool hitDone = false;
             for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.strikeTime)
             {
                 float e = a.kind == AttackKind.Spin ? t : t * t;          // spin turns evenly, the rest accelerate
-                swYaw = Mathf.Lerp(a.yawWind, a.yawStrike, e);
+                swYaw = Mathf.Lerp(yawW, yawS, e);
                 swPitch = Mathf.Lerp(a.pitchWind, a.pitchStrike, e);
                 swHand = Mathf.Lerp(a.handWind, a.handStrike, e);
                 rigLean = Mathf.Lerp(a.leanWind, a.leanStrike, e);
                 rigHop = Mathf.Lerp(a.hopWind, 0f, e) + Mathf.Sin(t * Mathf.PI) * a.hopStrike;
                 if (a.kind == AttackKind.Spin) rigSpin = -360f * t;       // whole body turns once
                 Push(dir * a.lunge * Time.deltaTime);
+                if (a.sideStep > 0f || a.backStep > 0f)                   // metres in total over the strike
+                {
+                    float frac = Mathf.Min(Time.deltaTime * speed / a.strikeTime, 1f - t);
+                    Push(sideDir * a.sideStep * frac - dir * a.backStep * frac);
+                }
 
                 if (!hitDone && t > (a.kind == AttackKind.Spin ? 0.2f : 0.35f)) { DoHit(a, dir); hitDone = true; }
                 yield return null;
             }
             if (!hitDone) DoHit(a, dir);
+            shieldPush = false;
             rigSpin = 0f;
             if (a.kind == AttackKind.Chop)   // overhead chop slams the ground
             {
@@ -987,7 +1076,7 @@ namespace MedievalKnight
             lastAttackEnd = Time.time;
         }
 
-        void SpawnAttackFx(AttackDef a)
+        void SpawnAttackFx(AttackDef a, float mir = 1f)
         {
             float yaw = transform.eulerAngles.y;
             Vector3 pos = Ground(1.05f);
@@ -1005,18 +1094,19 @@ namespace MedievalKnight
                     break;
                 case AttackKind.Chop:
                     Fx.I.Streak(pos + transform.forward * 0.5f, yaw, reach - 0.2f, 0.8f, c, 0.22f);
+                    if (a.heavy) Fx.I.Arc(pos, yaw, 1.0f, reach, 95f, -95f, c, 0.3f, 0.14f);      // the charged blow also sweeps wide
                     break;
                 default:
-                    Fx.I.Arc(pos, yaw, 1.0f, reach, a.yawWind, a.yawStrike, c, 0.22f, 0.12f);
+                    Fx.I.Arc(pos, yaw, 1.0f, reach, a.yawWind * mir, a.yawStrike * mir, c, 0.22f, 0.12f);
                     break;
             }
         }
 
         void DoHit(AttackDef a, Vector3 dir)
         {
-            int n = HitArea(transform.position, dir, Reach(a), a.halfArc, -1, a.damage, a.pierce, a.knock, 0f, a.name, System.Array.IndexOf(Attacks, a));
+            int n = HitArea(transform.position, dir, Reach(a), a.halfArc, -1, a.damage, a.pierce, a.knock, a.stun, a.name, NetKind(System.Array.IndexOf(Attacks, a)));
             if (n == 0) return;
-            Juice(a.shake, 0.16f, a.damage >= 16f ? 0.075f : 0.05f);
+            Juice(a.shake, 0.16f, a.hitStop > 0f ? a.hitStop : a.damage >= 16f ? 0.075f : 0.05f);
         }
 
         // ---------------------------------------------------------------- skills

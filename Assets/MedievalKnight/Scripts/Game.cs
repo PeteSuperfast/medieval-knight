@@ -788,8 +788,9 @@ namespace MedievalKnight
             Vector3 a = origin - by.Pos; a.y = 0f;
             Vector3 b = e.transform.position - origin; b.y = 0f;
             if (a.magnitude > 14f || b.magnitude - e.radius > 9f) return false;
+            int atkIndex = Knight.AttackFromNetKind(src);                              // 0..4 and 30..36
             string source = src >= 10 && src < 10 + Knight.Skills.Length ? Knight.Skills[src - 10].name
-                : src >= 0 && src < Knight.Attacks.Length ? Knight.Attacks[src].name : "Sword";
+                : atkIndex >= 0 ? Knight.Attacks[atkIndex].name : "Sword";
             e.TakeHit(damage, Mathf.Clamp01(pierce), origin, crit, Mathf.Clamp(knock, 0f, 20f), Mathf.Clamp(stun, 0f, 3f), source, by);
             return true;
         }

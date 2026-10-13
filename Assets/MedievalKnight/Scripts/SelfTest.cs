@@ -479,7 +479,7 @@ namespace MedievalKnight
             float sideSlashTime = 0f;
             int swingSounds = 0, grunt0 = Snds(Snd.Grunt);
             bool firstHitSound = false;
-            for (int i = 0; i < Knight.Attacks.Length; i++)
+            for (int i = 0; i < Knight.ComboLen; i++)
             {
                 AttackDef a = Knight.Attacks[i];
                 Heal();
@@ -506,7 +506,7 @@ namespace MedievalKnight
                     + ", slice +" + (Snds(Snd.Slice) - sl0) + ", grunts so far " + (Snds(Snd.Grunt) - grunt0) + ", hit split armor " + F(d.lastToArmor) + " / hp " + F(d.lastToHp));
                 yield return W(0.15f);
             }
-            Check("each of the 5 sword attacks plays sword_swing once, at the strike", swingSounds == 5);
+            Check("each of the " + Knight.ComboLen + " combo attacks plays sword_swing once, at the strike", swingSounds == Knight.ComboLen);
             Check("a hit soaked by the dummy's armor plays armor_impact (not slice)", firstHitSound);
             Check("heavy attacks (chop / spin / thrust) make the knight grunt, light slashes do not always", Snds(Snd.Grunt) - grunt0 >= 2 && Snds(Snd.Grunt) - grunt0 <= 5);
             {
@@ -521,6 +521,32 @@ namespace MedievalKnight
                 Log("slash with the dummy's armor at 0: slice +" + (Snds(Snd.Slice) - sl0) + ", armor_impact +" + (Snds(Snd.ArmorImpact) - ai0) + ", hit split armor " + F(d.lastToArmor) + " / hp " + F(d.lastToHp));
                 Check("a hit that reaches health plays sword_slice (not armor_impact)", Snds(Snd.Slice) - sl0 == 1 && Snds(Snd.ArmorImpact) == ai0);
                 d.ResetAll();
+            }
+
+            // ------------------------------------------------ phase 6: the seven new attacks (table data, DebugMove, net kinds)
+            {
+                bool allOk = Knight.Attacks.Length == Knight.ComboLen + 7 && Knight.Attacks[Knight.HeavyIndex].heavy && Knight.Attacks[Knight.HeavyIndex].name == "Heavy Strike";
+                for (int i = 0; i < Knight.Attacks.Length; i++)
+                    allOk &= Knight.AttackFromNetKind(Knight.NetKind(i)) == i && (i < Knight.ComboLen || Knight.NetKind(i) >= 30);
+                Check("phase 6 table: 12 attacks, Heavy Strike last, net kinds 0..4 and 30..36 map back to the same attack (no clash with skills 10..13 / dash 20)", allOk);
+                for (int i = Knight.ComboLen; i < Knight.Attacks.Length; i++)
+                {
+                    AttackDef a = Knight.Attacks[i];
+                    yield return W(0.5f);
+                    Heal(); d.ResetAll();
+                    StandNear(d, 1.3f);
+                    yield return W(0.35f);
+                    float s0 = k.stamina; int h0 = d.hits; int acts0 = k.ActionsSeen;
+                    k.DebugMove(i, 1);
+                    yield return W(a.windupTime + a.strikeTime * 0.7f);
+                    Shot("attack_new_" + a.name.Replace(" ", ""));
+                    yield return WaitIdle(2f);
+                    Log("new attack " + a.name + ": hits +" + (d.hits - h0) + ", damage " + F(d.lastDamage) + " (base " + a.damage + "), stamina " + F(s0) + " -> " + F(k.stamina));
+                    Check("new attack '" + a.name + "' hits the dummy once for base damage " + a.damage + ", costs no stamina, counts as one action",
+                        d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - a.damage) < 0.01f && k.stamina >= s0 - 0.01f && k.LastAction == a.name && k.ActionsSeen == acts0 + 1);
+                }
+                d.ResetAll();
+                yield return W(0.4f);
             }
 
             // ------------------------------------------------ combo through real input (J key + mouse button)

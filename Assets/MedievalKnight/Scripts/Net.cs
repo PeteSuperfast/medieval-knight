@@ -273,7 +273,7 @@ namespace MedievalKnight
     // Net.Poll (start of Game.Update) and Net.LateTick (Game.LateUpdate).
     public static class Net
     {
-        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 3;     // 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
+        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 4;     // 4 (phase 6): Act kinds 30..36 (combo / heavy attacks), Hit.src 30..36, NetFlags bit 32 = charging; 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
         public const int Magic = 0x4D4B4E54;                                 // "MKNT"
         public const float SnapshotRate = 15f, StateRate = 20f;              // messages per second
         public const float ConnectTimeout = 6f, HandshakeTimeout = 6f, SilenceTimeout = 10f;
@@ -994,7 +994,7 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- hooks called by the gameplay code
 
-        // The local knight started a sword attack (kind 0..4) or a skill (10..13). target: where a Ground Slam lands.
+        // The local knight started a sword attack (kind 0..4, 30..36), a skill (10..13) or a dash (20). target: where a Ground Slam lands / the dash goal; x = +-1 = the side of a Sidestep Slash.
         public static void SendAct(int kind, float speed, Vector3 target)
         {
             if (IsClient) ToServer(new NetW(Msg.Act).U8(kind).F32(speed).Vec(target).Done());
