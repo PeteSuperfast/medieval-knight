@@ -26,7 +26,7 @@
 | `Hud.cs` | UI (uGUI `Text`): แผงซ้ายบน (HP / Armor / Stamina / EXP / Soul), สกิล, แถบบอส, ลูกศรชี้รัง/portal (`SetArrowTarget`), การ์ดเลเวลอัป, Tab (v1), YOU DIED, `Notice`, `Banner`, ปุ่มควบคุม (`SetLoopTexts`) |
 | `Prims.cs` | mesh low-poly ในโค้ด + material (`Lit` / `Glow`), `Tint` |
 | `InputX.cs` | ตัวกลางรับปุ่ม / เมาส์; ปุ่มใหม่ต้องเพิ่มใน `Map()` |
-| `Net.cs` | Online: `Conn` (TCP + thread), `NetW` / `NetR`, `enum Msg`, host / join / handshake, snapshot (ต่อ conn), `Protocol` 3 |
+| `Net.cs` | Online: `Conn` (TCP + thread), `NetW` / `NetR`, `enum Msg`, host / join / handshake, snapshot (ต่อ conn), `Protocol` 4 |
 | `TeamRun.cs` | **phase 4**: ห้อง (`roster`, `leavers`), READY, mirror ของ carry, Enter, ล้ม/ชุบ/wipe, portal ทีม, Take / Piles / Worlds |
 | `TeamNet.cs` | **phase 4**: เข้ารหัส/ถอดรหัสข้อความ loop (`Pack` `Drop` `Take` `Revive` `Reached` `Team` `Worlds` `Enter` `Piles` `TakeAck` `Portal` `HomeIn` `RunEnd`) |
 | `TeamUi.cs` | **phase 4**: รายชื่อห้อง R1/T1, รอรอบ R4, ล้ม K1, ดู S1, นับกลับ X1, ป้าย DOWN เหนือหัว |
