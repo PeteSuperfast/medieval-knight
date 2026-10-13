@@ -35,3 +35,9 @@
 
 ## รอใคร (ปัจจุบัน)
 - รอพีท (ID 372330922122674179) อนุมัติ design/tech/tech-net/decisions → ห้ามส่ง developer จนกว่าจะเห็นข้อความอนุมัติจริง
+
+## อัปเดต 2026-10-13 12:01 UTC
+- พีท (ID 372330922122674179) อนุมัติ design/tech/tech-net/decisions ("ok") → ส่ง developer (background) ทำ 11 ขั้นแล้ว (ห้ามอัป Drive; รอพีทสั่ง)
+
+## รอใคร (ปัจจุบัน)
+- รอ developer ส่งรายงาน → director ด่าน 2 (build/selftest/mptest ทั้งสองชุด, git diff --stat ตรงรายการไฟล์ใน tech.md) → โพสต์ "💻 Developer:" แท็กพีท
