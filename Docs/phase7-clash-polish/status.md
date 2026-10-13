@@ -27,3 +27,10 @@
 ## งาน C (เก็บกวาดเอกสาร) 2026-10-13
 - agent ตัด/แยกเอกสาร 54 ไฟล์ (commit 3df4c3c, เฉพาะ .md, lossless, ดัชนีที่ชื่อเดิม) → ทุก .md ในเกมนอก Art_kit ≤10KB; ปูส้มแก้ files.md Protocol 3→4
 - ยังเกิน: Art_kit/approved.md 11.9KB (ถูกอ้างชื่อในขั้นตอนนำ asset เข้าเกม ไม่แตะ)
+
+## อัปเดต (ปูส้ม)
+- architect ส่ง tech.md + tech-net.md + tech-ui.md (กลาง 7 ขั้น, Protocol 4→5, ไม่เพิ่ม Msg) → ด่าน 2 ผ่าน: ตรง requirement/design/decisions, parry/clash ตัดสินที่เจ้าของตัว + รายงาน host ด้วย Hit src, แผนที่ใช้ข้อมูลเดิมไม่เพิ่ม Msg; ปูส้มตัดสิน decisions ข้อ 10–14; เพิ่มแถว phase 7 ใน vision
+- โพสต์ขออนุมัติใน Discord แล้ว
+
+## รอใคร (ปัจจุบัน)
+- รอพีท (ID 372330922122674179) อนุมัติ → ห้ามส่ง developer จนกว่าจะเห็นข้อความอนุมัติจริง
