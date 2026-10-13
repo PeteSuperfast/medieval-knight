@@ -282,7 +282,7 @@ namespace MedievalKnight
             SavePrefs();
             string error = Net.StartHost(port, nameField.value);
             if (error != null) { message.text = error; return; }
-            Game.I.StartSession();
+            Game.I.StartSession(!Args.arena);                 // phase 4: Host = the loop (-arena: the v1 arena)
         }
 
         void Connect()

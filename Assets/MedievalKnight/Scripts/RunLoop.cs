@@ -13,9 +13,12 @@ namespace MedievalKnight
         readonly Game g;
         public Loadout data;
         public LoopUi ui;
+        public TeamUi teamUi;
+        public TeamRun team;                                        // online (Game.Coop): the room and the run of the team; null in single player
         public LoopState State { get; private set; }
         bool dirty;                                                 // PREPARE changed the stash / carry since the last save
         bool askedNoFood;                                           // "Enter without food?" is on screen
+        bool askedForce;                                            // online: "<name> is not ready. Start without waiting?" is on screen
         int askedSeed;                                              // ... for this world (0 = a new world)
         bool worldsOpen;                                            // the OLD WORLDS list is open on top of PREPARE
         bool entering;                                              // ENTER WORLD pressed: the screen is fading to black
@@ -68,6 +71,13 @@ namespace MedievalKnight
         {
             data = LoopSave.Load();
             ui = LoopUi.Create(g.transform, this);
+            if (Net.Multiplayer)
+            {
+                team = new TeamRun(this, g);                        // online: the room (host) or the host's room (client)
+                team.AddSelf(Net.LocalPid, Net.LocalName);
+                ui.SetCoop(true, Net.IsHost);
+                teamUi = TeamUi.Create(g.transform, this);
+            }
             if (LoopSave.LastLoadNote.Length > 0) g.hud.Notice(LoopSave.LastLoadNote, LoopUi.Yellow);
             else if (data.trimNote.Length > 0) g.hud.Notice(data.trimNote, LoopUi.Yellow);
             g.knight.ResetForRun(MapLayout.BasePoint);
@@ -76,8 +86,11 @@ namespace MedievalKnight
             {
                 // the game was closed in the middle of a run: that counts as a death (no save-scumming). The loot lies
                 // where the knight last was (autosaved while he walked); no spot saved = at the town gate.
+                // An online run of a client has no world of his own: what he carried is simply gone.
                 float ax = data.runPosValid ? data.runX : MapLayout.TownSpawn.x, az = data.runPosValid ? data.runZ : MapLayout.TownSpawn.z;
-                result = data.Die(true, ax, az, Loadout.NowUnix());
+                bool online = data.runCoop;
+                result = online ? data.LoseCarry(true) : data.Die(true, ax, az, Loadout.NowUnix());
+                if (online) g.hud.Notice("An online run was cut short: what you carried is gone", LoopUi.Yellow);
                 Save();
                 State = LoopState.Summary;
                 ui.ShowSummary(result);
@@ -98,12 +111,15 @@ namespace MedievalKnight
             DropPortal();
             if (ui != null) Object.Destroy(ui.gameObject);
             ui = null;
+            if (teamUi != null) Object.Destroy(teamUi.gameObject);
+            teamUi = null;
         }
 
         // every frame, before the rest of Game.Update
         public void Tick()
         {
             if (entering && Time.unscaledTime >= enterAt) StartWorld();
+            if (team != null) { team.Tick(); ui.SetRosterLine(TeamUi.RosterLine(g, team)); }
             if (State == LoopState.World) TickPortal();
             if (State == LoopState.World) TickPosition();
             if (State == LoopState.World) TickPile();
@@ -114,16 +130,30 @@ namespace MedievalKnight
                 if (t >= 1f) { dying = false; State = LoopState.Summary; ui.ShowSummary(result); }
             }
             ui.SetStrip(data, State == LoopState.World);
-            OldWorld here = State == LoopState.World && !dying ? data.Find(data.runWorld) : null;     // top right badge of an old world
-            if (here == null) ui.SetOldBadge(null, false);
-            else ui.SetOldBadge("OLD WORLD " + here.Code + "\nHP x" + OldWorld.HpMul.ToString("0.0") + "  DMG x" + OldWorld.DmgMul.ToString("0.00")
-                + "\nCrumbles in " + here.left + (here.left == 1 ? " return" : " returns"), here.left <= 1);
+            int hereSeed = 0, hereLeft = 0;                          // the badge of an old world
+            if (State == LoopState.World && !dying) WorldInPlay(out hereSeed, out hereLeft);
+            if (hereSeed == 0) ui.SetOldBadge(null, false);
+            else ui.SetOldBadge("OLD WORLD " + OldWorld.CodeOf(hereSeed) + "\nHP x" + OldWorld.HpMul.ToString("0.0") + "  DMG x" + OldWorld.DmgMul.ToString("0.00")
+                + "\nCrumbles in " + hereLeft + (hereLeft == 1 ? " return" : " returns"), hereLeft <= 1);
+        }
+
+        // The old world this run is played in: its seed and returns left (0 = a new world). Online it is the host's world.
+        void WorldInPlay(out int seed, out int left)
+        {
+            seed = 0; left = 0;
+            if (team != null && Net.IsClient)
+            {
+                if (team.runLive && team.worldSeed != 0) { seed = team.worldSeed; left = team.worldLeft; }
+                return;
+            }
+            OldWorld w = data.Find(data.runWorld);
+            if (w != null) { seed = w.seed; left = w.left; }
         }
 
         // Esc: true when it only closed a question of the loop
         public bool OnEscape()
         {
-            if (askedNoFood) { SetAsk(false); return true; }
+            if (askedNoFood || askedForce) { SetAsk(false); return true; }
             if (worldsOpen && State == LoopState.Prepare) { UiCloseWorlds(); return true; }
             return false;
         }
@@ -131,14 +161,48 @@ namespace MedievalKnight
         void SetAsk(bool on)
         {
             askedNoFood = on;
+            askedForce = false;
             ui.SetPrompt(on ? "Enter without food?  [Enter] Go   [Esc] Back" : "");
         }
+
+        // ---------------------------------------------------------------- online: READY and the old worlds of the room
+
+        // The READY button (a client): needs a Weapon, locks the carry, tells the host. Pressed again it lets go.
+        public void UiReady()
+        {
+            if (team == null || State != LoopState.Prepare || entering) return;
+            if (team.LocalReady) { team.SetLocalReady(false); ui.SetWarn("", LoopUi.Gray, 0f); dirty = true; return; }
+            if (!data.CanEnter) { ui.SetWarn("Pack a Weapon first", LoopUi.Red, 1.5f); return; }
+            data.EnsureHeld();
+            team.SetLocalReady(true);
+            if (dirty) Save();
+        }
+
+        // A packed carry is locked while READY (the host has a copy of it).
+        bool PackLocked
+        {
+            get
+            {
+                if (team == null || !team.LocalReady) return false;
+                ui.SetWarn("You are READY: un-ready to change your pack", LoopUi.Yellow, 1.6f);
+                return true;
+            }
+        }
+
+        // The old worlds PREPARE lists: the save's own (single player, host) or the host's (a client, read only).
+        public List<OldWorld> WorldList()
+        {
+            if (team != null && Net.IsClient) return team.HostWorlds();
+            return data.Sorted();
+        }
+
+        public int WorldCount { get { return team != null && Net.IsClient ? team.HostWorlds().Count : data.worlds.Count; } }
 
         // ---------------------------------------------------------------- PREPARE
 
         public void OnInventoryOpened()
         {
-            askedNoFood = false;
+            askedNoFood = false; askedForce = false;
             if (State == LoopState.World)
             {
                 if (lootMode && pileWorld != null && curPile != null) ui.ShowLoot(data, pileWorld.Code, curPile);
@@ -152,7 +216,7 @@ namespace MedievalKnight
         public void OnInventoryClosed()
         {
             ui.HideAll();
-            askedNoFood = false;
+            askedNoFood = false; askedForce = false;
             worldsOpen = false;
             if (lootMode)
             {
@@ -180,6 +244,7 @@ namespace MedievalKnight
         public void UiMove(int side, Section sec, int index)
         {
             if (State != LoopState.Prepare) return;
+            if (PackLocked) return;
             ItemBag from = side == 0 ? data.stash : data.carry;
             if (from.Slots(sec)[index].IsNone) return;
             bool ok = side == 0 ? data.MoveToCarry(sec, index) : data.MoveToStash(sec, index);
@@ -191,13 +256,14 @@ namespace MedievalKnight
             }
             data.EnsureHeld();
             dirty = true;
-            if (askedNoFood) SetAsk(false);
+            if (askedNoFood || askedForce) SetAsk(false);
         }
 
         // Right click on a carried Weapon: that one is held in the world.
         public void UiHold(int slot)
         {
             if (State != LoopState.Prepare) return;
+            if (PackLocked) return;
             if (data.SetHeld(slot)) dirty = true;
         }
 
@@ -209,8 +275,8 @@ namespace MedievalKnight
         // OLD WORLDS button: the list of old worlds opens over PREPARE (nothing to open when there are none).
         public void UiOpenWorlds()
         {
-            if (State != LoopState.Prepare || data.worlds.Count == 0) return;
-            if (askedNoFood) SetAsk(false);
+            if (State != LoopState.Prepare || WorldCount == 0) return;
+            if (askedNoFood || askedForce) SetAsk(false);
             worldsOpen = true;
             ui.ShowWorlds(data);
         }
@@ -219,15 +285,17 @@ namespace MedievalKnight
         {
             if (!worldsOpen) return;
             worldsOpen = false;
-            if (askedNoFood) SetAsk(false);
+            if (askedNoFood || askedForce) SetAsk(false);
             ui.HideWorlds();
             ui.ShowPrepare(data);
         }
 
-        // NEW WORLD (seed 0) / ENTER OLD WORLD (the old world's seed). Same rules for both: a Weapon is needed, no food asks first.
+        // NEW WORLD (seed 0) / ENTER OLD WORLD (the old world's seed). Same rules for both: a Weapon is needed, no food asks
+        // first. Online only the host enters; somebody who is not ready is asked about last ("Start without waiting?").
         public void UiEnter(int seed = 0)
         {
             if (State != LoopState.Prepare) return;
+            if (team != null && Net.IsClient) return;               // the host chooses; a client presses READY
             if (seed != 0 && data.Find(seed) == null) return;
             if (!data.CanEnter)
             {
@@ -237,11 +305,23 @@ namespace MedievalKnight
             bool food = data.carry.Count(Section.Foods) > 0;
             foreach (Item it in data.carry.supplies) if (it.kind == ItemKind.Food) food = true;
             if (!food && !(askedNoFood && askedSeed == seed)) { askedSeed = seed; SetAsk(true); return; }
+            if (team != null)
+            {
+                Member w = team.FirstWaiting();
+                if (w != null && !(askedForce && askedSeed == seed))
+                {
+                    askedSeed = seed;
+                    askedNoFood = false;
+                    askedForce = true;
+                    ui.SetPrompt(w.name + " is not ready. Start without waiting?  [Enter] START   [Esc] CANCEL");
+                    return;
+                }
+            }
             SetAsk(false);
             EnterWorld(seed);
         }
 
-        // Enter on the "enter without food?" question: the world that was asked about
+        // Enter on the question that is showing: the world that was asked about
         public void UiConfirmEnter() { UiEnter(askedSeed); }
 
         // The run is opened and saved first (closing the game from here on counts as a death), then the screen fades
@@ -251,33 +331,54 @@ namespace MedievalKnight
             EnterRequests++;
             worldsOpen = false;
             g.SetInventory(false);                                  // closes PREPARE (saves a changed pack)
+            OldWorld ow = data.Find(seed);
             data.BeginRun(seed);
+            Save();
+            if (team != null) team.StartRunHost(data.runWorld, ow != null ? ow.left : 0);       // tells the others (Enter)
+            entering = true;
+            enterAt = Time.unscaledTime + 0.5f;
+            ui.FadeTo(1f, 0.5f);
+            Debug.Log("LOOP enter world" + (data.runWorld != 0 ? " OLD " + OldWorld.CodeOf(data.runWorld) : "") + " (held " + data.Held.Name + ", carry " + data.carry.Total + " items)"
+                + (team != null ? ", team of " + team.roster.FindAll(m => m.inRun).Count : ""));
+        }
+
+        // client: the host started a run. Playing: the screen fades and the world is built like the host's (StartWorld);
+        // not in the list (not ready, or came in late): stays at the base and waits for the next one.
+        public void OnTeamEnter(bool iPlay, List<int> pids)
+        {
+            Debug.Log("LOOP team enter: " + (iPlay ? "playing" : "waiting") + ", " + pids.Count + " player(s)");
+            if (!iPlay || entering || State == LoopState.World || State == LoopState.Summary) return;
+            worldsOpen = false;
+            g.SetInventory(false);
+            data.BeginRun(0, true);                                  // the host's world: none of mine, but the run is open (rc)
             Save();
             entering = true;
             enterAt = Time.unscaledTime + 0.5f;
             ui.FadeTo(1f, 0.5f);
-            Debug.Log("LOOP enter world" + (data.runWorld != 0 ? " OLD " + OldWorld.CodeOf(data.runWorld) : "") + " (held " + data.Held.Name + ", carry " + data.carry.Total + " items)");
         }
 
-        // Fully dark: build the world, level 1 with the held weapon, at the town gate spawn.
+        // Fully dark: build the world, level 1 with the held weapon, at the spawn point of this player.
         void StartWorld()
         {
             entering = false;
             DropPortal();
             Knight k = g.knight;
             g.ClearWorld();
-            k.ResetForRun(MapLayout.TownSpawn);
+            k.ResetForRun(Game.SpawnPointFor(Net.LocalPid));         // (pid 0 = the town gate, as always)
             Item held = data.Held;
             k.SetWeapon(held.id, held.plus);
+            if (team != null) team.SpawnTeammates();                // the others who play: before the enemies, they scale with the party
             SetWorldMultipliers(data.Find(data.runWorld) != null);   // before the enemies are made: they read the scale when they appear
             lastSavedPos = k.Pos;
             nextPosSave = Time.unscaledTime + PosSaveEvery;
-            g.SpawnActors();
+            if (Net.Authority) g.SpawnActors();                      // a client gets the host's world through snapshots
             State = LoopState.World;
             g.SnapCamera();
             ui.FadeTo(0f, 0.5f);
             ui.SetObjective("Objective: Defeat the Minotaur to return");
             OldWorld ow = data.Find(data.runWorld);
+            int seedHere, leftHere;
+            WorldInPlay(out seedHere, out leftHere);
             if (ow != null)
             {
                 BuildPileViews(ow);
@@ -288,7 +389,16 @@ namespace MedievalKnight
                     + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
                 ui.SetObjective2(ow.ItemCount > 0 ? "Recover your loot" : "");
             }
-            else ui.SetObjective2("");
+            else if (team != null && seedHere != 0)
+            {
+                g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(seedHere) + "\nStay together. Revive with F.", LoopUi.OldText, 4f);
+                ui.SetObjective2("Recover your loot");
+            }
+            else
+            {
+                ui.SetObjective2("");
+                if (team != null) g.hud.Banner("WORLD\nStay together. Revive with F.", Color.white, 3.5f);
+            }
             Sfx.I.Play(Snd.Ready);
             Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " items " + ow.ItemCount : ""));
         }
@@ -323,6 +433,7 @@ namespace MedievalKnight
         public void OnKnightDown()
         {
             if (State != LoopState.World || dying) return;
+            if (team != null) { team.OnLocalDown(); return; }       // online: a fall is not the end of the run (revive, wipe)
             dying = true;
             dieStart = Time.unscaledTime;
             Vector3 at = g.knight.Pos;

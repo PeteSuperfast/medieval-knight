@@ -15,6 +15,7 @@ namespace MedievalKnight
         // co-op rules: enemy health per extra player, seconds a downed knight waits, protection while picking a level-up card
         public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 3f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
         public const float MaxHitDamage = 20000f;  // host-side sanity limit for one reported hit
+        public static float TestDownSeconds = 60f; // the loop online: seconds a fallen knight can still be revived (the test shortens it)
         static readonly Vector3 MinotaurHome = MapLayout.Lair;
         static readonly Vector3 DummyPos = MapLayout.DummyPos;
         static readonly Vector3 KnightSpawn = MapLayout.TownSpawn;
@@ -120,7 +121,7 @@ namespace MedievalKnight
             if (Args.host)
             {
                 string error = Net.StartHost(Args.port, name);
-                if (error == null) StartSession();
+                if (error == null) StartSession(!Args.arena);        // phase 4: hosting plays the loop (-arena = the v1 arena)
                 else menu.Show(error);
             }
             else if (Args.joinHost != null)
@@ -137,6 +138,7 @@ namespace MedievalKnight
 
             SelfTest.StartIfRequested(gameObject);
             MpTest.StartIfRequested(gameObject);
+            MpLoopTest.StartIfRequested(gameObject);
         }
 
         System.Collections.IEnumerator JoinFromCommandLine(string name)
@@ -160,7 +162,8 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- session (one run in the arena)
 
         // Net.Mode / Net.LocalPid / Net.LocalName are already set: single player, host or a client that was let in.
-        // loop: the Phase 1 base / world loop (single player only). Host, Join, -single and -selftest stay the v1 arena.
+        // loop: the base / world loop (single player, and since phase 4 host and client). -single / -selftest without -loop and
+        // everything with -arena stay the v1 arena.
         public void StartSession(bool loop = false)
         {
             if (InSession) return;
@@ -172,7 +175,7 @@ namespace MedievalKnight
             knight = SpawnKnight(Net.LocalPid, Net.LocalName, false);
             menu.Hide();
             hud.SetVisible(true);
-            run = loop && Net.Mode == NetMode.Single ? new RunLoop(this) : null;
+            run = loop ? new RunLoop(this) : null;
             if (run == null && Net.Authority) SpawnActors();          // the loop builds the world when the player enters it
             camFocus = knight.transform.position;
             PlaceCamera(Vector3.zero);
@@ -215,7 +218,8 @@ namespace MedievalKnight
                 leaveAskedAt = Time.unscaledTime;
                 string ask = Net.IsHost ? "Press Esc again to close the game for everyone and go to the menu"
                     : "Press Esc again to leave to the menu";
-                if (Loop && run.InWorld) ask = "Leaving now counts as a death. Press Esc again.";    // the save already says "in a run"
+                if (Loop && run.InWorld) ask = Coop ? (Net.IsHost ? "Leaving closes the game for everyone and counts as a death. Press Esc again." : "Leaving now loses what you carry. Press Esc again.")
+                    : "Leaving now counts as a death. Press Esc again.";    // the save already says "in a run"
                 hud.Notice(ask, new Color(1f, 0.85f, 0.5f));
                 return;
             }
@@ -228,12 +232,54 @@ namespace MedievalKnight
             EndSession("");
         }
 
+        // ---------------------------------------------------------------- online: what Net asks the game (protocol 3)
+
+        // Host: does this connection get the world snapshot? The arena sends it to everyone; the loop only to the ones
+        // inside the run (the others wait at the base and do not see the team).
+        public bool WantsSnapshot(int pid)
+        {
+            if (!Coop) return true;
+            return run.team != null && run.team.IsPlaying(pid);
+        }
+
+        // Client: does it report its knight (State)? Not while it waits at the base.
+        public bool SendsState { get { return !Coop || (run.team != null && run.team.LocalPlaying); } }
+
+        // Host: is this player slot free for a new player?
+        public bool PidFree(int pid)
+        {
+            if (Coop) return run.team == null || !run.team.Has(pid);
+            return PlayerByPid(pid) == null;
+        }
+
+        // Host: the players listed in the Welcome message (the roster in the loop, the knights in the arena).
+        public List<KeyValuePair<int, string>> WelcomeList()
+        {
+            var l = new List<KeyValuePair<int, string>>();
+            if (Coop && run.team != null) { foreach (Member m in run.team.roster) l.Add(new KeyValuePair<int, string>(m.pid, m.name)); return l; }
+            foreach (Knight k in players) l.Add(new KeyValuePair<int, string>(k.pid, k.playerName));
+            return l;
+        }
+
         // ---------------------------------------------------------------- online: other players
 
         // quiet: somebody who was already in the game when this machine joined.
         public void OnPlayerJoined(int pid, string name, bool quiet)
         {
-            if (!InSession || pid == Net.LocalPid || PlayerByPid(pid) != null) return;
+            if (!InSession || pid == Net.LocalPid) return;
+            if (Coop && run.team != null)                           // the loop: a name in the room; his knight comes with the run
+            {
+                bool had = run.team.Has(pid);
+                run.team.OnJoined(pid, name);
+                if (!quiet && !had)
+                {
+                    hud.Notice(name + " joined the game   (" + run.team.RoomCount + " / " + Net.MaxPlayers + " players)", Knight.UiColor(pid));
+                    Sfx.I.Play(Snd.Ready, 0.5f);
+                }
+                Debug.Log("PLAYER joined: " + pid + " '" + name + "', room " + run.team.roster.Count);
+                return;
+            }
+            if (PlayerByPid(pid) != null) return;
             SpawnKnight(pid, name, true);
             if (!quiet)
             {
@@ -245,6 +291,7 @@ namespace MedievalKnight
 
         public void OnPlayerLeft(int pid, string why)
         {
+            if (InSession && Coop && run.team != null) { run.team.OnLeft(pid, why); return; }
             Knight k = PlayerByPid(pid);
             if (!InSession || k == null || !k.remote) return;
             players.Remove(k);
@@ -379,7 +426,7 @@ namespace MedievalKnight
         }
 
         // Client: the host says a sword (kind 0) or a food (kind 1) was collected.
-        public void OnPickupTaken(int id, int pid, int kind, int itemId, Vector3 at)
+        public void OnPickupTaken(int id, int pid, int kind, int itemId, Vector3 at, int plus = 0)
         {
             Pickup p = Pickup.Find(id);
             bool seen = p != null && !p.hidden;
@@ -868,7 +915,12 @@ namespace MedievalKnight
                     if (!loop && p.kind == PickupKind.Food && k.hp >= k.MaxHp - 0.5f) continue;     // food is for those who need it
                     Vector3 d = p.transform.position - k.Pos; d.y = 0f;
                     if (d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
-                    if (loop) { if (run.TryCollect(p)) break; continue; }
+                    if (loop)
+                    {
+                        if (k.remote) { if (run.team != null && run.team.HostCollect(k, p)) break; continue; }   // a teammate: through his mirror
+                        if (run.TryCollect(p)) break;
+                        continue;
+                    }
                     Collect(k, p);
                     break;
                 }
@@ -1289,9 +1341,9 @@ namespace MedievalKnight
                     if (!online) return;
                 }
             }
-            if (loop && run.SummaryOpen)                          // YOU FELL / VICTORY: frozen until RETURN TO BASE
+            if (loop && run.SummaryOpen)                          // YOU FELL / VICTORY: frozen until RETURN TO BASE (online: the world goes on)
             {
-                Time.timeScale = 0f;
+                Time.timeScale = online ? 1f : 0f;
                 run.SummaryInput();
                 return;
             }
@@ -1314,7 +1366,7 @@ namespace MedievalKnight
             UpdatePickups();
 
             // --- co-op: everybody down at once ---
-            if (Net.Multiplayer)
+            if (Net.Multiplayer && !Loop)
             {
                 bool allDown = players.Count > 0;
                 for (int i = 0; i < players.Count; i++) if (!players[i].Dead) allDown = false;

@@ -42,7 +42,7 @@ namespace MedievalKnight
         {
 #if ENABLE_INPUT_SYSTEM
             if (Args.menuTestDir != null) { host.AddComponent<MenuTest>(); return; }
-            if (Args.mpTestDir == null) return;
+            if (Args.mpTestDir == null || !Args.arena) return;          // without -arena the loop suite runs (MpLoopTest.cs)
             var t = host.AddComponent<MpTest>();
             t.dir = Args.mpTestDir;
             t.role = Args.role.Length > 0 ? Args.role : (Args.host ? "H" : "A");

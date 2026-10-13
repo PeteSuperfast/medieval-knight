@@ -587,12 +587,19 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- remote knight (another player)
 
         // State bits sent over the network.
-        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8;
+        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16;      // NetFallen: Dead + Fallen = really dead (the loop online)
 
         public int NetFlags
         {
-            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0); }
+            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0); }
         }
+
+        // The loop online: who this knight is reviving right now (pid), 255 = nobody. Travels with the state so the others see it.
+        public int RevTarget = 255;
+        // The loop online: Dead is true for both. Down = hit 0 health, can still be revived for DownLeft seconds; Fallen = time ran out.
+        public bool Fallen { get; private set; }
+        public float DownLeft { get; private set; }
+        public bool Down { get { return Dead && !Fallen; } }
 
         // The time stamp and facing that go out with this knight's state: his own for the local knight, the last
         // reported ones for a remote knight (the host passes other players' reports on unchanged).
@@ -615,9 +622,10 @@ namespace MedievalKnight
 
         // A state report from that player's machine (sender time is his clock).
         public void ApplyNet(float senderTime, Vector3 pos, float yaw, int flags, float newHp, float newMaxHp, float newArmor, float newMaxArmor,
-            int level, int weapon, int plus)
+            int level, int weapon, int plus, int revTarget = 255)
         {
             if (!remote) return;
+            RevTarget = revTarget;
             netPos = pos; netYaw = yaw; netTime = senderTime;
             interp.Push(senderTime, Time.unscaledTime, pos, yaw);
             bool wasDead = Dead, nowDead = (flags & NetDead) != 0;

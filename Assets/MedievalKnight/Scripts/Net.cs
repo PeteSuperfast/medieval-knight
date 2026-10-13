@@ -33,7 +33,21 @@ namespace MedievalKnight
         PickupTaken,    // host: a sword or food was collected by pid (kind, item)
         Banner,         // host: a line about the shared world (wave, Minotaur, wipe)
         Reset,          // host pressed F5: everybody restarts at level 1
-        Test            // text relayed between the test scripts (MpTest.cs); the game itself never sends it
+        Test,           // text relayed between the test scripts (MpTest.cs); the game itself never sends it
+        // ---- phase 4 (the loop online) - see TeamNet.cs and Docs/phase4-coop/tech-net.md
+        Pack,           // C>H: ready flag + the carry (+ how many grants it has applied)
+        Drop,           // C>H: an item put down in the world
+        Take,           // C>H: items taken from a pile
+        Revive,         // C>H: holding F on a downed friend (phase 0 stop / 1 hold / 2 done); H>C: relayed
+        Reached,        // C>H: stood in the portal for 1.5 s
+        Team,           // H>C: the roster
+        Worlds,         // H>C: the host's old worlds (read only)
+        Enter,          // H>C: the run begins (world, who plays)
+        Piles,          // H>C: the piles of the world
+        TakeAck,        // H>C: what a Take got
+        Portal,         // H>C: the Minotaur is dead, the portal is here
+        HomeIn,         // H>C: the team goes home in N seconds
+        RunEnd          // H>C: the run is over (win / wipe / host quit) with the table
     }
 
     // Builds one message. The first two bytes are the length prefix, filled in by Done().
@@ -259,7 +273,7 @@ namespace MedievalKnight
     // Net.Poll (start of Game.Update) and Net.LateTick (Game.LateUpdate).
     public static class Net
     {
-        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 2;     // 2: Exp carries Soul, pickups carry a kind, Act kind 20 = dash
+        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 3;     // 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
         public const int Magic = 0x4D4B4E54;                                 // "MKNT"
         public const float SnapshotRate = 15f, StateRate = 20f;              // messages per second
         public const float ConnectTimeout = 6f, HandshakeTimeout = 6f, SilenceTimeout = 10f;
@@ -602,18 +616,28 @@ namespace MedievalKnight
                 if (now < nextSnapshot) return;
                 nextSnapshot = Mathf.Max(nextSnapshot + 1f / SnapshotRate, now - 0.5f / SnapshotRate);
                 bool any = false;
-                for (int i = 0; i < conns.Count; i++) if (conns[i].ready) any = true;
+                for (int i = 0; i < conns.Count; i++) if (conns[i].ready && Game.I.WantsSnapshot(conns[i].pid)) any = true;
                 if (!any) return;
-                ToAll(Game.I.WriteSnapshot().Done(), null);
+                byte[] snap = Game.I.WriteSnapshot().Done();
+                for (int i = 0; i < conns.Count; i++)
+                {
+                    Conn c = conns[i];
+                    if (!c.ready || !Game.I.WantsSnapshot(c.pid)) continue;     // the loop: only the ones inside the run see the world
+                    BytesOut += snap.Length;
+                    c.Send(snap);
+                }
             }
             else if (IsClient && server != null && welcomed)
             {
                 if (now >= nextState)
                 {
                     nextState = Mathf.Max(nextState + 1f / StateRate, now - 0.5f / StateRate);
-                    var w = new NetW(Msg.State);
-                    WriteKnight(w, Game.I.knight);
-                    ToServer(w.Done());
+                    if (Game.I.SendsState)                                       // the loop: not while waiting at the base
+                    {
+                        var w = new NetW(Msg.State);
+                        WriteKnight(w, Game.I.knight);
+                        ToServer(w.Done());
+                    }
                 }
                 if (now >= nextPing)
                 {
@@ -623,14 +647,14 @@ namespace MedievalKnight
             }
         }
 
-        static void ToServer(byte[] msg)
+        internal static void ToServer(byte[] msg)
         {
             if (server == null) return;
             BytesOut += msg.Length;
             server.Send(msg);
         }
 
-        static void ToAll(byte[] msg, Conn except)
+        internal static void ToAll(byte[] msg, Conn except)
         {
             for (int i = 0; i < conns.Count; i++)
             {
@@ -641,7 +665,7 @@ namespace MedievalKnight
             }
         }
 
-        static Conn ConnOf(int pid)
+        internal static Conn ConnOf(int pid)
         {
             for (int i = 0; i < conns.Count; i++) if (conns[i].ready && conns[i].pid == pid) return conns[i];
             return null;
@@ -654,7 +678,8 @@ namespace MedievalKnight
             Vector3 p = k.Pos;
             w.F32(k.NetTime).Vec(p).Yaw(k.NetYaw).U8(k.NetFlags)
                 .Amount(k.hp).Amount(k.MaxHp).Amount(k.armor).Amount(k.MaxArmor)
-                .U8(k.progress.level).U8(k.inventory.equipped).U8(k.inventory.plus[k.inventory.equipped]);
+                .U8(k.progress.level).U8(k.inventory.equipped).U8(k.inventory.plus[k.inventory.equipped])
+                .U8(k.RevTarget);                                                // 255 = not reviving anybody (protocol 3)
         }
 
         // k == null: read and ignore (the local knight, or somebody not known here).
@@ -665,11 +690,11 @@ namespace MedievalKnight
             float yaw = r.Yaw();
             int flags = r.U8();
             float hp = r.Amount(), maxHp = r.Amount(), armor = r.Amount(), maxArmor = r.Amount();
-            int level = r.U8(), weapon = r.U8(), plus = r.U8();
+            int level = r.U8(), weapon = r.U8(), plus = r.U8(), revTarget = r.U8();
             if (k == null || !k.remote) return;
             float lim = Game.ArenaHalf + 1f;
             p.x = Mathf.Clamp(p.x, -lim, lim); p.z = Mathf.Clamp(p.z, -lim, lim); p.y = Mathf.Clamp(p.y, 0f, 6f);
-            k.ApplyNet(time, p, yaw, flags, hp, maxHp, armor, maxArmor, level, weapon, plus);
+            k.ApplyNet(time, p, yaw, flags, hp, maxHp, armor, maxArmor, level, weapon, plus, revTarget);
         }
 
         // ---------------------------------------------------------------- host: messages from a client
@@ -731,6 +756,10 @@ namespace MedievalKnight
                     if (OnTest != null) OnTest(text);
                     break;
                 }
+
+                default:
+                    TeamNet.OnHost(c, type, r, g);                          // phase 4: Pack, Drop, Take, Revive, Reached
+                    break;
             }
         }
 
@@ -748,7 +777,7 @@ namespace MedievalKnight
             }
             if (Game.I == null || !Game.I.InSession) { Refuse(c, "The host is not in a game right now."); return; }
             int pid = -1;
-            for (int i = 1; i < MaxPlayers && pid < 0; i++) if (Game.I.PlayerByPid(i) == null) pid = i;
+            for (int i = 1; i < MaxPlayers && pid < 0; i++) if (Game.I.PidFree(i)) pid = i;
             if (pid < 0)
             {
                 RefusedFull++;
@@ -758,8 +787,10 @@ namespace MedievalKnight
 
             c.pid = pid;
             c.name = CleanName(name, pid);
-            var w = new NetW(Msg.Welcome).U8(pid).U16(Version).U8(Game.I.players.Count);
-            foreach (Knight k in Game.I.players) w.U8(k.pid).Str(k.playerName);
+            // protocol 3: the mode (0 = the v1 arena, 1 = the loop) after the version, then who is in (the roster in the loop)
+            List<KeyValuePair<int, string>> who = Game.I.WelcomeList();
+            var w = new NetW(Msg.Welcome).U8(pid).U16(Version).U8(Game.I.Loop ? 1 : 0).U8(who.Count);
+            foreach (KeyValuePair<int, string> k in who) w.U8(k.Key).Str(k.Value);
             c.Send(w.Done());
             c.ready = true;
             ToAll(new NetW(Msg.Join).U8(pid).Str(c.name).Done(), c);
@@ -814,6 +845,7 @@ namespace MedievalKnight
                 {
                     int pid = r.U8();
                     int version = r.U16();
+                    int loopMode = r.U8();                                   // protocol 3: 0 = the v1 arena, 1 = the loop (the host decides)
                     int n = r.U8();
                     Mode = NetMode.Client;
                     LocalPid = pid;
@@ -822,7 +854,7 @@ namespace MedievalKnight
                     SnapshotsReceived = 0;
                     nextState = nextPing = 0f;
                     Debug.Log("NET welcome: I am player " + pid + " on a version " + version + " host with " + n + " player(s) already in");
-                    g.StartSession();
+                    g.StartSession(loopMode == 1);
                     for (int i = 0; i < n; i++)
                     {
                         int other = r.U8();
@@ -901,7 +933,8 @@ namespace MedievalKnight
                 {
                     int id = r.U16(), pid = r.U8(), kind = r.U8(), item = r.U8();
                     Vector3 at = r.Vec();
-                    g.OnPickupTaken(id, pid, kind, item, at);
+                    int plus = r.U8();                                        // protocol 3: the +N of a weapon (the loop)
+                    g.OnPickupTaken(id, pid, kind, item, at, plus);
                     break;
                 }
 
@@ -933,6 +966,10 @@ namespace MedievalKnight
 
                 case Msg.Test:
                     if (OnTest != null) OnTest(r.Str());
+                    break;
+
+                default:
+                    TeamNet.OnClient(type, r, g);                           // phase 4: Team, Worlds, Enter, Piles, TakeAck, Portal, HomeIn, RunEnd, Revive
                     break;
             }
         }
@@ -981,9 +1018,9 @@ namespace MedievalKnight
             c.Send(m);
         }
 
-        public static void BroadcastPickupTaken(int id, int pid, int kind, int item, Vector3 at)
+        public static void BroadcastPickupTaken(int id, int pid, int kind, int item, Vector3 at, int plus = 0)
         {
-            if (IsHost) ToAll(new NetW(Msg.PickupTaken).U16(id).U8(pid).U8(kind).U8(item).Vec(at).Done(), null);
+            if (IsHost) ToAll(new NetW(Msg.PickupTaken).U16(id).U8(pid).U8(kind).U8(item).Vec(at).U8(plus).Done(), null);
         }
 
         public static void BroadcastBanner(string text, Color color)

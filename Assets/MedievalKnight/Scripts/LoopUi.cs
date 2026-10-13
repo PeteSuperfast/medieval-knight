@@ -51,6 +51,8 @@ namespace MedievalKnight
         Btn enterBtn, backBtn;
         // phase 2: OLD WORLDS button on PREPARE, the red "crumbled" bar, the OLD WORLDS list (H), objective line 2, world badge
         Btn oldBtn;
+        Btn readyBtn;                       // online, a client: READY instead of NEW WORLD (the host enters)
+        bool coop, coopHost;
         Image oldDot;
         Text crumbText;
         int btnFocus;                       // keyboard focus on the bottom buttons: 0 none, 1 NEW WORLD, 2 OLD WORLDS
@@ -378,6 +380,9 @@ namespace MedievalKnight
             enterBtn.rt.pivot = TL; enterBtn.rt.anchoredPosition = new Vector2(400, -498);
             oldBtn = MakeButton("OldWorldsButton", p, TL, Vector2.zero, new Vector2(240, 52), "OLD WORLDS (0)", 22);
             oldBtn.rt.pivot = TL; oldBtn.rt.anchoredPosition = new Vector2(630, -498);
+            readyBtn = MakeButton("ReadyButton", p, TL, Vector2.zero, new Vector2(220, 52), "READY", 24);
+            readyBtn.rt.pivot = TL; readyBtn.rt.anchoredPosition = new Vector2(400, -498);
+            readyBtn.rt.gameObject.SetActive(false);
             oldDot = Box("Dot", oldBtn.rt, new Vector2(1f, 1f), new Vector2(-6f, -6f), new Vector2(14f, 14f), Yellow);
             oldDot.rectTransform.pivot = new Vector2(1f, 1f);
             oldDot.gameObject.SetActive(false);
@@ -430,8 +435,22 @@ namespace MedievalKnight
         public bool PrepareVisible { get { return prepareRoot != null && prepareRoot.activeSelf; } }
         public RectTransform CellRect(int side, Section sec, int index) { return cells[side][(int)sec][index].rt; }
         public RectTransform EnterRect { get { return enterBtn.rt; } }                 // NEW WORLD
+        public RectTransform ReadyRect { get { return readyBtn.rt; } }
+        public string ReadyText { get { return readyBtn.text.text; } }
+        public string EnterText { get { return enterBtn.text.text; } }
         public RectTransform OldWorldsRect { get { return oldBtn.rt; } }
         public string OldWorldsText { get { return oldBtn.text.text; } }
+
+        // Online: a client gets READY in place of NEW WORLD; everybody gets the roster (TeamUi).
+        string rosterLine = "";
+        public void SetRosterLine(string s) { rosterLine = s ?? ""; }
+
+        public void SetCoop(bool on, bool host)
+        {
+            coop = on; coopHost = host;
+            readyBtn.rt.gameObject.SetActive(on && !host);
+            enterBtn.rt.gameObject.SetActive(!on || host);
+        }
         public bool OldWorldsEnabled { get { return oldBtn.frame.color != Disabled; } }
         public string CrumbBarText { get { return crumbText.gameObject.activeSelf ? crumbText.text : ""; } }
         public bool OldDotShown { get { return oldDot.gameObject.activeSelf; } }
@@ -493,16 +512,28 @@ namespace MedievalKnight
                 sectionLabels[1][s].text = names[s] + "  " + d.carry.Count((Section)s) + "/" + Loadout.CarryCaps[s];
             }
             bool crumb = d.unseen.Count > 0;
-            introText.gameObject.SetActive(!d.introShown && !crumb);
+            introText.gameObject.SetActive(coop ? !crumb : !d.introShown && !crumb);
+            if (coop) introText.text = rosterLine;                 // online: who is here and who is ready, where the intro line was
             crumbText.gameObject.SetActive(crumb);
             if (crumb) crumbText.text = CrumbSentence(d);
             bool can = d.CanEnter;
             enterBtn.bg.color = can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
             enterBtn.frame.color = btnFocus == 1 ? Color.white : can ? Gold : Disabled;
-            int n = d.worlds.Count;
+            int n = run.WorldCount;
             bool last = false;
-            foreach (OldWorld w in d.worlds) if (w.left <= 1) last = true;
+            foreach (OldWorld w in run.WorldList()) if (w.left <= 1) last = true;
             oldBtn.text.text = "OLD WORLDS (" + n + ")";
+            if (coop)
+            {
+                if (coopHost) enterBtn.text.text = "NEW WORLD  " + run.team.ReadyCount + "/" + run.team.RoomCount;
+                else
+                {
+                    bool rdy = run.team.LocalReady;
+                    readyBtn.text.text = rdy ? "READY  (cancel)" : "READY";
+                    readyBtn.bg.color = rdy ? new Color(0.14f, 0.3f, 0.16f, 1f) : can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
+                    readyBtn.frame.color = btnFocus == 1 ? Color.white : rdy ? Green : can ? Gold : Disabled;
+                }
+            }
             oldBtn.bg.color = n > 0 ? new Color(0.22f, 0.2f, 0.32f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
             oldBtn.frame.color = btnFocus == 2 ? Color.white : n > 0 ? OldText : Disabled;
             oldBtn.text.color = n > 0 ? Color.white : new Color(0.55f, 0.55f, 0.55f, 1f);
@@ -527,6 +558,15 @@ namespace MedievalKnight
         {
             if (prompt.Length > 0) { warn.text = prompt; warn.color = Yellow; return; }
             if (!d.CanEnter) { warn.text = "Pack a Weapon first"; warn.color = Red; return; }
+            if (coop && !coopHost)
+            {
+                bool food0 = d.carry.Count(Section.Foods) > 0;
+                if (!food0) foreach (Item it in d.carry.supplies) if (it.kind == ItemKind.Food) food0 = true;
+                if (run.team.LocalReady) { warn.text = "Waiting for the host to enter a world"; warn.color = Green; return; }
+                warn.text = food0 ? "Press READY when your pack is set" : "! No food packed - press READY when set";
+                warn.color = Yellow;
+                return;
+            }
             bool food = d.carry.Count(Section.Foods) > 0;
             if (!food) foreach (Item it in d.carry.supplies) if (it.kind == ItemKind.Food) food = true;
             warn.text = food ? "" : "! No food packed";
@@ -642,13 +682,14 @@ namespace MedievalKnight
             float now = Time.unscaledTime;
             Vector2 m = InputX.MousePos;
             Cell hover = CellAt(m);
-            bool onEnter = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(enterBtn.rt, m, null);
+            bool onEnter = InputX.HasMouse && enterBtn.rt.gameObject.activeSelf && RectTransformUtility.RectangleContainsScreenPoint(enterBtn.rt, m, null);
+            bool onReady = InputX.HasMouse && readyBtn.rt.gameObject.activeSelf && RectTransformUtility.RectangleContainsScreenPoint(readyBtn.rt, m, null);
             bool onBack = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(backBtn.rt, m, null);
             bool onOld = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(oldBtn.rt, m, null);
-            if (onOld && d.worlds.Count == 0) SetWarn("No old worlds yet", Gray, 0.2f);
+            if (onOld && run.WorldCount == 0) SetWarn("No old worlds yet", Gray, 0.2f);
             backBtn.bg.color = Color.Lerp(backBtn.bg.color, onBack ? new Color(0.3f, 0.36f, 0.56f, 1f) : new Color(0.14f, 0.16f, 0.24f, 0.96f), 0.35f);
             if (onEnter && d.CanEnter) enterBtn.bg.color = new Color(0.6f, 0.46f, 0.16f, 1f);
-            if (onOld && d.worlds.Count > 0) oldBtn.bg.color = new Color(0.32f, 0.3f, 0.46f, 1f);
+            if (onOld && run.WorldCount > 0) oldBtn.bg.color = new Color(0.32f, 0.3f, 0.46f, 1f);
 
             // keyboard: the cursor over the cells; Down from the last row goes to the two buttons, Left / Right swap them, Up goes back
             bool kl = InputX.Down(KeyCode.LeftArrow) || InputX.Down(KeyCode.A), kr = InputX.Down(KeyCode.RightArrow) || InputX.Down(KeyCode.D);
@@ -673,11 +714,12 @@ namespace MedievalKnight
             bool clickL = InputX.HasMouse && InputX.MouseDown(0), clickR = InputX.HasMouse && InputX.MouseDown(1);
             bool key = InputX.Down(KeyCode.Return) || InputX.Down(KeyCode.KeypadEnter) || InputX.Down(KeyCode.Space);
             bool consumed = false;
-            if (clickL && onEnter) { btnFocus = 0; run.UiEnter(); consumed = true; }
+            if (clickL && onReady) { btnFocus = 0; run.UiReady(); consumed = true; }
+            else if (clickL && onEnter) { btnFocus = 0; run.UiEnter(); consumed = true; }
             else if (clickL && onOld) { btnFocus = 0; run.UiOpenWorlds(); consumed = true; }
             else if (clickL && onBack) { run.UiBack(); consumed = true; }
             else if (key && prompt.Length > 0) { run.UiConfirmEnter(); consumed = true; }       // "[Enter] Go"
-            else if (key && btnFocus == 1) { run.UiEnter(); consumed = true; }
+            else if (key && btnFocus == 1) { if (coop && !coopHost) run.UiReady(); else run.UiEnter(); consumed = true; }
             else if (key && btnFocus == 2) { run.UiOpenWorlds(); consumed = true; }
             else if (clickL && hover != null) { btnFocus = 0; cursorCell = hover; run.UiMove(hover.side, hover.sec, hover.index); consumed = true; }
             else if (clickR && hover != null) { btnFocus = 0; cursorCell = hover; if (hover.side == 1 && hover.sec == Section.Weapons) run.UiHold(hover.index); consumed = true; }
@@ -805,7 +847,7 @@ namespace MedievalKnight
 
         void RefreshWorlds(Loadout d)
         {
-            worldList = d.Sorted();
+            worldList = run.WorldList();
             int n = worldList.Count;
             worldSel = Mathf.Clamp(worldSel, 0, Mathf.Max(0, n - 1));
             if (worldSel < worldScroll) worldScroll = worldSel;
@@ -854,7 +896,9 @@ namespace MedievalKnight
                 worldsNote.text = (cur.left <= 1 ? "Crumbles after your next return." : "Crumbles after " + cur.left + " more returns.")
                     + "   Leave room in your pack to carry loot back.   " + (cur.piles.Count > 1 ? cur.piles.Count + " piles lie in this world.   " : "") + "Dying here adds a pile.";
             else worldsNote.text = "";
-            bool can = d.CanEnter && cur != null;
+            bool viewOnly = coop && !coopHost;
+            worldsEnterBtn.text.text = viewOnly ? "HOST ENTERS" : "ENTER OLD WORLD";
+            bool can = d.CanEnter && cur != null && !viewOnly;
             worldsEnterBtn.bg.color = can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
             worldsEnterBtn.frame.color = can ? Gold : Disabled;
         }
