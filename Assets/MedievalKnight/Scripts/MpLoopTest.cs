@@ -327,6 +327,8 @@ namespace MedievalKnight
             }
             string pk = "";
             foreach (Pickup q in Pickup.All) if (!q.hidden) pk += q.weaponId + "@" + F1(q.transform.position.x) + "," + F1(q.transform.position.z) + " ";
+            if (run != null) sb.Append(";portal=").Append(run.portal != null ? 1 : 0).Append(";boss=").Append(run.BossDown ? 1 : 0)
+                .Append(";home=").Append(t != null && t.HomeStarted ? F1(t.HomeLeft) : "-").Append(";hometext=").Append(run.teamUi != null ? run.teamUi.HomeTextShown.Replace(';', ',').Replace('=', ':').Replace('\n', '~') : "");
             sb.Append(";pk=").Append(Pickup.All.Count).Append(";pklist=").Append(pk.Trim());
             sb.Append(";notice=").Append(g.hud.NoticeShown.Replace(';', ',').Replace('=', ':').Replace('|', '/'))
               .Append(";banner=").Append(g.hud.BannerShown.Replace(';', ',').Replace('=', ':').Replace('|', '/').Replace('\n', ' '));
@@ -455,6 +457,12 @@ namespace MedievalKnight
                     Reply(id, "ok=" + ok + ";carry=" + run.data.carry.Total + ";before=" + before);
                     break;
                 }
+
+                case "ret":                                           // RETURN TO BASE on the summary
+                    run.UiReturn();
+                    yield return null;
+                    Reply(id, "st=" + run.State);
+                    break;
 
                 case "autoheal":
                     autoHeal = a[0] == "1";
@@ -649,6 +657,50 @@ namespace MedievalKnight
             yield return Sum();
             Ck(dropped.G("ok") == "True" && EqP("pk", "H", A, B) && S("H", "mir" + pidA) == S(A, "carry"), A + " dropped an item: it lies in the world on every screen and the host's copy matches his pack (" + S(A, "carry") + ")");
             Shot("items");
+
+            // ------------------------------------------------ 5. the boss dies, the team goes home together
+            {
+                yield return Cmd("all", "autoheal", "1");
+                // an old world that exists on the host: its counter goes down ONCE for the team, not once per player
+                var ow = new OldWorld { seed = 0xA1B2, left = 3, fellUnix = 1760000000L };
+                ow.NewPile(30f, -100f).items.Add(Item.Weapon(Weapons.Fang));
+                ow.piles[0].items.Add(Item.Food(Foods.Meat));
+                g.run.data.worlds.Add(ow);
+                yield return Sum();
+                int stashA0 = (int)N(A, "stash"), carryA = (int)N(A, "carry"), carryB = (int)N(B, "carry"), carryH = (int)N("H", "carry");
+                Minotaur m = g.minotaur;
+                Check("the Minotaur is alive on the host before the kill", m != null && !m.Dead);
+                if (m != null) m.TakeHit(999999f, 1f, m.transform.position + Vector3.back * 2f, false, 0f, 0f, "mptest", g.knight);
+                yield return W(1.5f);
+                yield return Cmd("all", "settle");
+                yield return Sum();
+                Ck(S("H", "portal") == "1" && S(A, "portal") == "1" && S(B, "portal") == "1" && S(C, "portal") == "0", "the portal opened at the Minotaur's place for the three who play (not for " + C + " who waits)");
+                Vector3 pp = g.run.portal != null ? g.run.portal.transform.position : Vector3.zero;
+                yield return Cmd(B, "tp", F2(pp.x + 0.5f), F2(pp.z));
+                yield return W(2.0f);
+                yield return Sum();
+                Ck(S("H", "home") != "-" && S(A, "home") != "-" && S(B, "home") != "-", B + " stood in the portal for 1.5 s: the countdown home runs on all three screens");
+                Check("the countdown is shown (" + S(A, "hometext") + ")", S(A, "hometext").Contains("returning in"));
+                yield return W(3.5f);
+                yield return Sum();
+                Ck(S("H", "sum") == "1" && S(A, "sum") == "1" && S(B, "sum") == "1" && S(C, "sum") == "0", "everybody who played got the summary at the same time (" + C + " did not: he was not in the run)");
+                Check("the summary says the team returns home and lists the three players (" + S("H", "sumtitle") + ")",
+                    S("H", "sumtitle").Contains("TEAM RETURNS HOME") && S(A, "sumbody").Contains("Alice") && S(A, "sumbody").Contains("Bob") && S(A, "sumbody").Contains("Host") && S(A, "sumbody").Contains("SURVIVED"));
+                Check(A + "'s carry (" + carryA + " items) went into his stash (" + stashA0 + " -> " + S(A, "stash") + "), his carry is empty and no run is open",
+                    N(A, "stash") == stashA0 + carryA && S(A, "carry") == "0" && S(A, "inRun") == "0" && S(A, "rc") == "0");
+                Check(B + " and the host brought their things home too (stash " + S(B, "stash") + " / " + S("H", "stash") + ")", N(B, "stash") >= carryB && N("H", "stash") >= carryH && S("H", "carry") == "0");
+                Check("no old world was made by the win and the host's old world #A1B2 went 3 -> 2 exactly once (" + S("H", "wlist") + ")",
+                    S("H", "worlds") == "1" && S("H", "wlist").StartsWith("41394/2/"));
+                Check(A + " and " + B + " (clients) have no old worlds of their own touched (" + S(A, "worlds") + ", " + S(B, "worlds") + ")", S(A, "worlds") == "0" && S(B, "worlds") == "0");
+                yield return Cmd("all", "shot", "victory_summary");
+                yield return Cmd(A, "ret");
+                yield return Cmd(B, "ret");
+                yield return Cmd("H", "ret");
+                yield return W(0.8f);
+                yield return Sum();
+                Ck(Eq("st") && S("H", "st") == "Prepare" && Eq("n") && S("H", "n") == "1" && Eq("live") && S("H", "live") == "0",
+                    "everybody is back at his own base with PREPARE open, one knight each, no run open");
+            }
 
             // ------------------------------------------------ the extra join attempts were turned away
             if (Args.refusals)

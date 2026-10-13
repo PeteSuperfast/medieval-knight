@@ -649,6 +649,7 @@ namespace MedievalKnight
             ui.SetDeathDim(0f);
             ResetWorldMultipliers();
             DropPortal();
+            if (team != null) team.RemoveTeammates();                // the knights of the others go with the world
             g.ClearWorld();
             g.knight.ResetForRun(MapLayout.BasePoint);
             data.AutoPack();
@@ -880,6 +881,7 @@ namespace MedievalKnight
             ui.SetObjective("Objective: Step into the Portal");
             g.hud.SetArrowTarget(p, "Portal", 6f);
             Sfx.I.Play(Snd.Ready, 0.8f);
+            if (team != null && Net.IsHost) Net.ToAll(TeamNet.Portal(p.x, p.z), null);      // the others build it where he fell
             Debug.Log("LOOP boss down: portal at (" + p.x.ToString("0.0") + ", " + p.z.ToString("0.0") + ")");
         }
 
@@ -900,7 +902,73 @@ namespace MedievalKnight
             portalHold = inside ? portalHold + Time.unscaledDeltaTime : 0f;
             portal.SetProgress(portalHold / Portal.HoldSeconds);
             ui.SetPortalLabel(g.cam, portal.transform.position + Vector3.up * 4.2f, true);
-            if (portalHold >= Portal.HoldSeconds) Victory();
+            if (portalHold >= Portal.HoldSeconds)
+            {
+                if (team != null) team.OnLocalReached();            // online: the countdown home starts for everybody (RunEnd ends it)
+                else Victory();
+            }
+        }
+
+        // host, online: the countdown is over - everybody who is still in the world goes home together. The host's own
+        // carry goes into his stash; the table says what happened to each player; the clients do the same on their side.
+        public void HostVictory()
+        {
+            if (State != LoopState.World || dying || team == null) return;
+            portalHold = 0f;
+            int leftBefore = team.worldLeft;
+            result = data.Survive();
+            var e = new RunEndInfo { kind = 1, worldSeed = result.worldSeed, worldNote = (int)result.worldNote, leftBefore = leftBefore, leftAfter = result.worldLeft,
+                pilesN = result.pilesN, itemsInPiles = result.pileCount };
+            e.crumbs.AddRange(result.crumbs);
+            foreach (Member m in team.roster)
+            {
+                if (!m.inRun) continue;
+                int st = m.status == Stat.Left ? TeamRun.Left : m.status == Stat.Alive ? TeamRun.Survived : TeamRun.Fell;
+                int items = m.pid == Net.LocalPid ? result.brought.Count : st == TeamRun.Left ? 0 : m.mirror.Total;
+                e.pids.Add(m.pid);
+                e.team.Add(new TeamLine { name = m.name, status = st, items = items });
+            }
+            result.teamSize = e.team.Count;
+            result.team.AddRange(e.team);
+            Save();
+            Net.ToAll(TeamNet.RunEnd(e), null);
+            EnterSummary();
+            Debug.Log("TEAM victory: " + e.team.Count + " players, " + result.brought.Count + " items home for the host");
+        }
+
+        // client, online: the host ended the run. A win: what I carried goes into my stash (the host's old worlds are not
+        // mine to count down). A loss: what I carried is gone (it lies in the host's world as piles).
+        public void OnTeamRunEnd(RunEndInfo e)
+        {
+            if (team == null) return;
+            if (State != LoopState.World && State != LoopState.Summary) { team.EndRun(); return; }      // did not play this run
+            if (State == LoopState.Summary) return;
+            RunResult r = e.kind == 1 ? data.Survive(false) : data.LoseCarry(e.kind == 3);
+            r.worldSeed = e.worldSeed;
+            r.worldNote = (WorldNote)Mathf.Clamp(e.worldNote, 0, (int)WorldNote.Crumbled);
+            r.worldLeft = e.leftAfter;
+            r.pileCount = e.itemsInPiles;
+            r.pilesN = e.pilesN;
+            r.inOldWorld = e.leftBefore > 0;
+            r.crumbs.AddRange(e.crumbs);
+            r.teamSize = e.team.Count;
+            r.team.AddRange(e.team);
+            result = r;
+            Save();
+            EnterSummary();
+            Debug.Log("TEAM run end: kind " + e.kind + ", " + (e.kind == 1 ? r.brought.Count + " items home, " + r.leftBehind.Count + " left behind" : r.lost.Count + " items lost"));
+        }
+
+        // The run is over on this machine: the summary opens, the room is free for the next run.
+        void EnterSummary()
+        {
+            ui.SetObjective(""); ui.SetObjective2("");
+            ui.SetPortalLabel(null, Vector3.zero, false);
+            g.hud.SetArrowTarget(null, "Lair", 30f);
+            State = LoopState.Summary;
+            ui.ShowSummary(result);
+            Sfx.I.Play(Snd.Ready);
+            team.EndRun();
         }
 
         void Victory()

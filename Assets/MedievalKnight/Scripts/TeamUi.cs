@@ -23,6 +23,8 @@ namespace MedievalKnight
         readonly Text[] rows = new Text[MaxRows];
         readonly Image[] swatches = new Image[MaxRows];
         Text waiting;
+        Image homeFrame;                                              // X1: the countdown home
+        Text homeText;
 
         public static TeamUi Create(Transform parent, RunLoop run)
         {
@@ -101,6 +103,14 @@ namespace MedievalKnight
             waiting.fontStyle = FontStyle.Bold;
             waiting.color = Yellow;
             waiting.gameObject.SetActive(false);
+
+            homeFrame = Box("HomeFrame", root, new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(430f, 76f), Sky);
+            homeFrame.rectTransform.pivot = new Vector2(0.5f, 1f);
+            Box("Bg", homeFrame.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(424f, 70f), new Color(0.04f, 0.07f, 0.12f, 0.85f));
+            homeText = Label("HomeText", homeFrame.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(420f, 70f), 22, TextAnchor.MiddleCenter);
+            homeText.fontStyle = FontStyle.Bold;
+            homeText.color = Sky;
+            homeFrame.gameObject.SetActive(false);
         }
 
         // ---------------------------------------------------------------- test read-outs
@@ -108,6 +118,7 @@ namespace MedievalKnight
         public int RowsShown { get { int n = 0; foreach (Text t in rows) if (t.gameObject.activeSelf) n++; return n; } }
         public string RowText(int i) { return rows[i].gameObject.activeSelf ? rows[i].text : ""; }
         public string WaitingText { get { return waiting.gameObject.activeSelf ? waiting.text : ""; } }
+        public string HomeTextShown { get { return homeFrame.gameObject.activeSelf ? homeText.text : ""; } }
 
         // ---------------------------------------------------------------- drawing
 
@@ -182,7 +193,10 @@ namespace MedievalKnight
                 }
             for (int i = n; i < MaxRows; i++)
                 if (rows[i].gameObject.activeSelf) { rows[i].gameObject.SetActive(false); swatches[i].gameObject.SetActive(false); }
-            if (panel && inWorld) { }
+            // X1: the countdown home (everybody goes together, the fallen too)
+            bool home = inWorld && t.HomeStarted && !run.SummaryOpen;
+            if (homeFrame.gameObject.activeSelf != home) homeFrame.gameObject.SetActive(home);
+            if (home) homeText.text = "PORTAL OPEN - returning in " + Mathf.CeilToInt(t.HomeLeft) + "\n<size=16>Everyone returns together</size>";
         }
 
         void SetAll(bool on)
@@ -190,6 +204,7 @@ namespace MedievalKnight
             foreach (Text t in rows) if (t.gameObject.activeSelf != on) t.gameObject.SetActive(on);
             foreach (Image i in swatches) if (i.gameObject.activeSelf != on) i.gameObject.SetActive(on);
             if (waiting.gameObject.activeSelf != on) waiting.gameObject.SetActive(on);
+            if (homeFrame.gameObject.activeSelf != on) homeFrame.gameObject.SetActive(on);
         }
     }
 }

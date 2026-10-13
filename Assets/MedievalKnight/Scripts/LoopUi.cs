@@ -1329,10 +1329,13 @@ namespace MedievalKnight
             HideAll();
             summaryRoot.SetActive(true);
             var sb = new System.Text.StringBuilder();
+            bool team = r.teamSize > 0;
+            sumTitle.fontSize = team ? 38 : 46;
             if (r.victory)
             {
-                sumTitle.text = "VICTORY"; sumTitle.color = Green;
-                sumSub.text = "The Minotaur is defeated and the way home is open.";
+                sumTitle.text = team ? "VICTORY - TEAM RETURNS HOME" : "VICTORY"; sumTitle.color = Green;
+                sumSub.text = team ? "The Minotaur is defeated. Everybody came home together." : "The Minotaur is defeated and the way home is open.";
+                if (team) AppendTeamTable(sb, r);
                 sb.Append("<color=" + Hex(Green) + "><b>BROUGHT HOME</b></color>\n");
                 sb.Append(r.brought.Count > 0 ? Group(r.brought) : "<color=#9aa0b0>nothing</color>").Append("\n\n");
                 if (r.leftBehind.Count > 0)
@@ -1340,8 +1343,10 @@ namespace MedievalKnight
             }
             else
             {
-                sumTitle.text = r.abandoned ? "ABANDONED" : "YOU FELL"; sumTitle.color = Red;
-                sumSub.text = r.abandoned ? "You left the world mid-run. Everything you carried was lost." : "Everything you carried is lost.";
+                sumTitle.text = r.abandoned ? "ABANDONED" : team ? "ALL FELL" : "YOU FELL"; sumTitle.color = Red;
+                sumSub.text = r.abandoned ? (team ? "The game was closed mid-run. What you carried is lost." : "You left the world mid-run. Everything you carried was lost.")
+                    : team ? "Nobody was left standing. Everything the team carried is lost." : "Everything you carried is lost.";
+                if (team) AppendTeamTable(sb, r);
                 sb.Append("<color=" + Hex(Red) + "><b>LOST</b></color>\n");
                 sb.Append(r.lost.Count > 0 ? Group(r.lost) : "<color=#9aa0b0>nothing</color>").Append("\n\n");
                 sb.Append("<color=" + Hex(Green) + "><b>SAFE IN STASH</b></color>\n");
@@ -1353,6 +1358,21 @@ namespace MedievalKnight
             sumBody.text = sb.ToString();
         }
 
+        // Phase 4 (G3): one line per player of the team: how he ended and what became of what he carried.
+        static void AppendTeamTable(System.Text.StringBuilder sb, RunResult r)
+        {
+            foreach (TeamLine l in r.team)
+            {
+                string st = l.status == TeamRun.Survived ? "<color=" + Hex(Green) + ">SURVIVED</color>" : l.status == TeamRun.Fell ? "<color=" + Hex(Red) + ">FELL</color>"
+                    : "<color=" + Hex(Gray) + ">LEFT</color>";
+                string what;
+                if (r.victory) what = l.status == TeamRun.Left ? "lost" : l.items + (l.items == 1 ? " item home" : " items home");
+                else what = l.items + (l.items == 1 ? " item dropped" : " items dropped");
+                sb.Append("  <b>" + l.name + "</b>   " + st + "   " + what + "\n");
+            }
+            sb.Append("\n");
+        }
+
         // Phase 2: what the run did to the old worlds (a new pile / the pile grew / counters going down / crumbled).
         static void AppendWorldNotes(System.Text.StringBuilder sb, RunResult r)
         {
@@ -1362,7 +1382,8 @@ namespace MedievalKnight
                 if (r.worldNote == WorldNote.Created)
                 {
                     sb.Append("<color=" + violet + "><b>OLD WORLD CREATED  " + r.WorldCode + "</b></color>\n");
-                    sb.Append(r.pileCount + (r.pileCount == 1 ? " item lies" : " items lie") + " where you fell.  Crumbles after " + r.worldLeft + " returns.\n");
+                    if (r.pilesN > 1) sb.Append(r.pileCount + " items lie in " + r.pilesN + " piles where the team fell.  Crumbles after " + r.worldLeft + " returns.\n");
+                    else sb.Append(r.pileCount + (r.pileCount == 1 ? " item lies" : " items lie") + " where you fell.  Crumbles after " + r.worldLeft + " returns.\n");
                 }
                 else if (r.worldNote == WorldNote.Added)
                 {

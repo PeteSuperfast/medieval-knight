@@ -7,6 +7,16 @@ namespace MedievalKnight
     // decode what arrives and hand it to TeamRun (which does the deciding). Layouts: Docs/phase4-coop/tech-net.md.
     // Everything is untrusted input: a short or odd message throws (Net.Poll catches it and drops that connection) and
     // every number is clamped / validated before it is used.
+    // What a RunEnd message says (the table of the team summary G3 and what happened to the world).
+    public class RunEndInfo
+    {
+        public int kind;                                  // 1 = the team returned home, 2 = everybody fell, 3 = the host closed the game
+        public int worldSeed, worldNote, leftBefore, leftAfter, pilesN, itemsInPiles;
+        public readonly List<TeamLine> team = new List<TeamLine>();
+        public readonly List<int> pids = new List<int>();
+        public readonly List<CrumbLine> crumbs = new List<CrumbLine>();
+    }
+
     internal static class TeamNet
     {
         // ---------------------------------------------------------------- pieces
@@ -56,6 +66,31 @@ namespace MedievalKnight
             return w.Pos(x).Pos(z).Done();
         }
 
+        // C>H: stood in the portal for the whole 1.5 s
+        public static byte[] Reached() { return new NetW(Msg.Reached).Done(); }
+
+        // H>C: the Minotaur is dead: the way home is here
+        public static byte[] Portal(float x, float z) { return new NetW(Msg.Portal).Pos(x).Pos(z).Done(); }
+
+        // H>C: the team goes home in this many seconds
+        public static byte[] HomeIn(float seconds) { return new NetW(Msg.HomeIn).F32(seconds).Done(); }
+
+        // H>C: the run is over: how, what happened to the world, one line per player (pid, status, items), the old worlds' counters
+        public static byte[] RunEnd(RunEndInfo e)
+        {
+            var w = new NetW(Msg.RunEnd).U8(e.kind).I32(e.worldSeed).U8(e.worldNote).U8(e.leftBefore).U8(e.leftAfter)
+                .U8(e.pilesN).U16(e.itemsInPiles).U8(e.team.Count);
+            for (int i = 0; i < e.team.Count; i++) w.U8(e.pids[i]).U8(e.team[i].status).U8(Mathf.Clamp(e.team[i].items, 0, 255));
+            int nc = Mathf.Min(e.crumbs.Count, 12);
+            w.U8(nc);
+            for (int i = 0; i < nc; i++)
+            {
+                CrumbLine c = e.crumbs[i];
+                w.I32(c.seed).U8(c.before).U8(c.after).U16(Mathf.Clamp(c.itemsLost, 0, 65535)).U8(c.crumbled ? 1 : 0);
+            }
+            return w.Done();
+        }
+
         // H>C: who is in the room and what state they are in
         public static byte[] Team(TeamRun t)
         {
@@ -89,6 +124,10 @@ namespace MedievalKnight
                     t.OnDrop(c.pid, it, x, z);
                     break;
                 }
+
+                case Msg.Reached:
+                    t.HostReached(c.pid);
+                    break;
 
                 case Msg.Pack:
                 {
@@ -125,6 +164,35 @@ namespace MedievalKnight
                         list.Add(m);
                     }
                     t.OnTeam(live, seed, left, list);
+                    break;
+                }
+
+                case Msg.Portal:
+                {
+                    float x = r.Pos(), z = r.Pos();
+                    t.OnPortal(x, z);
+                    break;
+                }
+
+                case Msg.HomeIn:
+                    t.OnHomeIn(r.F32());
+                    break;
+
+                case Msg.RunEnd:
+                {
+                    var e = new RunEndInfo { kind = r.U8(), worldSeed = r.I32(), worldNote = r.U8(), leftBefore = r.U8(), leftAfter = r.U8(), pilesN = r.U8(), itemsInPiles = r.U16() };
+                    int n = Mathf.Min(r.U8(), Net.MaxPlayers);
+                    for (int i = 0; i < n; i++)
+                    {
+                        int pid = r.U8(), status = r.U8(), items = r.U8();
+                        Member m = t.Find(pid);
+                        e.pids.Add(pid);
+                        e.team.Add(new TeamLine { name = m != null ? m.name : "Player " + (pid + 1), status = Mathf.Clamp(status, 0, 2), items = items });
+                    }
+                    int nc = Mathf.Min(r.U8(), 12);
+                    for (int i = 0; i < nc; i++)
+                        e.crumbs.Add(new CrumbLine { seed = r.I32(), before = r.U8(), after = r.U8(), itemsLost = r.U16(), crumbled = r.U8() != 0 });
+                    t.OnRunEnd(e);
                     break;
                 }
 

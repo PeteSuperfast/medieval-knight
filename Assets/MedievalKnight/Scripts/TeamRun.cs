@@ -227,6 +227,8 @@ namespace MedievalKnight
         // The run is over (everywhere): nobody plays, nobody is ready.
         public void EndRun()
         {
+            homeAt = -1f;
+            reachedSent = false;
             roster.RemoveAll(m => m.status == Stat.Left);
             runLive = false;
             worldSeed = 0;
@@ -267,6 +269,50 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- falling, items (later steps)
 
         public void OnLocalDown() { }
+
+        // ---------------------------------------------------------------- the portal, going home together
+
+        public const int Survived = 0, Fell = 1, Left = 2;           // TeamLine.status in the summary
+        public float homeAt = -1f;                                    // unscaled time when the team goes home (< 0: not started)
+        bool reachedSent;
+        public bool HomeStarted { get { return homeAt >= 0f; } }
+        public float HomeLeft { get { return homeAt < 0f ? 0f : Mathf.Max(0f, homeAt - Time.unscaledTime); } }
+
+        // client: the Minotaur is dead on the host and the portal is here
+        public void OnPortal(float x, float z) { run.OnBossKilled(new Vector3(x, 0f, z)); }
+
+        // The local knight stood in the portal for 1.5 s: the countdown home starts for everybody (once).
+        public void OnLocalReached()
+        {
+            if (reachedSent || homeAt >= 0f) return;
+            reachedSent = true;
+            if (Net.IsHost) HostReached(Net.LocalPid);
+            else Net.ToServer(TeamNet.Reached());
+        }
+
+        // host: somebody (alive) stood in the portal. The first one starts the countdown; then everybody who is still in
+        // the world goes home together (the fallen and the dead too - their things are safe).
+        public void HostReached(int pid)
+        {
+            if (!Net.IsHost || !runLive || homeAt >= 0f || !run.BossDown) return;
+            Member m = Find(pid);
+            if (m == null || !m.inRun || m.status == Stat.Left || m.status == Stat.Fallen) return;
+            homeAt = Time.unscaledTime + TestHomeSeconds;
+            Net.ToAll(TeamNet.HomeIn(TestHomeSeconds), null);
+            g.hud.Banner(m.name + " reached the portal - everybody returns in " + Mathf.RoundToInt(TestHomeSeconds), new Color(0.435f, 0.784f, 1f), 3f);
+            Debug.Log("TEAM portal reached by " + m.name + ": home in " + TestHomeSeconds + " s");
+        }
+
+        // client: the host started the countdown
+        public void OnHomeIn(float seconds)
+        {
+            if (Net.IsHost || !runLive) return;
+            homeAt = Time.unscaledTime + Mathf.Clamp(seconds, 0f, 120f);
+            g.hud.Banner("Portal reached - everybody returns in " + Mathf.RoundToInt(seconds), new Color(0.435f, 0.784f, 1f), 3f);
+        }
+
+        // client: the host ended the run (the table says how it went for everybody)
+        public void OnRunEnd(RunEndInfo e) { run.OnTeamRunEnd(e); }
 
         // ---------------------------------------------------------------- items
 
@@ -318,6 +364,11 @@ namespace MedievalKnight
 
         public void Tick()
         {
+            if (Net.IsHost && runLive && homeAt >= 0f && Time.unscaledTime >= homeAt)
+            {
+                homeAt = -1f;
+                run.HostVictory();
+            }
             if (Net.IsClient && packDirty && Time.unscaledTime >= nextPackSend)
             {
                 packDirty = false;
