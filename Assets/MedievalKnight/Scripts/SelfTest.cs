@@ -1603,6 +1603,113 @@ namespace MedievalKnight
             yield return LoopVictoryTests();
             Log("---- old world: fall, abandoned, return");
             yield return OldWorldRunTests();
+            Log("---- old world: OLD WORLDS list, entering, difficulty");
+            yield return OldWorldUiTests();
+        }
+
+        // Phase 2, the base: the OLD WORLDS button, the list, entering an old world (food question, fade, banner, badge, x1.5).
+        IEnumerator OldWorldUiTests()
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            yield return W(0.2f);
+            Check("old world ui: with no old world the button says OLD WORLDS (0) and is disabled; clicking it does nothing",
+                run.ui.OldWorldsText == "OLD WORLDS (0)" && !run.ui.OldWorldsEnabled && !run.ui.OldDotShown);
+            yield return Click(run.ui.OldWorldsRect.position);
+            yield return W(0.2f);
+            Check("old world ui: the disabled OLD WORLDS button opens no list", !run.WorldsOpen && !run.ui.WorldsVisible && run.PrepareOpen);
+
+            var far = new OldWorld { seed = 0xA3F2, left = 3, fellUnix = 1760000000L, x = 20f, z = -60f };
+            far.pile.Add(Item.Weapon(Weapons.Fang, 2)); far.pile.Add(Item.Food(Foods.Apple));
+            var near = new OldWorld { seed = 0xB71C, left = 1, fellUnix = 1760100000L, x = -40f, z = 30f };
+            near.pile.Add(Item.Weapon(Weapons.Rapier, 1)); near.pile.Add(Item.Weapon(Weapons.Dao)); near.pile.Add(Item.Food(Foods.Meat));
+            near.pile.Add(Item.Food(Foods.Apple)); near.pile.Add(Item.Food(Foods.Apple)); near.pile.Add(Item.Weapon(Weapons.Boss));
+            d.worlds.Add(far); d.worlds.Add(near);
+            d.unseen.Add(new CrumbNote { seed = 0x4444, items = 4 });
+            yield return W(0.2f);
+            Check("old world ui: with two old worlds the button says OLD WORLDS (2), is enabled and has the yellow dot (one has 1 return left)",
+                run.ui.OldWorldsText == "OLD WORLDS (2)" && run.ui.OldWorldsEnabled && run.ui.OldDotShown);
+            Check("old world ui: the red bar tells that #4444 crumbled and 4 items are gone forever",
+                run.ui.CrumbBarText.Contains("#4444") && run.ui.CrumbBarText.Contains("crumbled") && run.ui.CrumbBarText.Contains("4 items are gone forever"));
+            Shot("old_world_prepare");
+
+            // keyboard: Down from the cells reaches the buttons, Right swaps, Enter opens the list
+            int taps = 0;
+            while (run.ui.ButtonFocus == 0 && taps++ < 14) { yield return Tap(Key.DownArrow); yield return W(0.05f); }
+            Check("old world ui: Down from the cells ends on the NEW WORLD button (keyboard focus)", run.ui.ButtonFocus == 1);
+            yield return Tap(Key.RightArrow);
+            yield return Tap(Key.Enter);
+            yield return W(0.2f);
+            Check("old world ui: Right then Enter on the OLD WORLDS button opens the list", run.WorldsOpen && run.ui.WorldsVisible);
+            string r0 = run.ui.WorldRowText(0), r1 = run.ui.WorldRowText(1);
+            Check("old world ui: the list is sorted fewest returns first: #B71C 1 left! (6 items), then #A3F2 3 left (2 items)",
+                r0.Contains("#B71C") && r0.Contains("6 items") && r0.Contains("1 left!") && r1.Contains("#A3F2") && r1.Contains("2 items") && r1.Contains("3 left")
+                && r0.Contains("Fell "));
+            Check("old world ui: the first row is selected and the note says it crumbles after the next return",
+                run.ui.WorldSelected == 0 && run.ui.WorldsNoteText.Contains("Crumbles after your next return") && run.ui.WorldsNoteText.Contains("Leave room in your pack"));
+            Shot("old_world_list");
+            yield return Tap(Key.DownArrow);
+            yield return W(0.1f);
+            Check("old world ui: Down selects the second row and the note shows its counter (3 more returns)",
+                run.ui.WorldSelected == 1 && run.ui.WorldsNoteText.Contains("3 more returns"));
+            yield return Tap(Key.Escape);
+            yield return W(0.2f);
+            Check("old world ui: Esc closes the list and PREPARE stays open", !run.ui.WorldsVisible && run.PrepareOpen && g.InventoryOpen && run.ui.PrepareVisible && g.InSession);
+            yield return Click(run.ui.OldWorldsRect.position);
+            yield return W(0.2f);
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            Check("old world ui: Tab inside the list closes PREPARE and the list; the crumbled bar was seen (cleared)",
+                !g.InventoryOpen && !run.ui.WorldsVisible && !run.ui.PrepareVisible && d.unseen.Count == 0);
+            yield return Tap(Key.Tab);
+            yield return W(0.2f);
+            Check("old world ui: reopening PREPARE shows no red bar any more", run.PrepareOpen && run.ui.CrumbBarText == "");
+
+            // enter #B71C: no food -> the question, Enter = go
+            yield return Click(run.ui.OldWorldsRect.position);
+            yield return W(0.2f);
+            yield return Click(run.ui.WorldsEnterRect.position);
+            yield return W(0.15f);
+            bool asked = run.ui.PromptShown && run.ui.WorldsWarnText.Contains("Enter without food");
+            yield return Tap(Key.Enter);
+            yield return W(0.3f);
+            Check("old world ui: ENTER OLD WORLD with no food asks first (the question shows in the list), Enter starts the fade", asked && run.Busy && d.runWorld == 0xB71C && d.inRun);
+            float t0 = Time.realtimeSinceStartup;
+            while (!run.InWorld && Time.realtimeSinceStartup - t0 < 4f) yield return null;
+            yield return W(0.8f);
+            k = g.knight;
+            Check("old world ui: in the old world: State World, banner OLD WORLD #B71C, objective 2 says Recover your loot, badge shows the multipliers and 1 return",
+                run.InWorld && g.hud.BannerShown.Contains("OLD WORLD #B71C") && g.hud.BannerShown.Contains("m away") && run.ui.Objective2Text == "Recover your loot"
+                && run.ui.BadgeText.Contains("#B71C") && run.ui.BadgeText.Contains("HP x1.5") && run.ui.BadgeText.Contains("DMG x1.25") && run.ui.BadgeText.Contains("1 return")
+                && run.ui.BadgeYellow);
+            Check("old world ui: the multipliers are on (HP x1.5, DMG x1.25, packs x1.5) and the Minotaur has 1.5x health with the normal armor",
+                g.worldHpMul == 1.5f && g.worldDmgMul == 1.25f && g.worldPackMul == 1.5f && g.minotaur != null
+                && Mathf.Abs(g.minotaur.maxHp - Minotaur.BaseHp * 1.5f) < 0.5f && Mathf.Abs(g.minotaur.maxArmor - Minotaur.BaseArmor) < 0.5f);
+            Shot("old_world_enter");
+
+            // the first slime pack is bigger: 4 -> 6
+            g.packsOff = false;
+            foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+            yield return W(0.3f);
+            k.transform.position = new Vector3(0f, 0f, 20f); g.SnapCamera();
+            yield return W(6.0f);
+            int slimes = 0;
+            foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) slimes++;
+            Check("old world ui: the first slime pack of an old world has 6 slimes (4 x 1.5), not 4 (found " + slimes + ")", slimes >= 5 && slimes <= 6);
+            g.packsOff = true;
+
+            // leaving to the base resets the multipliers
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(3.0f);
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+            Check("old world ui: after the fall and RETURN TO BASE the multipliers are back to 1 and the badge is gone",
+                g.worldHpMul == 1f && g.worldDmgMul == 1f && g.worldPackMul == 1f && run.ui.BadgeText == "" && run.ui.Objective2Text == "");
+            Check("old world ui: dying in #B71C added to the same world (still 2 worlds, #B71C pile = 6 + what was carried, counter 1)",
+                d.worlds.Count == 2 && d.Find(0xB71C) != null && d.Find(0xB71C).left == 1 && d.Find(0xB71C).pile.Count == 7);
+            g.LeaveToMenu();
+            yield return W(0.3f);
         }
 
         // Phase 2, the run's end: a fall makes an old world (G shows it), the spot is autosaved while walking, closing the

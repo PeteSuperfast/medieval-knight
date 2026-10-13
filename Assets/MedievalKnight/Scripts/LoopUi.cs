@@ -49,6 +49,31 @@ namespace MedievalKnight
         readonly Text[][] sectionLabels = new Text[2][];
         Text warn, info, introText, hint;
         Btn enterBtn, backBtn;
+        // phase 2: OLD WORLDS button on PREPARE, the red "crumbled" bar, the OLD WORLDS list (H), objective line 2, world badge
+        Btn oldBtn;
+        Image oldDot;
+        Text crumbText;
+        int btnFocus;                       // keyboard focus on the bottom buttons: 0 none, 1 NEW WORLD, 2 OLD WORLDS
+        const int WorldRowsShown = 5, PileCellsShown = 12;
+        class WorldRow
+        {
+            public RectTransform rt;
+            public Image frame, bg;
+            public Text text, state, more;
+            public Image[] pips = new Image[OldWorld.StartLeft];
+            public Image[] tiles = new Image[4];
+            public RawImage[] icons = new RawImage[4];
+        }
+        GameObject worldsRoot;
+        readonly WorldRow[] worldRows = new WorldRow[WorldRowsShown];
+        readonly List<Cell> worldCells = new List<Cell>();
+        Text worldsHint, worldsMore, worldsPileMore, worldsNote, worldsWarn;
+        Btn worldsEnterBtn, worldsBackBtn;
+        int worldSel, worldScroll;
+        List<OldWorld> worldList = new List<OldWorld>();
+        Text objective2, badge;
+        Image badgeFrame;
+        string badgeShown = "";
         // always on top: the fade, the objective line, the carried-weapons strip
         // the carry window (Tab in the world)
         GameObject carryRoot;
@@ -145,6 +170,7 @@ namespace MedievalKnight
             root = canvas.GetComponent<RectTransform>();
 
             BuildPrepare();
+            BuildWorlds();
             BuildCarry();
             BuildSummary();
             BuildOverlays();
@@ -155,6 +181,14 @@ namespace MedievalKnight
             objective = Label("Objective", root, new Vector2(0.5f, 1f), new Vector2(0f, -74f), new Vector2(900, 28), 21, TextAnchor.MiddleCenter);
             objective.fontStyle = FontStyle.Bold;
             objective.color = Yellow;
+            objective2 = Label("Objective2", root, new Vector2(0.5f, 1f), new Vector2(0f, -100f), new Vector2(900, 26), 19, TextAnchor.MiddleCenter);
+            objective2.fontStyle = FontStyle.Bold;
+            objective2.color = LootGold;
+            badgeFrame = Box("BadgeFrame", root, new Vector2(1f, 1f), new Vector2(-24f, -24f), new Vector2(250f, 70f), OldFrame);
+            badgeFrame.rectTransform.pivot = new Vector2(1f, 1f);
+            Box("Bg", badgeFrame.rectTransform, Mid, Vector2.zero, new Vector2(244f, 64f), new Color(0.03f, 0.03f, 0.06f, 0.7f));
+            badge = Label("Badge", badgeFrame.rectTransform, Mid, Vector2.zero, new Vector2(240f, 64f), 16, TextAnchor.MiddleCenter);
+            badgeFrame.gameObject.SetActive(false);
             strip = Label("Strip", root, new Vector2(0f, 0f), new Vector2(16f, 46f), new Vector2(700, 26), 18, TextAnchor.MiddleLeft);
             strip.rectTransform.pivot = new Vector2(0f, 0.5f);
             strip.fontStyle = FontStyle.Bold;
@@ -193,6 +227,23 @@ namespace MedievalKnight
 
         public void SetObjective(string text) { objective.text = text ?? ""; }
 
+        // Second line of the objective (old world: "Recover your loot", gold)
+        public void SetObjective2(string text) { objective2.text = text ?? ""; }
+        public string Objective2Text { get { return objective2.text; } }
+
+        // Top right badge in an old world: "OLD WORLD #A3F2 / HP x1.5  DMG x1.25 / Crumbles in 3 returns" (null = hidden).
+        // last: one return left (yellow frame).
+        public void SetOldBadge(string text, bool last)
+        {
+            string key = text == null ? "" : text + (last ? "!" : "");
+            if (key == badgeShown) return;
+            badgeShown = key;
+            badgeFrame.gameObject.SetActive(text != null);
+            if (text != null) { badge.text = text; badgeFrame.color = last ? Yellow : OldFrame; }
+        }
+        public string BadgeText { get { return badgeFrame.gameObject.activeSelf ? badge.text : ""; } }
+        public bool BadgeYellow { get { return badgeFrame.color == Yellow; } }
+
         public bool PortalLabelShown { get { return portalLabel.gameObject.activeSelf; } }
 
         // "RETURN PORTAL" floating over the portal (world point -> screen).
@@ -229,6 +280,8 @@ namespace MedievalKnight
         void Update()
         {
             bool panel = (prepareRoot != null && prepareRoot.activeSelf) || (carryRoot != null && carryRoot.activeSelf) || (summaryRoot != null && summaryRoot.activeSelf);
+            if (objective2.gameObject.activeSelf == panel) objective2.gameObject.SetActive(!panel);
+            if (badgeShown.Length > 0 && badgeFrame.gameObject.activeSelf == panel) badgeFrame.gameObject.SetActive(!panel);
             if (objective.gameObject.activeSelf == panel) objective.gameObject.SetActive(!panel);
             if (strip.gameObject.activeSelf == panel) strip.gameObject.SetActive(!panel);
             float t = Mathf.Clamp01((Time.unscaledTime - fadeStart) / fadeDur);
@@ -295,13 +348,22 @@ namespace MedievalKnight
             info = Label("Info", p, TL, Vector2.zero, new Vector2(960, 40), 15, TextAnchor.UpperLeft);
             info.rectTransform.pivot = TL; info.rectTransform.anchoredPosition = new Vector2(20, -452);
             info.horizontalOverflow = HorizontalWrapMode.Wrap;
-            warn = Label("Warn", p, TL, Vector2.zero, new Vector2(520, 30), 17, TextAnchor.MiddleLeft);
+            warn = Label("Warn", p, TL, Vector2.zero, new Vector2(380, 30), 17, TextAnchor.MiddleLeft);
             warn.rectTransform.pivot = TL; warn.rectTransform.anchoredPosition = new Vector2(20, -512);
             warn.fontStyle = FontStyle.Bold;
-            enterBtn = MakeButton("EnterButton", p, TL, Vector2.zero, new Vector2(300, 52), "ENTER WORLD", 26);
-            enterBtn.rt.pivot = TL; enterBtn.rt.anchoredPosition = new Vector2(560, -498);
+            enterBtn = MakeButton("EnterButton", p, TL, Vector2.zero, new Vector2(220, 52), "NEW WORLD", 24);
+            enterBtn.rt.pivot = TL; enterBtn.rt.anchoredPosition = new Vector2(400, -498);
+            oldBtn = MakeButton("OldWorldsButton", p, TL, Vector2.zero, new Vector2(240, 52), "OLD WORLDS (0)", 22);
+            oldBtn.rt.pivot = TL; oldBtn.rt.anchoredPosition = new Vector2(630, -498);
+            oldDot = Box("Dot", oldBtn.rt, new Vector2(1f, 1f), new Vector2(-6f, -6f), new Vector2(14f, 14f), Yellow);
+            oldDot.rectTransform.pivot = new Vector2(1f, 1f);
+            oldDot.gameObject.SetActive(false);
             backBtn = MakeButton("BackButton", p, TL, Vector2.zero, new Vector2(110, 52), "Esc: Back", 15);
             backBtn.rt.pivot = TL; backBtn.rt.anchoredPosition = new Vector2(880, -498);
+            crumbText = Label("Crumbled", p, TL, Vector2.zero, new Vector2(730, 24), 15, TextAnchor.MiddleLeft);
+            crumbText.color = Red; crumbText.fontStyle = FontStyle.Bold;
+            crumbText.rectTransform.pivot = TL; crumbText.rectTransform.anchoredPosition = new Vector2(250, -24);
+            crumbText.gameObject.SetActive(false);
             hint = Label("Hint", p, TL, Vector2.zero, new Vector2(960, 20), 12, TextAnchor.MiddleLeft,
                 "Click an item to move it   -   Right click a carried Weapon to hold it   -   Arrows / WASD: move cursor   Enter: move   Q / E: other side   Tab / Esc: close");
             hint.color = Gray; hint.rectTransform.pivot = TL; hint.rectTransform.anchoredPosition = new Vector2(20, -552);
@@ -344,7 +406,13 @@ namespace MedievalKnight
 
         public bool PrepareVisible { get { return prepareRoot != null && prepareRoot.activeSelf; } }
         public RectTransform CellRect(int side, Section sec, int index) { return cells[side][(int)sec][index].rt; }
-        public RectTransform EnterRect { get { return enterBtn.rt; } }
+        public RectTransform EnterRect { get { return enterBtn.rt; } }                 // NEW WORLD
+        public RectTransform OldWorldsRect { get { return oldBtn.rt; } }
+        public string OldWorldsText { get { return oldBtn.text.text; } }
+        public bool OldWorldsEnabled { get { return oldBtn.frame.color != Disabled; } }
+        public string CrumbBarText { get { return crumbText.gameObject.activeSelf ? crumbText.text : ""; } }
+        public bool OldDotShown { get { return oldDot.gameObject.activeSelf; } }
+        public int ButtonFocus { get { return btnFocus; } }
         public string WarnText { get { return warn.text; } }
         public string InfoText { get { return info.text; } }
         public string IntroText { get { return introText.gameObject.activeSelf ? introText.text : ""; } }
@@ -401,11 +469,35 @@ namespace MedievalKnight
                 sectionLabels[0][s].text = names[s] + "  " + d.stash.Count((Section)s) + "/" + Loadout.StashCaps[s];
                 sectionLabels[1][s].text = names[s] + "  " + d.carry.Count((Section)s) + "/" + Loadout.CarryCaps[s];
             }
-            introText.gameObject.SetActive(!d.introShown);
+            bool crumb = d.unseen.Count > 0;
+            introText.gameObject.SetActive(!d.introShown && !crumb);
+            crumbText.gameObject.SetActive(crumb);
+            if (crumb) crumbText.text = CrumbSentence(d);
             bool can = d.CanEnter;
             enterBtn.bg.color = can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
-            enterBtn.frame.color = can ? Gold : Disabled;
+            enterBtn.frame.color = btnFocus == 1 ? Color.white : can ? Gold : Disabled;
+            int n = d.worlds.Count;
+            bool last = false;
+            foreach (OldWorld w in d.worlds) if (w.left <= 1) last = true;
+            oldBtn.text.text = "OLD WORLDS (" + n + ")";
+            oldBtn.bg.color = n > 0 ? new Color(0.22f, 0.2f, 0.32f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
+            oldBtn.frame.color = btnFocus == 2 ? Color.white : n > 0 ? OldText : Disabled;
+            oldBtn.text.color = n > 0 ? Color.white : new Color(0.55f, 0.55f, 0.55f, 1f);
+            oldDot.gameObject.SetActive(n > 0 && last);
             if (Time.unscaledTime >= warnUntil) ShowDefaultWarn(d);
+        }
+
+        // "! Old World #B71C has crumbled. 4 items are gone forever."
+        static string CrumbSentence(Loadout d)
+        {
+            int items = 0;
+            foreach (CrumbNote c in d.unseen) items += c.items;
+            string gone = items > 0 ? " " + items + (items == 1 ? " item is" : " items are") + " gone forever." : "";
+            if (d.unseen.Count == 1) return "! Old World " + d.unseen[0].Code + " has crumbled." + gone;
+            var sb = new System.Text.StringBuilder("! " + d.unseen.Count + " Old Worlds have crumbled (");
+            for (int i = 0; i < d.unseen.Count && i < 4; i++) sb.Append(i > 0 ? ", " : "").Append(d.unseen[i].Code);
+            if (d.unseen.Count > 4) sb.Append(", ...");
+            return sb.Append(")." + gone).ToString();
         }
 
         void ShowDefaultWarn(Loadout d)
@@ -441,6 +533,7 @@ namespace MedievalKnight
             prepareRoot.SetActive(true);
             prompt = "";
             warnUntil = 0f;
+            btnFocus = 0;
             if (cursorCell == null) cursorCell = cells[0][0][0];
             RefreshPrepare(d);
             UpdateInfo(d, cursorCell);
@@ -449,6 +542,7 @@ namespace MedievalKnight
         public void HideAll()
         {
             if (prepareRoot != null) prepareRoot.SetActive(false);
+            if (worldsRoot != null) worldsRoot.SetActive(false);
             if (carryRoot != null) carryRoot.SetActive(false);
             if (summaryRoot != null) summaryRoot.SetActive(false);
         }
@@ -526,24 +620,43 @@ namespace MedievalKnight
             Cell hover = CellAt(m);
             bool onEnter = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(enterBtn.rt, m, null);
             bool onBack = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(backBtn.rt, m, null);
+            bool onOld = InputX.HasMouse && RectTransformUtility.RectangleContainsScreenPoint(oldBtn.rt, m, null);
+            if (onOld && d.worlds.Count == 0) SetWarn("No old worlds yet", Gray, 0.2f);
             backBtn.bg.color = Color.Lerp(backBtn.bg.color, onBack ? new Color(0.3f, 0.36f, 0.56f, 1f) : new Color(0.14f, 0.16f, 0.24f, 0.96f), 0.35f);
             if (onEnter && d.CanEnter) enterBtn.bg.color = new Color(0.6f, 0.46f, 0.16f, 1f);
+            if (onOld && d.worlds.Count > 0) oldBtn.bg.color = new Color(0.32f, 0.3f, 0.46f, 1f);
 
-            // keyboard cursor
-            if (InputX.Down(KeyCode.LeftArrow) || InputX.Down(KeyCode.A)) cursorCell = Neighbour(cursorCell, Vector2.left);
-            if (InputX.Down(KeyCode.RightArrow) || InputX.Down(KeyCode.D)) cursorCell = Neighbour(cursorCell, Vector2.right);
-            if (InputX.Down(KeyCode.UpArrow) || InputX.Down(KeyCode.W)) cursorCell = Neighbour(cursorCell, Vector2.up);
-            if (InputX.Down(KeyCode.DownArrow) || InputX.Down(KeyCode.S)) cursorCell = Neighbour(cursorCell, Vector2.down);
-            if (InputX.Down(KeyCode.Q) || InputX.Down(KeyCode.E)) cursorCell = OtherSide(cursorCell);
+            // keyboard: the cursor over the cells; Down from the last row goes to the two buttons, Left / Right swap them, Up goes back
+            bool kl = InputX.Down(KeyCode.LeftArrow) || InputX.Down(KeyCode.A), kr = InputX.Down(KeyCode.RightArrow) || InputX.Down(KeyCode.D);
+            bool ku = InputX.Down(KeyCode.UpArrow) || InputX.Down(KeyCode.W), kd = InputX.Down(KeyCode.DownArrow) || InputX.Down(KeyCode.S);
+            bool kq = InputX.Down(KeyCode.Q) || InputX.Down(KeyCode.E);
+            if (btnFocus > 0)
+            {
+                if (kl || kr) btnFocus = btnFocus == 1 ? 2 : 1;
+                else if (ku) btnFocus = 0;
+                if (kq) { btnFocus = 0; cursorCell = OtherSide(cursorCell); }
+            }
+            else
+            {
+                Cell before = cursorCell;
+                if (kl) cursorCell = Neighbour(cursorCell, Vector2.left);
+                if (kr) cursorCell = Neighbour(cursorCell, Vector2.right);
+                if (ku) cursorCell = Neighbour(cursorCell, Vector2.up);
+                if (kd) { cursorCell = Neighbour(cursorCell, Vector2.down); if (cursorCell == before) btnFocus = 1; }
+                if (kq) cursorCell = OtherSide(cursorCell);
+            }
 
             bool clickL = InputX.HasMouse && InputX.MouseDown(0), clickR = InputX.HasMouse && InputX.MouseDown(1);
             bool key = InputX.Down(KeyCode.Return) || InputX.Down(KeyCode.KeypadEnter) || InputX.Down(KeyCode.Space);
             bool consumed = false;
-            if (clickL && onEnter) { run.UiEnter(); consumed = true; }
+            if (clickL && onEnter) { btnFocus = 0; run.UiEnter(); consumed = true; }
+            else if (clickL && onOld) { btnFocus = 0; run.UiOpenWorlds(); consumed = true; }
             else if (clickL && onBack) { run.UiBack(); consumed = true; }
-            else if (key && prompt.Length > 0) { run.UiEnter(); consumed = true; }       // "[Enter] Go"
-            else if (clickL && hover != null) { cursorCell = hover; run.UiMove(hover.side, hover.sec, hover.index); consumed = true; }
-            else if (clickR && hover != null) { cursorCell = hover; if (hover.side == 1 && hover.sec == Section.Weapons) run.UiHold(hover.index); consumed = true; }
+            else if (key && prompt.Length > 0) { run.UiConfirmEnter(); consumed = true; }       // "[Enter] Go"
+            else if (key && btnFocus == 1) { run.UiEnter(); consumed = true; }
+            else if (key && btnFocus == 2) { run.UiOpenWorlds(); consumed = true; }
+            else if (clickL && hover != null) { btnFocus = 0; cursorCell = hover; run.UiMove(hover.side, hover.sec, hover.index); consumed = true; }
+            else if (clickR && hover != null) { btnFocus = 0; cursorCell = hover; if (hover.side == 1 && hover.sec == Section.Weapons) run.UiHold(hover.index); consumed = true; }
             else if (key && cursorCell != null) { run.UiMove(cursorCell.side, cursorCell.sec, cursorCell.index); consumed = true; }
             if (!run.PrepareOpen) return;                                   // that click entered the world
             RefreshPrepare(d);
@@ -555,10 +668,199 @@ namespace MedievalKnight
                 bool shaking = now < c.shakeUntil;
                 c.rt.anchoredPosition = shaking ? c.basePos + new Vector2(Mathf.Sin(now * 70f) * 3f, 0f) : c.basePos;
                 if (shaking) c.border.color = Red;
-                c.cursor.color = c == cursorCell || c == hover ? new Color(1f, 1f, 1f, c == hover ? 0.28f : 0.5f) : new Color(1f, 1f, 1f, 0f);
+                c.cursor.color = (c == cursorCell && btnFocus == 0) || c == hover ? new Color(1f, 1f, 1f, c == hover ? 0.28f : 0.5f) : new Color(1f, 1f, 1f, 0f);
             }
             if (now >= warnUntil) ShowDefaultWarn(d);
         }
+        // ---------------------------------------------------------------- OLD WORLDS list (over PREPARE)
+
+        void BuildWorlds()
+        {
+            RectTransform wr = Rect("Worlds", root, Mid, Vector2.zero, Vector2.zero);
+            wr.anchorMin = Vector2.zero; wr.anchorMax = Vector2.one; wr.offsetMin = wr.offsetMax = Vector2.zero;
+            worldsRoot = wr.gameObject;
+            Image dim = Box("Dim", wr, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.03f, 0.72f));
+            dim.rectTransform.anchorMin = Vector2.zero; dim.rectTransform.anchorMax = Vector2.one;
+            dim.rectTransform.offsetMin = dim.rectTransform.offsetMax = Vector2.zero;
+            Image frame = Box("Frame", wr, Mid, Vector2.zero, new Vector2(1006, 566), OldFrame);
+            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(1000, 560), PanelBg).rectTransform;
+
+            Text title = Label("Title", p, TL, Vector2.zero, new Vector2(400, 44), 36, TextAnchor.MiddleLeft, "OLD WORLDS");
+            title.fontStyle = FontStyle.Bold; title.rectTransform.pivot = TL; title.rectTransform.anchoredPosition = new Vector2(20, -10);
+            worldsHint = Label("Harder", p, new Vector2(1f, 1f), new Vector2(-20f, -22f), new Vector2(560, 22), 15, TextAnchor.MiddleRight,
+                "Harder: enemies HP x" + OldWorld.HpMul.ToString("0.0") + ", DMG x" + OldWorld.DmgMul.ToString("0.00") + ", +" + Mathf.RoundToInt((OldWorld.PackMul - 1f) * 100f) + "% pack size");
+            worldsHint.color = OldText; worldsHint.rectTransform.pivot = new Vector2(1f, 1f);
+
+            for (int i = 0; i < WorldRowsShown; i++)
+            {
+                var r = new WorldRow();
+                r.frame = Box("Row", p, TL, new Vector2(20, -(64 + i * 58)), new Vector2(960, 54), FrameCol);
+                r.frame.rectTransform.pivot = TL;
+                r.rt = r.frame.rectTransform;
+                r.bg = Box("Bg", r.rt, Mid, Vector2.zero, new Vector2(954, 48), SlotBg);
+                r.text = Label("Text", r.rt, TL, new Vector2(14, -14), new Vector2(380, 26), 19, TextAnchor.MiddleLeft);
+                r.text.rectTransform.pivot = TL;
+                for (int t = 0; t < 4; t++)
+                {
+                    float x = 420f + t * 34f;
+                    r.tiles[t] = Box("Tile", r.rt, TL, new Vector2(x, -14), new Vector2(26, 26), Color.white);
+                    r.tiles[t].rectTransform.pivot = TL;
+                    var rawGo = new GameObject("Icon", typeof(RectTransform));
+                    rawGo.transform.SetParent(r.rt, false);
+                    r.icons[t] = rawGo.AddComponent<RawImage>();
+                    r.icons[t].raycastTarget = false;
+                    RectTransform irt = rawGo.GetComponent<RectTransform>();
+                    irt.anchorMin = irt.anchorMax = irt.pivot = TL;
+                    irt.sizeDelta = new Vector2(30, 30);
+                    irt.anchoredPosition = new Vector2(x - 2f, -12f);
+                }
+                r.more = Label("More", r.rt, TL, new Vector2(556, -14), new Vector2(60, 26), 17, TextAnchor.MiddleLeft);
+                r.more.rectTransform.pivot = TL; r.more.color = LootGold;
+                for (int t = 0; t < OldWorld.StartLeft; t++)
+                {
+                    r.pips[t] = Box("Pip", r.rt, TL, new Vector2(700 + t * 24, -19), new Vector2(16, 16), Gold);
+                    r.pips[t].rectTransform.pivot = TL;
+                }
+                r.state = Label("Left", r.rt, TL, new Vector2(790, -14), new Vector2(150, 26), 19, TextAnchor.MiddleLeft);
+                r.state.rectTransform.pivot = TL; r.state.fontStyle = FontStyle.Bold;
+                worldRows[i] = r;
+            }
+            worldsMore = Label("MoreRows", p, TL, Vector2.zero, new Vector2(500, 20), 13, TextAnchor.MiddleLeft);
+            worldsMore.rectTransform.pivot = TL; worldsMore.rectTransform.anchoredPosition = new Vector2(20, -356); worldsMore.color = Gray;
+
+            Text lootHead = Label("LootHead", p, TL, Vector2.zero, new Vector2(300, 24), 18, TextAnchor.MiddleLeft, "LOOT IN PILE");
+            lootHead.fontStyle = FontStyle.Bold; lootHead.color = LootGold;
+            lootHead.rectTransform.pivot = TL; lootHead.rectTransform.anchoredPosition = new Vector2(20, -380);
+            for (int i = 0; i < PileCellsShown; i++)
+                MakeCell(p, 3, Section.Supplies, i, new Vector2(20 + i * 60f, -406f), 54f, worldCells);
+            worldsPileMore = Label("PileMore", p, TL, Vector2.zero, new Vector2(200, 54), 17, TextAnchor.MiddleLeft);
+            worldsPileMore.rectTransform.pivot = TL; worldsPileMore.rectTransform.anchoredPosition = new Vector2(20 + PileCellsShown * 60f + 6f, -406f);
+            worldsPileMore.color = LootGold; worldsPileMore.fontStyle = FontStyle.Bold;
+
+            worldsNote = Label("Note", p, TL, Vector2.zero, new Vector2(960, 40), 14, TextAnchor.UpperLeft);
+            worldsNote.rectTransform.pivot = TL; worldsNote.rectTransform.anchoredPosition = new Vector2(20, -466);
+            worldsNote.horizontalOverflow = HorizontalWrapMode.Wrap; worldsNote.color = Gray;
+            worldsWarn = Label("Warn", p, TL, Vector2.zero, new Vector2(520, 30), 17, TextAnchor.MiddleLeft);
+            worldsWarn.rectTransform.pivot = TL; worldsWarn.rectTransform.anchoredPosition = new Vector2(20, -512);
+            worldsWarn.fontStyle = FontStyle.Bold;
+            worldsEnterBtn = MakeButton("EnterOldButton", p, TL, Vector2.zero, new Vector2(300, 52), "ENTER OLD WORLD", 24);
+            worldsEnterBtn.rt.pivot = TL; worldsEnterBtn.rt.anchoredPosition = new Vector2(560, -498);
+            worldsBackBtn = MakeButton("BackOldButton", p, TL, Vector2.zero, new Vector2(110, 52), "Esc: Back", 15);
+            worldsBackBtn.rt.pivot = TL; worldsBackBtn.rt.anchoredPosition = new Vector2(880, -498);
+            worldsRoot.SetActive(false);
+        }
+
+        public bool WorldsVisible { get { return worldsRoot != null && worldsRoot.activeSelf; } }
+        public RectTransform WorldsEnterRect { get { return worldsEnterBtn.rt; } }
+        public RectTransform WorldRowRect(int row) { return worldRows[row].rt; }
+        public int WorldSelected { get { return worldSel; } }
+        public string WorldRowText(int row) { return worldRows[row].rt.gameObject.activeSelf ? worldRows[row].text.text + "  " + worldRows[row].state.text : ""; }
+        public string WorldsNoteText { get { return worldsNote.text; } }
+        public string WorldsWarnText { get { return worldsWarn.text; } }
+        public int PileCellsFilled { get { int n = 0; foreach (Cell c in worldCells) if (c.rt.gameObject.activeSelf) n++; return n; } }
+
+        public void ShowWorlds(Loadout d)
+        {
+            worldsRoot.SetActive(true);
+            prompt = "";
+            warnUntil = 0f;
+            worldSel = 0;
+            worldScroll = 0;
+            RefreshWorlds(d);
+        }
+
+        public void HideWorlds() { if (worldsRoot != null) worldsRoot.SetActive(false); }
+
+        static string FellText(long unix)
+        {
+            string when;
+            try { when = System.DateTimeOffset.FromUnixTimeSeconds(unix).ToLocalTime().ToString("MMM d, HH:mm", System.Globalization.CultureInfo.InvariantCulture); }
+            catch (System.Exception) { when = "?"; }
+            return "Fell " + when;
+        }
+
+        void RefreshWorlds(Loadout d)
+        {
+            worldList = d.Sorted();
+            int n = worldList.Count;
+            worldSel = Mathf.Clamp(worldSel, 0, Mathf.Max(0, n - 1));
+            if (worldSel < worldScroll) worldScroll = worldSel;
+            if (worldSel >= worldScroll + WorldRowsShown) worldScroll = worldSel - WorldRowsShown + 1;
+            worldScroll = Mathf.Clamp(worldScroll, 0, Mathf.Max(0, n - WorldRowsShown));
+            for (int i = 0; i < WorldRowsShown; i++)
+            {
+                WorldRow r = worldRows[i];
+                int idx = worldScroll + i;
+                bool has = idx < n;
+                r.rt.gameObject.SetActive(has);
+                if (!has) continue;
+                OldWorld w = worldList[idx];
+                bool sel = idx == worldSel;
+                r.frame.color = sel ? Gold : FrameCol;
+                r.bg.color = sel ? new Color(0.17f, 0.15f, 0.25f, 1f) : SlotBg;
+                r.text.text = "<b><color=" + Hex(OldText) + ">" + w.Code + "</color></b>   " + FellText(w.fellUnix) + "   " + w.pile.Count + (w.pile.Count == 1 ? " item" : " items");
+                for (int t = 0; t < 4; t++)
+                {
+                    bool show = t < w.pile.Count;
+                    Item it = show ? w.pile[t] : Item.None;
+                    r.tiles[t].gameObject.SetActive(show && !it.IsWeapon);
+                    r.icons[t].gameObject.SetActive(show && it.IsWeapon);
+                    if (!show) continue;
+                    if (it.IsWeapon) r.icons[t].texture = SwordIcons.Get(it.id);
+                    else r.tiles[t].color = Foods.All[it.id].color;
+                }
+                r.more.text = w.pile.Count > 4 ? "+" + (w.pile.Count - 4) : "";
+                for (int t = 0; t < r.pips.Length; t++) r.pips[t].color = t < w.left ? (w.left <= 1 ? Yellow : Gold) : new Color(0.2f, 0.2f, 0.26f, 1f);
+                r.state.text = w.left <= 1 ? "1 left!" : w.left + " left";
+                r.state.color = w.left <= 1 ? Yellow : Color.white;
+            }
+            worldsMore.text = n > WorldRowsShown ? "Showing " + (worldScroll + 1) + "-" + Mathf.Min(n, worldScroll + WorldRowsShown) + " of " + n + "   (Up / Down for more)" : "";
+
+            OldWorld cur = n > 0 ? worldList[worldSel] : null;
+            for (int i = 0; i < worldCells.Count; i++)
+            {
+                bool has = cur != null && i < cur.pile.Count;
+                worldCells[i].rt.gameObject.SetActive(true);
+                FillCell(worldCells[i], has ? cur.pile[i] : Item.None, false);
+            }
+            worldsPileMore.text = cur != null && cur.pile.Count > PileCellsShown ? "+" + (cur.pile.Count - PileCellsShown) + " more" : "";
+            if (cur != null)
+                worldsNote.text = (cur.left <= 1 ? "Crumbles after your next return." : "Crumbles after " + cur.left + " more returns.")
+                    + "   Leave room in your pack to carry loot back.   Dying here adds to this pile.";
+            else worldsNote.text = "";
+            bool can = d.CanEnter && cur != null;
+            worldsEnterBtn.bg.color = can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
+            worldsEnterBtn.frame.color = can ? Gold : Disabled;
+        }
+
+        // Called every frame while the OLD WORLDS list is open.
+        public void WorldsInput(Loadout d)
+        {
+            Vector2 m = InputX.MousePos;
+            bool has = InputX.HasMouse;
+            int hoverRow = -1;
+            if (has)
+                for (int i = 0; i < WorldRowsShown; i++)
+                    if (worldRows[i].rt.gameObject.activeSelf && RectTransformUtility.RectangleContainsScreenPoint(worldRows[i].rt, m, null)) hoverRow = i;
+            bool onEnter = has && RectTransformUtility.RectangleContainsScreenPoint(worldsEnterBtn.rt, m, null);
+            bool onBack = has && RectTransformUtility.RectangleContainsScreenPoint(worldsBackBtn.rt, m, null);
+            worldsBackBtn.bg.color = Color.Lerp(worldsBackBtn.bg.color, onBack ? new Color(0.3f, 0.36f, 0.56f, 1f) : new Color(0.14f, 0.16f, 0.24f, 0.96f), 0.35f);
+            bool clickL = has && InputX.MouseDown(0);
+            bool key = InputX.Down(KeyCode.Return) || InputX.Down(KeyCode.KeypadEnter) || InputX.Down(KeyCode.Space);
+            if (InputX.Down(KeyCode.UpArrow) || InputX.Down(KeyCode.W)) worldSel = Mathf.Max(0, worldSel - 1);
+            if (InputX.Down(KeyCode.DownArrow) || InputX.Down(KeyCode.S)) worldSel = Mathf.Min(worldList.Count - 1, worldSel + 1);
+            int seed = worldSel >= 0 && worldSel < worldList.Count ? worldList[worldSel].seed : 0;
+            if (clickL && hoverRow >= 0) worldSel = worldScroll + hoverRow;
+            else if (clickL && onEnter && seed != 0) run.UiEnter(seed);
+            else if (clickL && onBack) run.UiCloseWorlds();
+            else if (key && prompt.Length > 0) run.UiConfirmEnter();
+            else if (key && seed != 0) run.UiEnter(seed);
+            if (!run.WorldsOpen) return;                                    // that entered the world / closed the list
+            if (Time.unscaledTime >= warnUntil) ShowDefaultWarn(d);
+            worldsWarn.text = warn.text; worldsWarn.color = warn.color;
+            RefreshWorlds(d);
+        }
+
         // ---------------------------------------------------------------- carry window (Tab in the world)
 
         void BuildCarry()

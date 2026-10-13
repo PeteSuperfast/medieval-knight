@@ -15,6 +15,8 @@ namespace MedievalKnight
         public LoopState State { get; private set; }
         bool dirty;                                                 // PREPARE changed the stash / carry since the last save
         bool askedNoFood;                                           // "Enter without food?" is on screen
+        int askedSeed;                                              // ... for this world (0 = a new world)
+        bool worldsOpen;                                            // the OLD WORLDS list is open on top of PREPARE
         bool entering;                                              // ENTER WORLD pressed: the screen is fading to black
         float enterAt;
 
@@ -25,6 +27,7 @@ namespace MedievalKnight
         public bool PrepareOpen { get { return State == LoopState.Prepare && g.InventoryOpen; } }
         public bool CarryOpen { get { return State == LoopState.World && g.InventoryOpen; } }
         public bool Busy { get { return entering; } }               // fading into the world
+        public bool WorldsOpen { get { return worldsOpen && PrepareOpen; } }
         public bool Dying { get { return dying; } }                 // fallen, the screen is dimming
         public RunResult result;                                    // the last finished run (summary screen, tests)
         bool dying;
@@ -67,7 +70,7 @@ namespace MedievalKnight
             }
             data.AutoPack();
             State = LoopState.Base;
-            ui.SetObjective("Press Tab to prepare, then enter the world");
+            ui.SetObjective("Press Tab to prepare, then enter the world"); ui.SetObjective2("");
             g.knight.SetWeapon(data.Held.id, data.Held.plus);
             g.SetInventory(true);
         }
@@ -94,12 +97,17 @@ namespace MedievalKnight
                 if (t >= 1f) { dying = false; State = LoopState.Summary; ui.ShowSummary(result); }
             }
             ui.SetStrip(data, State == LoopState.World);
+            OldWorld here = State == LoopState.World && !dying ? data.Find(data.runWorld) : null;     // top right badge of an old world
+            if (here == null) ui.SetOldBadge(null, false);
+            else ui.SetOldBadge("OLD WORLD " + here.Code + "\nHP x" + OldWorld.HpMul.ToString("0.0") + "  DMG x" + OldWorld.DmgMul.ToString("0.00")
+                + "\nCrumbles in " + here.left + (here.left == 1 ? " return" : " returns"), here.left <= 1);
         }
 
         // Esc: true when it only closed a question of the loop
         public bool OnEscape()
         {
             if (askedNoFood) { SetAsk(false); return true; }
+            if (worldsOpen && State == LoopState.Prepare) { UiCloseWorlds(); return true; }
             return false;
         }
 
@@ -123,17 +131,19 @@ namespace MedievalKnight
         {
             ui.HideAll();
             askedNoFood = false;
+            worldsOpen = false;
             if (State == LoopState.Prepare)
             {
                 State = LoopState.Base;
                 if (!data.introShown) { data.introShown = true; dirty = true; }
+                if (data.unseen.Count > 0) { data.unseen.Clear(); dirty = true; }   // the red "crumbled" bar was seen
                 if (dirty) Save();
             }
         }
 
         public void InventoryInput()
         {
-            if (State == LoopState.Prepare) ui.PrepareInput(data);
+            if (State == LoopState.Prepare) { if (worldsOpen) ui.WorldsInput(data); else ui.PrepareInput(data); }
             else if (State == LoopState.World) ui.CarryInput(data, g.knight);
         }
 
@@ -167,10 +177,29 @@ namespace MedievalKnight
             if (State == LoopState.Prepare) g.SetInventory(false);
         }
 
-        // ENTER WORLD (button, or Enter on the "enter without food?" question)
-        public void UiEnter()
+        // OLD WORLDS button: the list of old worlds opens over PREPARE (nothing to open when there are none).
+        public void UiOpenWorlds()
+        {
+            if (State != LoopState.Prepare || data.worlds.Count == 0) return;
+            if (askedNoFood) SetAsk(false);
+            worldsOpen = true;
+            ui.ShowWorlds(data);
+        }
+
+        public void UiCloseWorlds()
+        {
+            if (!worldsOpen) return;
+            worldsOpen = false;
+            if (askedNoFood) SetAsk(false);
+            ui.HideWorlds();
+            ui.ShowPrepare(data);
+        }
+
+        // NEW WORLD (seed 0) / ENTER OLD WORLD (the old world's seed). Same rules for both: a Weapon is needed, no food asks first.
+        public void UiEnter(int seed = 0)
         {
             if (State != LoopState.Prepare) return;
+            if (seed != 0 && data.Find(seed) == null) return;
             if (!data.CanEnter)
             {
                 ui.SetWarn("Pack a Weapon first", LoopUi.Red, 1.5f);
@@ -178,23 +207,27 @@ namespace MedievalKnight
             }
             bool food = data.carry.Count(Section.Foods) > 0;
             foreach (Item it in data.carry.supplies) if (it.kind == ItemKind.Food) food = true;
-            if (!food && !askedNoFood) { SetAsk(true); return; }
+            if (!food && !(askedNoFood && askedSeed == seed)) { askedSeed = seed; SetAsk(true); return; }
             SetAsk(false);
-            EnterWorld();
+            EnterWorld(seed);
         }
 
-        // ENTER WORLD: the run is opened and saved first (closing the game from here on counts as a death), then the
-        // screen fades and the world is built.
-        void EnterWorld()
+        // Enter on the "enter without food?" question: the world that was asked about
+        public void UiConfirmEnter() { UiEnter(askedSeed); }
+
+        // The run is opened and saved first (closing the game from here on counts as a death), then the screen fades
+        // and the world is built.
+        void EnterWorld(int seed)
         {
             EnterRequests++;
+            worldsOpen = false;
             g.SetInventory(false);                                  // closes PREPARE (saves a changed pack)
-            data.BeginRun();
+            data.BeginRun(seed);
             Save();
             entering = true;
             enterAt = Time.unscaledTime + 0.5f;
             ui.FadeTo(1f, 0.5f);
-            Debug.Log("LOOP enter world (held " + data.Held.Name + ", carry " + data.carry.Total + " items)");
+            Debug.Log("LOOP enter world" + (data.runWorld != 0 ? " OLD " + OldWorld.CodeOf(data.runWorld) : "") + " (held " + data.Held.Name + ", carry " + data.carry.Total + " items)");
         }
 
         // Fully dark: build the world, level 1 with the held weapon, at the town gate spawn.
@@ -215,8 +248,17 @@ namespace MedievalKnight
             g.SnapCamera();
             ui.FadeTo(0f, 0.5f);
             ui.SetObjective("Objective: Defeat the Minotaur to return");
+            OldWorld ow = data.Find(data.runWorld);
+            if (ow != null)
+            {
+                Vector3 pp = PilePoint(ow.x, ow.z);
+                float far = Mathf.Round(Vector3.Distance(MapLayout.TownSpawn, pp));
+                g.hud.Banner("OLD WORLD " + ow.Code + "\nYour loot lies where you fell. " + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
+                ui.SetObjective2(ow.pile.Count > 0 ? "Recover your loot" : "");
+            }
+            else ui.SetObjective2("");
             Sfx.I.Play(Snd.Ready);
-            Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level);
+            Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " pile " + ow.pile.Count : ""));
         }
 
         public void SummaryInput() { ui.SummaryInput(); }
@@ -254,7 +296,7 @@ namespace MedievalKnight
             Vector3 at = g.knight.Pos;
             result = data.Die(false, at.x, at.z, Loadout.NowUnix());
             Save();
-            ui.SetObjective("");
+            ui.SetObjective(""); ui.SetObjective2("");
             Debug.Log("LOOP fell: lost " + result.lost.Count + ", stash " + data.stash.Total + (result.ironRestored ? ", Iron Sword restored" : ""));
         }
 
@@ -267,6 +309,30 @@ namespace MedievalKnight
         }
 
         // ---------------------------------------------------------------- old worlds: difficulty, autosaved position
+
+        // Where the pile of an old world really stands: the saved spot, moved to the nearest free ground (no Random:
+        // the same answer every time). Nothing free within 30 m = the town gate.
+        public static Vector3 PilePoint(float x, float z)
+        {
+            float lim = Game.ArenaHalf - 4f;
+            Vector3 c = new Vector3(Mathf.Clamp(x, -lim, lim), 0f, Mathf.Clamp(z, -lim, lim));
+            if (PileSpotFree(c)) return c;
+            for (float r = 2f; r <= 30f; r += 2f)
+                for (int i = 0; i < 12; i++)
+                {
+                    float a = i * Mathf.PI * 2f / 12f;
+                    Vector3 p = c + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * r;
+                    p.x = Mathf.Clamp(p.x, -lim, lim); p.z = Mathf.Clamp(p.z, -lim, lim);
+                    if (PileSpotFree(p)) return p;
+                }
+            return new Vector3(MapLayout.TownSpawn.x, 0f, MapLayout.TownSpawn.z);
+        }
+
+        static bool PileSpotFree(Vector3 p)
+        {
+            if (!MapLayout.Walkable(p.x, p.z)) return false;
+            return (Obstacles.Push(p, 1.1f, Obstacles.Both) - p).sqrMagnitude < 0.0001f;
+        }
 
         void SetWorldMultipliers(bool oldWorld)
         {
@@ -318,7 +384,7 @@ namespace MedievalKnight
             Save();
             State = LoopState.Base;
             g.SnapCamera();
-            ui.SetObjective("Press Tab to prepare, then enter the world");
+            ui.SetObjective("Press Tab to prepare, then enter the world"); ui.SetObjective2("");
             g.SetInventory(true);
         }
         // ---------------------------------------------------------------- picking up, eating, dropping (in the world)
@@ -505,7 +571,7 @@ namespace MedievalKnight
             result = data.Survive();
             Save();
             State = LoopState.Summary;
-            ui.SetObjective("");
+            ui.SetObjective(""); ui.SetObjective2("");
             ui.SetPortalLabel(null, Vector3.zero, false);
             g.hud.SetArrowTarget(null, "Lair", 30f);
             ui.ShowSummary(result);
