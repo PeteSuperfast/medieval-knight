@@ -771,7 +771,7 @@ namespace MedievalKnight
         // right away; a client only reports it to the host (and predicts armor-or-flesh for the hit sound).
         public void HitEnemy(Knight by, Enemy e, float damage, float pierce, Vector3 origin, bool crit, float knock, float stun, string source, int src)
         {
-            if (Net.Authority) { e.TakeHit(damage, pierce, origin, crit, knock, stun, source, by); return; }
+            if (Net.Authority) { e.TakeHit(damage, pierce, origin, crit, knock, stun, source, by, Knight.AttackFromNetKind(src) == Knight.HeavyIndex); return; }
             float toArmor, toHp;
             e.Split(damage, pierce, out toArmor, out toHp);
             e.lastToArmor = toArmor; e.lastToHp = toHp;
@@ -791,7 +791,7 @@ namespace MedievalKnight
             int atkIndex = Knight.AttackFromNetKind(src);                              // 0..4 and 30..36
             string source = src >= 10 && src < 10 + Knight.Skills.Length ? Knight.Skills[src - 10].name
                 : atkIndex >= 0 ? Knight.Attacks[atkIndex].name : "Sword";
-            e.TakeHit(damage, Mathf.Clamp01(pierce), origin, crit, Mathf.Clamp(knock, 0f, 20f), Mathf.Clamp(stun, 0f, 3f), source, by);
+            e.TakeHit(damage, Mathf.Clamp01(pierce), origin, crit, Mathf.Clamp(knock, 0f, 20f), Mathf.Clamp(stun, 0f, 3f), source, by, atkIndex == Knight.HeavyIndex);
             return true;
         }
 

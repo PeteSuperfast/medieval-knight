@@ -40,3 +40,6 @@
 
 ## รอใคร (ปัจจุบัน)
 - รอ developer → ด่าน 2 (build, selftest 0 FAIL, mptest.ps1 + mptest-loop.ps1 FAIL=0, -menutest, git diff --stat ตรง tech.md) → โพสต์ "💻 Developer:"
+
+## Developer 2026-10-14
+- ขั้น 1 เสร็จ: เลขสี (`Enemy.NumberStyle`, `lastNumberKind`, heavy ใน `TakeHit`/`HitEnemy`/`ClientHit`, `EnemyHit` บิต 8); build ผ่าน; `-p7only` ผ่าน (ยังไม่ bump protocol)

@@ -921,7 +921,7 @@ namespace MedievalKnight
                     int by = r.U8();
                     float hp = r.F32(), armor = r.F32();
                     Enemy e = Enemy.Find(id);
-                    if (e != null) e.NetHit(damage, toArmor, toHp, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, away, by != LocalPid, hp, armor);
+                    if (e != null) e.NetHit(damage, toArmor, toHp, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, away, by != LocalPid, hp, armor, (flags & 8) != 0);
                     break;
                 }
 
@@ -1008,11 +1008,11 @@ namespace MedievalKnight
             ToServer(new NetW(Msg.Hit).U16(e.netId).F32(damage).F32(pierce).U8(crit ? 1 : 0).F32(knock).F32(stun).Vec(origin).U8(src < 0 ? 255 : src).Done());
         }
 
-        public static void BroadcastEnemyHit(Enemy e, float damage, float toArmor, float toHp, bool crit, bool stun, bool killed, Vector3 away, int byPid)
+        public static void BroadcastEnemyHit(Enemy e, float damage, float toArmor, float toHp, bool crit, bool stun, bool killed, Vector3 away, int byPid, bool heavy = false)
         {
             if (!IsHost) return;
             ToAll(new NetW(Msg.EnemyHit).U16(e.netId).F32(damage).F32(toArmor).F32(toHp)
-                .U8((crit ? 1 : 0) | (stun ? 2 : 0) | (killed ? 4 : 0))
+                .U8((crit ? 1 : 0) | (stun ? 2 : 0) | (killed ? 4 : 0) | (heavy ? 8 : 0))
                 .U8(Mathf.RoundToInt(Mathf.Clamp(away.x, -1f, 1f) * 127f) & 0xFF).U8(Mathf.RoundToInt(Mathf.Clamp(away.z, -1f, 1f) * 127f) & 0xFF)
                 .U8(byPid).F32(e.hp).F32(e.armor).Done(), null);
         }

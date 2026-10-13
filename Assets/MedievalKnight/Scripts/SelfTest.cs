@@ -224,6 +224,18 @@ namespace MedievalKnight
                 yield break;
             }
 
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-p7only") >= 0)     // quick run of the phase 7 cases only
+            {
+                g.packsOff = true;
+                Progress.ForceCrit = 1;
+                ParkSlimes();
+                yield return Phase7(d);
+                yield return W(0.5f);
+                Log("done (phase 7 cases only), screenshots=" + shot + ", failed checks=" + fails);
+                Application.Quit();
+                yield break;
+            }
+
             // ------------------------------------------------ the knight starts in town, which is safe: the first pack comes when he leaves it
             {
                 int inTown = 0;
@@ -1648,6 +1660,49 @@ namespace MedievalKnight
                 yield return W(0.4f);
             }
 
+        }
+
+        // ================================================================ Phase 7 (clash / parry, number colours, camera scroll, map). Also run alone with -p7only.
+        IEnumerator Phase7(Dummy d)
+        {
+            // ------------------------------------------------ damage number colours
+            {
+                Color c; int sz;
+                bool table = Enemy.NumberStyle(true, true, 5f, out c, out sz) == 4 && sz == 38
+                    && Enemy.NumberStyle(true, false, 5f, out c, out sz) == 3 && sz == 34
+                    && Enemy.NumberStyle(false, true, 0f, out c, out sz) == 2 && sz == 36
+                    && Enemy.NumberStyle(false, false, 0f, out c, out sz) == 1 && sz == 22
+                    && Enemy.NumberStyle(false, false, 5f, out c, out sz) == 0 && sz == 24;
+                Check("phase 7 number style table: crit+heavy 38 / crit 34 / heavy 36 / armor 22 / plain 24, crit beats heavy beats armor", table);
+
+                int crit0 = Progress.ForceCrit;
+                Heal(); d.ResetAll(); d.armor = d.maxArmor = 0f;                  // (the dummy regrows armor up to maxArmor)
+                StandNear(d, 1.3f);
+                yield return W(0.4f);
+                Progress.ForceCrit = 1;
+                k.DebugMove(0, 1);
+                yield return W(0.6f); yield return WaitIdle(2f);
+                int plain = d.lastNumberKind;
+                yield return W(0.3f);
+                k.DebugMove(Knight.HeavyIndex, 1);
+                yield return W(0.9f); yield return WaitIdle(2f);
+                int heavy = d.lastNumberKind;
+                Progress.ForceCrit = 2;
+                yield return W(0.3f);
+                k.DebugMove(Knight.HeavyIndex, 1);
+                yield return W(0.9f); yield return WaitIdle(2f);
+                int heavyCrit = d.lastNumberKind;
+                Progress.ForceCrit = 1;
+                d.ResetAll();                                          // armor back: a plain blow is soaked up
+                yield return W(0.4f);
+                k.DebugMove(0, 1);
+                yield return W(0.6f); yield return WaitIdle(2f);
+                int soaked = d.lastNumberKind;
+                Progress.ForceCrit = crit0;
+                Log("number kinds: plain " + plain + ", heavy " + heavy + ", crit+heavy " + heavyCrit + ", armor " + soaked);
+                Check("number colour on the dummy: plain blow 0, Heavy Strike 2, crit Heavy Strike 4, armor-soaked 1", plain == 0 && heavy == 2 && heavyCrit == 4 && soaked == 1);
+                d.ResetAll();
+            }
         }
 
         bool holdSawCharging, holdSawFull;

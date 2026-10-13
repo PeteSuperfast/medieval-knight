@@ -24,6 +24,7 @@ namespace MedievalKnight
         public int hits;
         public float totalDamage, lastDamage, lastToArmor, lastToHp;
         public bool lastCrit;
+        public int lastNumberKind;               // 0 plain, 1 armor soaked it all, 2 heavy, 3 crit, 4 crit + heavy (read-out colour)
         public string lastHit = "-";
 
         protected Transform rig;
@@ -132,7 +133,7 @@ namespace MedievalKnight
 
         // damage is the final number (already multiplied / crit). pierce = share that ignores armor.
         // Only where the world is simulated (single player / host). "by" = the knight who struck (null: nobody, e.g. a test).
-        public virtual void TakeHit(float damage, float pierce, Vector3 from, bool crit, float knockback, float stun, string source, Knight by = null)
+        public virtual void TakeHit(float damage, float pierce, Vector3 from, bool crit, float knockback, float stun, string source, Knight by = null, bool heavy = false)
         {
             if (Dead || puppet) return;
             float toArmor, toHp;
@@ -146,8 +147,8 @@ namespace MedievalKnight
             if (stun > 0f) stunUntil = Mathf.Max(stunUntil, Time.time + stun * stunResist);
 
             bool killed = hp <= 0f;
-            if (Net.IsHost) Net.BroadcastEnemyHit(this, damage, toArmor, toHp, crit, stun > 0.3f, killed, away, by != null ? by.pid : 255);
-            ShowHit(damage, toArmor, toHp, crit, stun > 0.3f, away, source, by != null && by.remote);
+            if (Net.IsHost) Net.BroadcastEnemyHit(this, damage, toArmor, toHp, crit, stun > 0.3f, killed, away, by != null ? by.pid : 255, heavy);
+            ShowHit(damage, toArmor, toHp, crit, heavy, stun > 0.3f, away, source, by != null && by.remote);
 
             OnHit(from, damage);
             if (killed)
@@ -160,12 +161,12 @@ namespace MedievalKnight
         }
 
         // A client shows a hit that the host applied (numbers, sparks, wobble, and death when it was the last one).
-        public void NetHit(float damage, float toArmor, float toHp, bool crit, bool stunned, bool killed, Vector3 away, bool byOther, float newHp, float newArmor)
+        public void NetHit(float damage, float toArmor, float toHp, bool crit, bool stunned, bool killed, Vector3 away, bool byOther, float newHp, float newArmor, bool heavy = false)
         {
             if (Dead) return;
             hp = newHp; armor = newArmor;
             if (away.sqrMagnitude < 0.0001f) away = transform.forward;
-            ShowHit(damage, toArmor, toHp, crit, stunned, away, "Hit", byOther);
+            ShowHit(damage, toArmor, toHp, crit, heavy, stunned, away, "Hit", byOther);
             OnHit(transform.position - away, damage);
             if (killed)
             {
@@ -178,7 +179,7 @@ namespace MedievalKnight
 
         // The read-out and everything visible / audible about one hit. otherPlayer: it was not the local knight's
         // blow, so its sound is played here (quieter); the local knight's own hit sound comes from Knight.HitArea.
-        void ShowHit(float damage, float toArmor, float toHp, bool crit, bool stunned, Vector3 away, string source, bool otherPlayer)
+        void ShowHit(float damage, float toArmor, float toHp, bool crit, bool heavy, bool stunned, Vector3 away, string source, bool otherPlayer)
         {
             hits++;
             totalDamage += damage;
@@ -190,15 +191,24 @@ namespace MedievalKnight
             flash = 1f;
 
             Vector3 at = Center + new Vector3(Random.Range(-0.3f, 0.3f), height * 0.5f, 0f);
-            if (crit) Game.I.hud.Popup(at, Mathf.RoundToInt(damage) + "!", new Color(1f, 0.62f, 0.1f), 34);
-            else if (toHp < 0.5f) Game.I.hud.Popup(at, Mathf.RoundToInt(damage).ToString(), new Color(0.65f, 0.82f, 1f), 22);
-            else Game.I.hud.Popup(at, Mathf.RoundToInt(damage).ToString(), Color.white, 24);
+            Color nc; int ns;
+            lastNumberKind = NumberStyle(crit, heavy, toHp, out nc, out ns);
+            Game.I.hud.Popup(at, Mathf.RoundToInt(damage) + (crit ? "!" : ""), nc, ns);
             if (stunned) Game.I.hud.Popup(at + Vector3.up * 0.6f, "STUN", new Color(1f, 0.9f, 0.4f), 20);
 
             Fx.I.Burst(Center - away * radius * 0.6f, crit ? 14 : 8, SparkColor(toHp > 0.5f), 3f, 8f, away + Vector3.up * 0.5f, 0.6f, 0.3f, 12f, 0.12f);
             if (crit) Fx.I.Ring(new Vector3(transform.position.x, 0.06f, transform.position.z), radius, radius + 1.4f, new Color(1f, 0.7f, 0.2f, 0.8f), 0.25f);
 
             if (otherPlayer) Sfx.I.Play(toArmor > toHp ? ArmorSound : Snd.Slice, Game.I.RemoteVolume(transform.position));
+        }
+
+        // Colour + size of a damage number. Order: crit > heavy > armor soaked it all > plain. Returns the kind (lastNumberKind).
+        public static int NumberStyle(bool crit, bool heavy, float toHp, out Color color, out int size)
+        {
+            if (crit) { color = new Color(1f, 0.62f, 0.1f); size = heavy ? 38 : 34; return heavy ? 4 : 3; }
+            if (heavy) { color = new Color(1f, 0.31f, 0.25f); size = 36; return 2; }
+            if (toHp < 0.5f) { color = new Color(0.65f, 0.82f, 1f); size = 22; return 1; }
+            color = Color.white; size = 24; return 0;
         }
 
         protected virtual Color SparkColor(bool flesh) { return flesh ? new Color(1f, 0.85f, 0.4f) : new Color(0.7f, 0.85f, 1f); }
