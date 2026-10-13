@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MedievalKnight
@@ -29,12 +30,20 @@ namespace MedievalKnight
         public bool Busy { get { return entering; } }               // fading into the world
         public bool WorldsOpen { get { return worldsOpen && PrepareOpen; } }
         public bool LootOpen { get { return lootMode && State == LoopState.World && g.InventoryOpen; } }
-        public LootPile pile;                                       // the pile of the old world being played (null: none / all taken)
-        public Vector3 pilePos;                                     // where it stands (PilePoint of the saved spot)
-        OldWorld pileWorld;
-        Pile curPile;                                               // the pile the loot window shows (phase 4 step 2: the first one)
+        // The piles of the old world being played, one view each: the data, the object in the world, the spot it stands at
+        // (PilePoint of the saved spot) and whether walking into it opens the window (armed: not from closing the window until
+        // the knight has stepped 4 m away). Piles never move; one that runs empty vanishes.
+        class PileView { public Pile data; public LootPile obj; public Vector3 pos; public bool armed = true; }
+        readonly List<PileView> views = new List<PileView>();
+        PileView curView;                                           // the pile whose window is open
+        public LootPile pile { get { return views.Count > 0 ? views[0].obj : null; } }      // the first pile (null: none / all taken)
+        public Vector3 pilePos { get { return views.Count > 0 ? views[0].pos : Vector3.zero; } }
+        public int PileObjects { get { return views.Count; } }
+        public Vector3 PilePosAt(int i) { return views[i].pos; }                       // test read-outs
+        public int PileItemsAt(int i) { return views[i].data.items.Count; }
+        OldWorld pileWorld;                                         // the world they belong to
+        Pile curPile;                                               // the pile the loot window shows
         bool lootMode;                                              // the inventory window is the loot window, not the Carry window
-        bool pileArmed = true;                                      // false from closing the window until the knight has stepped away
         public bool Dying { get { return dying; } }                 // fallen, the screen is dimming
         public RunResult result;                                    // the last finished run (summary screen, tests)
         bool dying;
@@ -148,7 +157,8 @@ namespace MedievalKnight
             if (lootMode)
             {
                 lootMode = false;
-                pileArmed = false;                                  // not again until he has stepped away from the pile
+                if (curView != null) curView.armed = false;         // not again until he has stepped away from that pile
+                curView = null;
                 if (State == LoopState.World && data.inRun) Save();
             }
             if (State == LoopState.Prepare)
@@ -268,23 +278,17 @@ namespace MedievalKnight
             ui.FadeTo(0f, 0.5f);
             ui.SetObjective("Objective: Defeat the Minotaur to return");
             OldWorld ow = data.Find(data.runWorld);
-            Pile first = ow != null && ow.piles.Count > 0 ? ow.piles[0] : null;
             if (ow != null)
             {
-                Vector3 pp = first != null ? PilePoint(first.x, first.z) : MapLayout.TownSpawn;
-                float far = Mathf.Round(Vector3.Distance(MapLayout.TownSpawn, pp));
-                g.hud.Banner("OLD WORLD " + ow.Code + "\nYour loot lies where you fell. " + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
+                BuildPileViews(ow);
+                float far = float.MaxValue;
+                foreach (PileView v in views) far = Mathf.Min(far, Vector3.Distance(MapLayout.TownSpawn, v.pos));
+                far = views.Count > 0 ? Mathf.Round(far) : 0f;
+                g.hud.Banner("OLD WORLD " + ow.Code + "\nYour loot lies where you fell" + (views.Count > 1 ? " (" + views.Count + " piles)" : "") + ". "
+                    + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
                 ui.SetObjective2(ow.ItemCount > 0 ? "Recover your loot" : "");
             }
             else ui.SetObjective2("");
-            if (ow != null && first != null)
-            {
-                pileWorld = ow;
-                curPile = first;
-                pilePos = PilePoint(first.x, first.z);
-                pile = LootPile.Create(g.transform, pilePos);
-                pileArmed = true;
-            }
             Sfx.I.Play(Snd.Ready);
             Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " items " + ow.ItemCount : ""));
         }
@@ -338,21 +342,54 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- old worlds: the pile and the loot window
 
-        // Walking into the pile (1.5 m) opens the loot window; closing it arms it again only after 4 m of distance.
+        // The piles of the world: one LootPile object each. (Phase 4: also called when the host changes the piles.)
+        void BuildPileViews(OldWorld w)
+        {
+            DropPile();
+            pileWorld = w;
+            foreach (Pile p in w.piles)
+            {
+                if (p.items.Count == 0) continue;
+                Vector3 at = PilePoint(p.x, p.z);
+                views.Add(new PileView { data = p, pos = at, obj = LootPile.Create(g.transform, at) });
+            }
+        }
+
+        // Walking into a pile (1.5 m) opens the loot window for it; closing it arms that pile again only after 4 m of distance.
+        // Markers: a label over every pile that is on screen and one arrow to the nearest pile when that one is off screen.
+        readonly List<Vector3> markPos = new List<Vector3>();
+        readonly List<int> markCount = new List<int>();
+
         void TickPile()
         {
             Knight k = g.knight;
-            bool show = pile != null && pileWorld != null && curPile != null && !dying && !k.Dead;
-            ui.SetLootMarker(g.cam, pilePos, show ? FlatDist(k.Pos, pilePos) : 0f, show ? curPile.items.Count : 0, show && !g.PanelOpen);
+            bool show = views.Count > 0 && pileWorld != null && !dying && !k.Dead;
+            markPos.Clear(); markCount.Clear();
+            int nearest = -1;
+            float nd = float.MaxValue;
+            if (show)
+                for (int i = 0; i < views.Count; i++)
+                {
+                    float d = FlatDist(k.Pos, views[i].pos);
+                    markPos.Add(views[i].pos); markCount.Add(views[i].data.items.Count);
+                    if (d < nd) { nd = d; nearest = i; }
+                }
+            ui.SetLootMarkers(g.cam, markPos, markCount, nearest, nd, show && !g.PanelOpen);
             if (!show || lootMode) return;
-            float d = FlatDist(k.Pos, pilePos);
-            if (!pileArmed && d > LootPile.RearmRadius) pileArmed = true;
-            if (!pileArmed || d > LootPile.TouchRadius) return;
-            if (g.PanelOpen || g.progress.pendingChoices > 0 || k.Airborne || entering) return;
-            lootMode = true;
-            g.SetInventory(true);
-            if (!g.InventoryOpen) lootMode = false;                 // refused (a level-up panel was about to open): try again
-            else pileArmed = false;
+            foreach (PileView v in views)
+            {
+                float d = FlatDist(k.Pos, v.pos);
+                if (!v.armed && d > LootPile.RearmRadius) v.armed = true;
+                if (!v.armed || d > LootPile.TouchRadius) continue;
+                if (g.PanelOpen || g.progress.pendingChoices > 0 || k.Airborne || entering) return;
+                lootMode = true;
+                curView = v;
+                curPile = v.data;
+                g.SetInventory(true);
+                if (!g.InventoryOpen) { lootMode = false; curView = null; curPile = null; }     // refused (a level-up panel was about to open): try again
+                else v.armed = false;
+                return;
+            }
         }
 
         static float FlatDist(Vector3 a, Vector3 b) { a.y = 0f; b.y = 0f; return (a - b).magnitude; }
@@ -410,17 +447,23 @@ namespace MedievalKnight
             AfterPileChange();
         }
 
-        // Every take is saved at once (no item can be taken twice by closing the game), the last one closes the pile.
+        // Every take is saved at once (no item can be taken twice by closing the game). A pile that ran empty vanishes; the
+        // last one of the world says "Everything recovered".
         void AfterPileChange()
         {
             Save();
-            if (pileWorld != null && curPile != null && curPile.items.Count == 0)
+            if (pileWorld == null || curPile == null) return;
+            if (curPile.items.Count == 0)
             {
-                g.hud.Notice("Everything recovered.", LoopUi.Green);
-                g.hud.Banner("Everything recovered.", LoopUi.Green, 2.5f);
-                ui.SetObjective2("");
-                if (pile != null) pile.Vanish();
-                pile = null;
+                PileView v = curView;
+                if (v != null) { if (v.obj != null) v.obj.Vanish(); views.Remove(v); }
+                if (pileWorld.ItemCount == 0)
+                {
+                    g.hud.Notice("Everything recovered.", LoopUi.Green);
+                    g.hud.Banner("Everything recovered.", LoopUi.Green, 2.5f);
+                    ui.SetObjective2("");
+                }
+                else g.hud.Notice("Pile emptied - " + views.Count + (views.Count == 1 ? " pile" : " piles") + " left", LoopUi.LootGold);
                 g.SetInventory(false);                              // the window closes (OnInventoryClosed saves again)
             }
         }
@@ -637,13 +680,13 @@ namespace MedievalKnight
 
         void DropPile()
         {
-            if (pile != null) Object.Destroy(pile.gameObject);
-            pile = null;
+            foreach (PileView v in views) if (v.obj != null) Object.Destroy(v.obj.gameObject);
+            views.Clear();
+            curView = null;
             pileWorld = null;
             curPile = null;
             lootMode = false;
-            pileArmed = true;
-            if (ui != null) ui.SetLootMarker(null, Vector3.zero, 0f, 0, false);
+            if (ui != null) ui.SetLootMarkers(null, null, null, -1, 0f, false);
         }
 
         void DropPortal()

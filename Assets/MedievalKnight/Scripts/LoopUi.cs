@@ -889,35 +889,51 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- the pile in the world: label over it / arrow at the screen edge
 
-        public bool LootLabelShown { get { return lootLabel.gameObject.activeSelf; } }
+        public bool LootLabelShown { get { foreach (Text t in lootLabels) if (t.gameObject.activeSelf) return true; return false; } }
         public bool LootArrowShown { get { return lootArrow.gameObject.activeSelf; } }
-        public string LootLabelText { get { return lootLabel.text; } }
+        public string LootLabelText { get { foreach (Text t in lootLabels) if (t.gameObject.activeSelf) return t.text; return lootLabel.text; } }
         public string LootArrowText { get { return lootDist.text; } }
+        public int LootLabelsShown { get { int n = 0; foreach (Text t in lootLabels) if (t.gameObject.activeSelf) n++; return n; } }
 
-        // "YOUR LOOT x5" over the pile when it is on screen, otherwise a gold arrow at the edge with "Loot 142 m".
-        public void SetLootMarker(Camera cam, Vector3 world, float distance, int count, bool show)
+        readonly List<Text> lootLabels = new List<Text>();            // [0] is lootLabel; more are made as piles need them
+
+        // "LOOT x5" over every pile that is on screen, and - when the nearest pile is off screen - one gold arrow at the edge
+        // of the screen with "Loot 142 m" (and "(3 piles)" when there are several). nearest < 0 / show == false: all hidden.
+        public void SetLootMarkers(Camera cam, List<Vector3> worlds, List<int> counts, int nearest, float distance, bool show)
         {
-            if (!show || cam == null)
-            {
-                if (lootLabel.gameObject.activeSelf) lootLabel.gameObject.SetActive(false);
-                if (lootArrow.gameObject.activeSelf) { lootArrow.gameObject.SetActive(false); lootDist.gameObject.SetActive(false); }
-                return;
-            }
-            Vector3 sp = cam.WorldToScreenPoint(world);
+            if (lootLabels.Count == 0) lootLabels.Add(lootLabel);
+            int n = show && cam != null && worlds != null ? worlds.Count : 0;
             float w = Screen.width, h = Screen.height, mx = 70f, mTop = 130f, mBottom = 150f;   // the skill bar is at the bottom, the objective lines at the top
-            bool on = sp.z > 0f && sp.x > mx * 0.6f && sp.x < w - mx * 0.6f && sp.y > mBottom * 0.6f && sp.y < h - mTop * 0.6f;
             float scale = Mathf.Max(0.01f, canvas.scaleFactor);
-            if (lootLabel.gameObject.activeSelf != on) lootLabel.gameObject.SetActive(on);
-            if (lootArrow.gameObject.activeSelf == on) { lootArrow.gameObject.SetActive(!on); lootDist.gameObject.SetActive(!on); }
-            if (on)
+            int used = 0;
+            bool nearestOn = false;
+            Vector3 nearestSp = Vector3.zero;
+            for (int i = 0; i < n; i++)
             {
-                lootLabel.text = "YOUR LOOT  x" + count;
-                lootLabel.rectTransform.anchoredPosition = new Vector2(sp.x, sp.y) / scale;
-                return;
+                Vector3 sp = cam.WorldToScreenPoint(worlds[i]);
+                bool on = sp.z > 0f && sp.x > mx * 0.6f && sp.x < w - mx * 0.6f && sp.y > mBottom * 0.6f && sp.y < h - mTop * 0.6f;
+                if (i == nearest) { nearestOn = on; nearestSp = sp; }
+                if (!on) continue;
+                if (used == lootLabels.Count)
+                {
+                    Text t = Label("LootLabel" + used, root, new Vector2(0f, 0f), Vector2.zero, new Vector2(300, 28), 22, TextAnchor.MiddleCenter, "LOOT");
+                    t.rectTransform.pivot = Mid; t.fontStyle = FontStyle.Bold; t.color = LootGold;
+                    lootLabels.Add(t);
+                }
+                Text lab = lootLabels[used++];
+                if (!lab.gameObject.activeSelf) lab.gameObject.SetActive(true);
+                lab.text = "LOOT  x" + counts[i];
+                lab.rectTransform.anchoredPosition = new Vector2(sp.x, sp.y) / scale;
             }
+            for (int i = used; i < lootLabels.Count; i++) if (lootLabels[i].gameObject.activeSelf) lootLabels[i].gameObject.SetActive(false);
+
+            bool arrow = n > 0 && nearest >= 0 && !nearestOn;
+            if (lootArrow.gameObject.activeSelf != arrow) { lootArrow.gameObject.SetActive(arrow); lootDist.gameObject.SetActive(arrow); }
+            if (!arrow) return;
+            Vector3 spn = nearestSp;
             Vector2 c = new Vector2(w * 0.5f, h * 0.5f);
-            Vector2 dir = new Vector2(sp.x, sp.y) - c;
-            if (sp.z < 0f) dir = -dir;
+            Vector2 dir = new Vector2(spn.x, spn.y) - c;
+            if (spn.z < 0f) dir = -dir;
             if (dir.sqrMagnitude < 1f) dir = Vector2.up;
             dir.Normalize();
             float tx = Mathf.Abs(dir.x) > 0.0001f ? (w * 0.5f - mx) / Mathf.Abs(dir.x) : float.MaxValue;
@@ -926,7 +942,7 @@ namespace MedievalKnight
             lootArrow.rectTransform.anchoredPosition = pos / scale;
             lootArrow.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
             lootDist.rectTransform.anchoredPosition = (pos + new Vector2(0f, dir.y > 0f ? -34f : 34f)) / scale;
-            lootDist.text = "Loot " + Mathf.RoundToInt(distance) + " m";
+            lootDist.text = "Loot " + Mathf.RoundToInt(distance) + " m" + (n > 1 ? " (" + n + " piles)" : "");
         }
 
         // ---------------------------------------------------------------- loot window (L): the pile on the left, the pack on the right

@@ -1607,6 +1607,8 @@ namespace MedievalKnight
             yield return OldWorldUiTests();
             Log("---- old world: pile, loot window, recover, victory");
             yield return OldWorldLootTests();
+            Log("---- old world: several piles in one world");
+            yield return OldWorldPilesTests();
         }
 
         // From PREPARE: OLD WORLDS -> pick the row of "seed" -> ENTER OLD WORLD (answers the food question) -> in the world.
@@ -1747,6 +1749,62 @@ namespace MedievalKnight
             yield return W(0.4f);
             Check("old world loot: back at the base the list shows only #E11E (OLD WORLDS (1)), nothing about #D00D",
                 run.PrepareOpen && run.ui.OldWorldsText == "OLD WORLDS (1)" && run.ui.CrumbBarText == "");
+            g.LeaveToMenu();
+            yield return W(0.3f);
+        }
+
+        // Phase 4: several piles in one old world: a marker per pile, the arrow to the nearest, each pile opens its own window,
+        // an emptied pile vanishes, the world closes with the last one.
+        IEnumerator OldWorldPilesTests()
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            d.carry.foods[0] = Item.Food(Foods.Apple);
+            var w = new OldWorld { seed = 0xF00D, left = 3, fellUnix = 1760000000L };
+            Pile pa = w.NewPile(0f, -118f), pb = w.NewPile(16f, -118f), pc = w.NewPile(-45f, -110f);
+            pa.items.Add(Item.Weapon(Weapons.Fang, 1)); pa.items.Add(Item.Food(Foods.Apple)); pa.items.Add(Item.Food(Foods.Meat));
+            pb.items.Add(Item.Weapon(Weapons.Dao)); pb.items.Add(Item.Weapon(Weapons.Rapier));
+            pc.items.Add(Item.Food(Foods.Apple));
+            d.worlds.Add(w);
+            yield return Click(run.ui.OldWorldsRect.position);
+            yield return W(0.2f);
+            Check("piles: the OLD WORLDS row says 3 piles and 6 items", run.ui.WorldRowText(0).Contains("6 items") && run.ui.WorldsNoteText.Contains("3 piles lie in this world"));
+            Shot("piles_list");
+            yield return Tap(Key.Escape);
+            yield return W(0.1f);
+            yield return EnterOldWorldUi(0xF00D);
+            Check("piles: entering the world makes one pile object per pile (3), the banner says 3 piles, objective 2 asks to recover",
+                run.InWorld && run.PileObjects == 3 && g.hud.BannerShown.Contains("3 piles") && run.ui.Objective2Text == "Recover your loot");
+            k.transform.position = new Vector3(70f, 0f, 60f); g.SnapCamera();
+            yield return W(0.4f);
+            Check("piles: far away one arrow shows the nearest pile with the number of piles (Loot N m (3 piles)), no labels",
+                run.ui.LootArrowShown && run.ui.LootArrowText.EndsWith("(3 piles)") && !run.ui.LootLabelShown);
+            k.transform.position = (run.PilePosAt(0) + run.PilePosAt(1)) * 0.5f + new Vector3(0f, 0f, -3f); g.SnapCamera();
+            yield return W(0.4f);
+            Check("piles: with two piles on screen both have a LOOT label (LOOT x3 and LOOT x2) and no window is open",
+                run.ui.LootLabelsShown >= 2 && !run.LootOpen);
+            Shot("piles_labels");
+            // the second pile: its window shows its 2 items only
+            int idxB = run.PileItemsAt(0) == 2 ? 0 : run.PileItemsAt(1) == 2 ? 1 : 2;
+            k.transform.position = run.PilePosAt(idxB) + new Vector3(1.0f, 0f, 0f);
+            yield return W(0.5f);
+            Check("piles: touching one pile opens the window with THAT pile's items (2) and its code", run.LootOpen && run.ui.LootPileHeadText.Contains("2") && run.ui.LootTitleText.Contains("#F00D"));
+            yield return Tap(Key.Q);
+            yield return W(0.3f);
+            Check("piles: Take all empties that pile: it vanishes (2 piles left), the world is not closed, the other piles untouched",
+                !run.LootOpen && run.PileObjects == 2 && w.piles.Count == 2 && w.ItemCount == 4 && g.hud.NoticeShown.Contains("2 piles left") && run.ui.Objective2Text == "Recover your loot");
+            Check("piles: the save has 2 piles", LoopSave.FromJson(File.ReadAllText(LoopSave.Path)).Find(0xF00D).piles.Count == 2);
+            // a fall 1.5 m from a pile joins it, 20 m away makes a new one
+            int idxA = run.PileItemsAt(0) == 3 ? 0 : 1;
+            k.transform.position = run.PilePosAt(idxA) + new Vector3(0f, 0f, -20f);
+            yield return W(0.3f);
+            int carried = d.carry.Total;
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(3.5f);
+            Check("piles: falling 20 m from the nearest pile adds a third pile (the others stay)", w.piles.Count == 3 && w.ItemCount == 4 + carried && d.worlds.Count == 1);
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
             g.LeaveToMenu();
             yield return W(0.3f);
         }
