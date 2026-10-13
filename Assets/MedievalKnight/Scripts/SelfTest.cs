@@ -1584,6 +1584,9 @@ namespace MedievalKnight
             Log("---- loop: save file");
             LoopSaveTests();
             yield return null;
+            Log("---- old world: save file");
+            OldWorldSaveTests();
+            yield return null;
             Log("---- loop: base");
             yield return LoopBaseTests();
             Log("---- loop: PREPARE");
@@ -2354,6 +2357,72 @@ namespace MedievalKnight
 
             Loadout e = new Loadout();
             Check("loop data: EnsureIron on an empty loadout adds one Iron Sword once", e.EnsureIron() && !e.EnsureIron() && e.stash.Total == 1);
+        }
+
+        // Phase 2: old worlds in the save file (a file of its own inside the test folder).
+        void OldWorldSaveTests()
+        {
+            string file = Path.Combine(dir, "save_ow.json");
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.PathOverride = file;
+            LoopSave.ResetMemory();
+
+            Loadout l = Loadout.NewGame();
+            l.stash.Add(Item.Weapon(Weapons.Dao, 2));
+            var a = new OldWorld { seed = 0xA3F2, left = 2, fellUnix = 1760000000L, x = 12.5f, z = -33.25f };
+            a.pile.Add(Item.Weapon(Weapons.Rapier, 3)); a.pile.Add(Item.Food(Foods.Apple)); a.pile.Add(Item.Weapon(Weapons.Iron, 0));
+            var b = new OldWorld { seed = 0x7B71C, left = 1, fellUnix = 1760000100L, x = -80f, z = 90f };
+            b.pile.Add(Item.Food(Foods.Meat));
+            l.worlds.Add(a); l.worlds.Add(b);
+            l.unseen.Add(new CrumbNote { seed = 0x4444, items = 4 });
+            l.inRun = true; l.runWorld = 0xA3F2; l.runX = 5.5f; l.runZ = -7.5f; l.runPosValid = true;
+            bool saved = LoopSave.Save(l);
+            Loadout r = LoopSave.Load();
+            bool same = saved && r.worlds.Count == 2 && r.unseen.Count == 1 && r.unseen[0].seed == 0x4444 && r.unseen[0].items == 4
+                && r.inRun && r.runWorld == 0xA3F2 && r.runPosValid && Mathf.Abs(r.runX - 5.5f) < 0.001f && Mathf.Abs(r.runZ + 7.5f) < 0.001f;
+            if (same)
+            {
+                OldWorld ra = r.Find(0xA3F2), rb = r.Find(0x7B71C);
+                same = ra != null && rb != null && ra.left == 2 && ra.fellUnix == 1760000000L && Mathf.Abs(ra.x - 12.5f) < 0.001f && Mathf.Abs(ra.z + 33.25f) < 0.001f
+                    && ra.pile.Count == 3 && ra.pile[0].Same(Item.Weapon(Weapons.Rapier, 3)) && ra.pile[1].Same(Item.Food(Foods.Apple)) && ra.pile[2].Same(Item.Weapon(Weapons.Iron, 0))
+                    && rb.left == 1 && rb.pile.Count == 1 && rb.pile[0].Same(Item.Food(Foods.Meat));
+            }
+            Check("old world save: writing then loading keeps every old world (seed, counter, time, spot, pile in order), the unseen notes and the open run's world and spot", same);
+            Check("old world save: the JSON carries the old worlds and the save version is still 1", File.ReadAllText(file).Contains("\"ow\":[") && LoopSave.Version == 1);
+
+            // a phase 1 file (no old world fields) opens with an empty list and the same stash
+            File.WriteAllText(file, "{\"v\":1,\"inRun\":false,\"intro\":true,\"held\":0,"
+                + "\"stash\":{\"w\":[{\"k\":1,\"id\":0,\"p\":2},{\"k\":1,\"id\":2,\"p\":0}],\"f\":[{\"k\":2,\"id\":1,\"p\":0}],\"s\":[]},"
+                + "\"carry\":{\"w\":[],\"f\":[],\"s\":[]}}");
+            File.Delete(file + ".bak");
+            Loadout p1 = LoopSave.Load();
+            Check("old world save: a phase 1 file opens: no old worlds, nothing unseen, the stash is as it was (Iron +2, weapon 2, food 1)",
+                p1.worlds.Count == 0 && p1.unseen.Count == 0 && p1.runWorld == 0 && !p1.runPosValid && p1.introShown
+                && p1.stash.weapons[0].Same(Item.Weapon(Weapons.Iron, 2)) && p1.stash.weapons[1].IsWeapon && p1.stash.foods[0].kind == ItemKind.Food && LoopSave.LastLoadNote == "");
+
+            // wrong values in the new fields are repaired, nothing crashes
+            File.WriteAllText(file, "{\"v\":1,\"inRun\":true,\"intro\":true,\"held\":0,"
+                + "\"stash\":{\"w\":[{\"k\":1,\"id\":0,\"p\":0}],\"f\":[],\"s\":[]},\"carry\":{\"w\":[{\"k\":1,\"id\":0,\"p\":0}],\"f\":[],\"s\":[]},"
+                + "\"ow\":[{\"seed\":9,\"left\":9,\"t\":5,\"x\":9999,\"z\":-9999,\"pile\":[{\"k\":2,\"id\":0,\"p\":0},{\"k\":1,\"id\":99,\"p\":0}]},"
+                + "{\"seed\":9,\"left\":2,\"t\":5,\"x\":0,\"z\":0,\"pile\":[]},{\"seed\":0,\"left\":2,\"pile\":[]},null],"
+                + "\"runWorld\":77,\"rx\":1,\"rz\":1,\"rpos\":true,\"unseen\":[{\"seed\":0,\"n\":3},{\"seed\":5,\"n\":-4}]}");
+            Loadout bad = LoopSave.Load();
+            OldWorld bw = bad.Find(9);
+            Check("old world save: left 9 -> 3, a duplicate / zero seed is dropped, an invalid pile item is dropped, the spot is clamped inside the map, an unknown runWorld is cleared",
+                bad != null && bad.worlds.Count == 1 && bw != null && bw.left == 3 && bw.pile.Count == 1 && Mathf.Abs(bw.x) < Game.ArenaHalf && Mathf.Abs(bw.z) < Game.ArenaHalf
+                && bad.runWorld == 0 && bad.unseen.Count == 1 && bad.unseen[0].items == 0);
+            Check("old world save: a run that was open when the file was written keeps both the carried and the stash copy of the same weapon (Sanitize fix)",
+                bad.inRun && bad.carry.HasWeaponId(Weapons.Iron) && bad.stash.HasWeaponId(Weapons.Iron));
+
+            // garbage still goes to .corrupt and starts a new game
+            File.WriteAllText(file, "{\"v\":1,\"ow\":\"not an array\"");
+            Loadout junk = LoopSave.Load();
+            Check("old world save: a broken file starts a new game without old worlds and keeps the file as .corrupt",
+                junk != null && junk.worlds.Count == 0 && junk.stash.HasWeaponId(Weapons.Iron) && File.Exists(file + ".corrupt"));
+
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.PathOverride = null;
+            LoopSave.ResetMemory();
         }
 
         // Phase 2: old worlds (pure data).

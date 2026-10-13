@@ -13,7 +13,15 @@ namespace MedievalKnight
 
         [Serializable] class ItemDto { public int k, id, p; }
         [Serializable] class BagDto { public ItemDto[] w, f, s; }
-        [Serializable] class SaveDto { public int v; public bool inRun, intro; public int held; public BagDto stash, carry; }
+        [Serializable] class WorldDto { public int seed, left; public long t; public float x, z; public ItemDto[] pile; }
+        [Serializable] class CrumbDto { public int seed, n; }
+        // Phase 2 fields (ow, runWorld, rx, rz, rpos, unseen) are missing in a phase 1 file: that reads as "no old worlds".
+        [Serializable]
+        class SaveDto
+        {
+            public int v; public bool inRun, intro; public int held; public BagDto stash, carry;
+            public WorldDto[] ow; public int runWorld; public float rx, rz; public bool rpos; public CrumbDto[] unseen;
+        }
 
         public static string PathOverride;                 // test hook: use this file (SelfTest sets it)
         public static bool ForceMemory;                    // test hook: keep everything in memory
@@ -74,6 +82,15 @@ namespace MedievalKnight
         public static string ToJson(Loadout l)
         {
             var dto = new SaveDto { v = Version, inRun = l.inRun, intro = l.introShown, held = l.heldSlot, stash = ToDto(l.stash), carry = ToDto(l.carry) };
+            dto.ow = new WorldDto[l.worlds.Count];
+            for (int i = 0; i < dto.ow.Length; i++)
+            {
+                OldWorld w = l.worlds[i];
+                dto.ow[i] = new WorldDto { seed = w.seed, left = w.left, t = w.fellUnix, x = w.x, z = w.z, pile = ToDto(w.pile.ToArray()) };
+            }
+            dto.runWorld = l.runWorld; dto.rx = l.runX; dto.rz = l.runZ; dto.rpos = l.runPosValid;
+            dto.unseen = new CrumbDto[l.unseen.Count];
+            for (int i = 0; i < dto.unseen.Length; i++) dto.unseen[i] = new CrumbDto { seed = l.unseen[i].seed, n = l.unseen[i].items };
             return JsonUtility.ToJson(dto);
         }
 
@@ -88,6 +105,22 @@ namespace MedievalKnight
             var l = new Loadout { inRun = dto.inRun, introShown = dto.intro, heldSlot = dto.held };
             FromDto(dto.stash, l.stash);
             FromDto(dto.carry, l.carry);
+            if (dto.ow != null)
+                foreach (WorldDto wd in dto.ow)
+                {
+                    if (wd == null) continue;
+                    var w = new OldWorld { seed = wd.seed, left = wd.left, fellUnix = wd.t, x = wd.x, z = wd.z };
+                    if (wd.pile != null)
+                        foreach (ItemDto id in wd.pile)
+                        {
+                            if (id == null || id.k <= 0 || id.k > (int)ItemKind.Food) continue;
+                            w.pile.Add(new Item { kind = (ItemKind)id.k, id = id.id, plus = id.p });
+                        }
+                    l.worlds.Add(w);
+                }
+            l.runWorld = dto.runWorld; l.runX = dto.rx; l.runZ = dto.rz; l.runPosValid = dto.rpos;
+            if (dto.unseen != null)
+                foreach (CrumbDto c in dto.unseen) if (c != null && c.seed != 0) l.unseen.Add(new CrumbNote { seed = c.seed, items = Mathf.Max(0, c.n) });
             l.Sanitize();
             return l;
         }
