@@ -13,12 +13,12 @@ Unity `6000.6.5f1` (URP 3D, Input System ใหม่, uGUI) เขียนด�
 - ไม่ทำ: บทสนทนา/เควสต์/NPC, อาวุธยิงไกลของผู้เล่น, crafting/ฟาร์ม/สร้างฐาน, class ใหม่, ร้านค้า/เศรษฐกิจ, โลกใหญ่กว่า 380x380 ม., เซิร์ฟเวอร์กลาง
 - งานที่ไม่อยู่ใน phase ปัจจุบัน → ลง `Docs/backlog.md` ไม่ลงมือ; ปรับของเดิมก่อนสร้างระบบใหม่
 - คำศัพท์: เรียกรวมว่า **"อาวุธ"** (ไม่ใช้ "ดาบ" เป็นคำรวม) โค้ดใหม่ใช้ `Weapon` ไม่ใช้ `Sword` (ของเดิมค่อยๆ เปลี่ยนเมื่อแก้ไฟล์นั้น)
-- phase: ~~0~~ ~~1 loop ขั้นต่ำคนเดียว~~ (เสร็จ) → 2 โลกเก่า → 3 biome เพิ่ม + เกรดอาวุธ Rust→God → 4 co-op ของ loop ใหม่ → 5 เนื้อเรื่อง/ขัดเกลา ทำทีละ phase ต้องเล่นได้จริงก่อนไปต่อ
+- phase: ~~0~~ ~~1 loop ขั้นต่ำ~~ ~~2 โลกเก่า~~ (เสร็จ) → 3 biome เพิ่ม + เกรดอาวุธ Rust→God → 4 co-op ของ loop ใหม่ → 5 เนื้อเรื่อง/ขัดเกลา ทำทีละ phase ต้องเล่นได้จริงก่อนไปต่อ
 - ระหว่าง phase 1–3 ห้ามทำให้ออนไลน์เดิมพัง (mptest ต้องผ่าน); หัวข้อ "รอพีทตัดสิน" ใน vision.md ต้องตอบก่อนเริ่ม phase ที่เกี่ยวข้อง
 
-## สถานะโค้ดตอนนี้ (phase 1 เสร็จ 2026-10-12)
+## สถานะโค้ดตอนนี้ (phase 2 เสร็จ 2026-10-13)
 
-**Single Player จากเมนู = loop phase 1** (`Game.Loop`): ฐาน → PREPARE (stash 12/8/16 ↔ carry 2/3/4) → โลกเดียว เลเวล 1 ใหม่ → ฆ่า Minotaur → portal 1.5 วิ = VICTORY (ของเข้า stash) / ตาย = ของที่พกหาย (YOU FELL) / ปิดเกมกลางโลก = ABANDONED; เซฟ JSON ในเครื่อง. ยังไม่มี: โลกเก่า, biome เพิ่ม, เกรดอาวุธ, co-op ของ loop
+**Single Player จากเมนู = loop** (`Game.Loop`): ฐาน → PREPARE (stash 12/8/16 ↔ carry 2/3/4) → NEW WORLD / OLD WORLDS → เลเวล 1 ใหม่ → ฆ่า Minotaur → portal 1.5 วิ = VICTORY (ของเข้า stash) / ตายหรือปิดเกมกลางโลก = ของที่พกทั้งหมดเป็นกองที่จุดตาย = **โลกเก่า** (HP ×1.5 ดาเมจ ×1.25 แพ็ค ×1.5 armor ไม่คูณ; สลายเมื่อกลับฐานสำเร็จครบ 3 ครั้ง); เซฟ JSON ในเครื่อง. ยังไม่มี: biome เพิ่ม, เกรดอาวุธ, co-op ของ loop
 
 Host / Join / `-single` / `-selftest` = สนาม v1 เดิม ห้ามให้ loop รั่วเข้าไป (ทุกจุดแก้อยู่หลัง `Game.Loop`)
 
@@ -29,7 +29,7 @@ Host / Join / `-single` / `-selftest` = สนาม v1 เดิม ห้า�
 | `Docs/vision.md` | **กรอบเกม core loop เสาหลัก ไม่ทำ ลำดับ phase เรื่องรอตัดสิน** |
 | `Docs/backlog.md` | ไอเดียที่ยังไม่ทำ (นอก phase / รอคิว) |
 | `Docs/reference/files.md` | แต่ละสคริปต์ทำอะไร (ตารางโครงสร้างไฟล์ทั้งหมด) |
-| `Docs/reference/loop.md` | **loop phase 1: ไฟล์ กติกา ปุ่ม เซฟ วิธีเทสต์** |
+| `Docs/reference/loop.md` | **loop phase 1 + โลกเก่า: ไฟล์ กติกา ปุ่ม เซฟ วิธีเทสต์** |
 | `Docs/reference/controls.md` | ปุ่มควบคุมทั้งหมด |
 | `Docs/reference/map-and-spawning.md` | โซนแมพ collision การเกิดของแพ็คสไลม์ |
 | `Docs/reference/progression.md` | ตาราง EXP เลเวลอัป stamina แต้มสเตตัส Soul อาหาร |
@@ -37,13 +37,13 @@ Host / Join / `-single` / `-selftest` = สนาม v1 เดิม ห้า�
 | `Docs/reference/sound.md` | เสียง 6 คลิปและจังหวะที่เล่น |
 | `Docs/reference/online-coop.md` | Net / protocol / authority / กฎ multiplayer / command line / mptest |
 | `Docs/reference/dev-guide.md` | วิธีเพิ่ม/ปรับของ (ท่าโจมตี อาวุธ เสียง ศัตรู แมพ) และขั้นตอนทดสอบเต็ม |
-| `Docs/big-map-update/`, `Docs/phase1-minimal-loop/` | งานใหญ่ที่เสร็จแล้ว (แมพใหญ่ = biome แรก; loop phase 1) |
+| `Docs/big-map-update/`, `Docs/phase1-minimal-loop/`, `Docs/phase2-old-world/` | งานใหญ่ที่เสร็จแล้ว (แมพใหญ่; loop phase 1; โลกเก่า) |
 | `Docs/ref/`, `Docs/style.md`, `_reference/` | ภาพอ้างอิงและสไตล์ (ไม่ได้ใช้ในเกมแล้ว) |
 
 ## สิ่งที่ต้องรู้ก่อนแก้โค้ด
 
 - โค้ดอยู่ใน `Assets/MedievalKnight/Scripts/` (`Game.cs` ศูนย์กลาง, `Knight.cs` ผู้เล่น, `World.cs` แมพ, `Progress.cs` เลเวล, `Weapon.cs` อาวุธ, `Net.cs` ออนไลน์) — ดูรายละเอียดใน `Docs/reference/files.md`
-- ตัวเลขบาลานซ์อยู่ในค่าคงที่ของโค้ด (`Progress.cs`, `Knight.Attacks` / `Knight.Skills`, `Weapons.All`, `Game.EnemyHpScale` ฯลฯ) ไม่ต้องสร้างไฟล์ config
+- ตัวเลขบาลานซ์อยู่ในค่าคงที่ของโค้ด (`Progress.cs`, `Knight.Attacks` / `Skills`, `Weapons.All`, `Game.EnemyHpScale`, `OldWorld` ฯลฯ) ไม่ต้องสร้างไฟล์ config
 - ฉากสร้างด้วย `StaticBatcher` และ `System.Random(11)` เท่านั้น (ห้าม `UnityEngine.Random`) เพื่อให้ collision ตรงกันทุกเครื่อง; ห้ามวางของกีดขวางในลานกลาง (|x|<28, Z -42..32) เพราะใช้เป็นสนามเทสต์
 - co-op: ห้ามถือว่า `Game.I.knight` คือผู้เล่นคนเดียว (ใช้ `Game.I.players` / `NearestKnight`); ทุกอย่างที่เปลี่ยนโลกต้องอยู่หลัง `Net.Authority`; ห้ามหยุดเวลาตอนออนไลน์ (`Game.Paused`); ข้อมูลโลกเก็บที่ host เท่านั้น
 - เปลี่ยนรูปแบบข้อความเครือข่ายเมื่อไหร่ ต้องเพิ่ม `Net.Protocol` (ตอนนี้ = 2)
@@ -53,8 +53,8 @@ Host / Join / `-single` / `-selftest` = สนาม v1 เดิม ห้า�
 ## Build และทดสอบ
 
 - build: `build.bat` → `Builds\MedievalKnight.exe` (log ที่ `build.log`)
-- selftest (~3 นาที ต้องไม่มี `FAIL`): `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log`
+- selftest (~6 นาที ต้องไม่มี `FAIL`): `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log`
 - ออนไลน์ (host + client 3 + ตัวที่ต้องถูกปฏิเสธ 2 ~70 วินาที): `powershell -ExecutionPolicy Bypass -File mptest.ps1`
-- เช็ค "A's walk looks smooth on B" (แก้แล้ว 2026-10-12 ด้วย `NetInterp` window ~2 วินาที) ถ้าตกอีกแปลว่าบั๊กจริง
-- loop: เคสอยู่ท้าย selftest; เร็ว ~100 วิ ต่อท้าย `-looponly`; `-menutest` เช็ค host `Enemy.All.Count >= 2` (ลดจาก 5 เมื่อ 2026-10-13 เพราะเมืองเป็นเขตปลอดภัย ตอนเริ่มเหลือแค่หุ่น + Minotaur)
+- mptest "A's walk looks smooth on B" (แก้แล้วด้วย `NetInterp`) ถ้าตกอีกแปลว่าบั๊กจริง
+- loop: เคสอยู่ท้าย selftest; เร็ว ~3 นาที ต่อท้าย `-looponly`; `-menutest` เช็ค host `Enemy.All.Count >= 2`
 - ขั้นตอนเต็ม: `Docs/reference/dev-guide.md`, `online-coop.md`

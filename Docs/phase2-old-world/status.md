@@ -1,32 +1,30 @@
 # phase2-old-world — status
 
 ## ทำถึงไหน
-- 2026-10-13: พีทสั่ง "ดำเนินการ phase 2" → ปูส้มถามข้อค้าง 2 ข้อใน vision.md "ก่อน phase 2" → พีทตอบ 1.a / 2.ใช่ → เขียน requirement.md (ร่าง) เสร็จ
+- 2026-10-13 (ปูส้ม): พีทสั่ง "ดำเนินการ phase 2" → ถามข้อค้าง (พีทตอบ 1.a / 2.ใช่) → requirement → designer → architect → ปูส้มตัดสิน decisions ข้อ 7–14 → พีทอนุมัติ ("ok" 09:36 UTC)
+- 2026-10-13 (developer): ทำครบ 7 ขั้นของ tech §9 — build ผ่านทุกขั้น, selftest ที่เกี่ยวข้องผ่าน, commit แยกต่อขั้น (ผู้ขอ peatengkrub)
+  1. `OldWorld.cs` + `Loadout` (Die / Survive / take / Sanitize) + เคสข้อมูล
+  2. `LoopSave` DTO โลกเก่า (Version ยัง 1; เซฟ phase 1 เปิดได้) + เคสเซฟ
+  3. ตัวคูณใน `Game` (HP ×1.5, ดาเมจ ×1.25, แพ็ค ×1.5; armor ไม่คูณ) + เคสสเกล
+  4. `RunLoop` ตาย / ABANDONED / Victory + autosave ตำแหน่ง + G2 (บล็อก OLD WORLD ในหน้าสรุป)
+  5. PREPARE NEW WORLD / OLD WORLDS, แถบแดงสลาย, หน้ารายการ, เข้าโลกเก่า (ถามอาหาร, banner, ป้าย, objective 2)
+  6. `LootPile` + ลูกศร/ป้าย + หน้าต่างเก็บของ (เก็บ / Take all / เต็ม / ทิ้ง) + เซฟทุกครั้งที่เก็บ
+  7. ตรวจรวม + docs (loop.md, files.md, controls.md, CLAUDE.md, vision.md) + zip
 
-## ตัดสินไปแล้ว
-- ตัวนับหมดอายุ: นับทุกครั้งที่กลับฐานสำเร็จจากโลกไหนก็ได้ (พีท 1.a)
-- ระบบเลเวลข้ามรอบเดิมถูกแทนด้วยกติกาใหม่ทั้งหมด (พีท 2.ใช่) — ใช้เฉพาะ loop; v1 สำหรับ Host/Join ไม่ลบ เพราะ mptest ต้องผ่าน
+## ผลตรวจ (ก่อนส่งงาน)
+- build ผ่าน; selftest เต็ม **315 PASS / 0 FAIL**; `-looponly` 180 PASS / 0 FAIL (เคสใหม่ 58 เคส: `old world ...`)
+- mptest: รอบ 1 H FAIL=1, รอบ 2 H FAIL=2 (เช็ค "stands at the same place on every screen" คลาดเคลื่อน 0.15-0.3 ม. ตัวผู้เล่นคนละคนกัน ไม่เกี่ยวกับโลกเก่า), รอบ 3 **FAIL=0** (H 61 PASS, A 4, B 2, C 2, X 1, V 1) — flake ด้านเวลา ไม่ได้แตะ Net
+- `-menutest` ผ่านทั้งหมด (failed checks=0)
+
+## ตัดสิน / ทำต่างจากแผน
+- armor ไม่คูณ (decisions ข้อ 9): เพิ่ม `Game.EnemyArmorScale` แก้ 1 บรรทัดใน `Slime.cs` / `Minotaur.cs` (tech §6 ว่า "ไม่แก้ไฟล์เหล่านั้น" แต่ decisions ชนะ)
+- ป้ายโลกเก่า (D2) วางซ้ายใต้กล่อง HP/LV แทนมุมขวาบน เพราะแผงปุ่มควบคุม (F1) ของ HUD อยู่มุมขวาบนและทับ
+- ล้อเมาส์เลื่อนรายการไม่ทำ (ไม่แตะ InputX): เลื่อนด้วยลูกศร ขึ้น/ลง (ลง backlog)
+- แถวในหน้ารายการแสดงไอคอนไอเท็ม 4 ชิ้น + `+N` ตาม design; ตัวอักษรม่วงใช้โทนสว่างกว่า #5E5878 (อ่านบนพื้นมืดได้) กรอบใช้ #5E5878 ตามเดิม
+- ไม่ทำ: ฟอกหมอกม่วงเทา (decisions ข้อ 6), co-op, biome, Soul
 
 ## เหลือ
-1. พีทยืนยัน requirement.md (รวมตาราง "รอยืนยัน")
-2. ส่ง designer (background) → design.md
-3. ส่ง architect (อ่าน design.md) → tech.md
-4. ตรวจ + decisions.md → ขออนุมัติ → developer → build/selftest/mptest → zip ขึ้น Drive
-
-## อัปเดต 2026-10-13 07:03 UTC
-- พีทยืนยัน requirement.md (ok) → ส่ง designer (background) ทำ design.md แล้ว
-
-- designer ส่ง design.md แล้ว → director ด่าน 2: ครบทุกข้อ requirement, ไม่มีฟีเจอร์แถม (หมอกม่วงเทาเป็นของเสริม ตัดออก), ไม่แตะ Host/Join → ผ่าน
-- ปูส้มตอบคำถาม 6 ข้อใน decisions.md → ส่ง architect (background) ทำ tech.md แล้ว
-
-- architect ส่ง tech.md แล้ว (7 ขั้น, ขนาดกลาง) → director ด่าน 2: ตรง requirement/design, ไฟล์ที่แก้ไม่แตะ InputX/Net/Args/MpTest/Menu, Net.Protocol คง 2 → ผ่าน; ปูส้มตัดสิน decisions ข้อ 7–14 (armor ไม่คูณ)
-- โพสต์ขออนุมัติใน Discord แล้ว
-
-- 2026-10-13 09:36 UTC: พีท (ID 372330922122674179) อนุมัติ design/tech/decisions ("ok") → ส่ง developer (background) ทำ 7 ขั้นแล้ว
-
-## รอใคร
-- รอ developer ส่งรายงาน → director ด่าน 2 (build/selftest/mptest, git diff --stat, ตรงรายการไฟล์ใน tech.md) → โพสต์ "💻 Developer:" แท็กพีท + zip ขึ้น Drive
-
-## บันทึกผลตรวจ director
-- 2026-10-13 ด่าน 1: งานอยู่ใน phase 2 ตาม vision, ไม่ชน "ไม่ทำ", ไม่ชนงานค้าง (phase 1 ปิดแล้ว) → ผ่าน
-- 2026-10-13 ด่าน 2 (requirement.md ที่ปูส้มเขียนเอง): ครอบคลุมเงื่อนไข phase 2 ของ vision ครบ, ขอบเขตไม่เกิน, ไฟล์อยู่ในโฟลเดอร์เกม → ผ่าน
+1. director ด่าน 2 → โพสต์ "💻 Developer:" แท็กพีท + zip ขึ้น Drive (ทำแล้วตอน developer ส่งงาน)
+2. พีทลองเล่นจริง: ตายในโลกใหม่ → OLD WORLDS → เก็บคืน → ฆ่าบอส → กลับฐาน 3 ครั้ง ดูการสลาย
+3. ข้อที่ต้องแจ้งพีท (decisions ข้อ 10, 13): กองสูงสุด 48 ชิ้น / โลกเก่า 99 โลกตอนโหลดเซฟ; เซฟตำแหน่งทุก ~10 วิ + ตอนปิดเกม (ผ่อนกฎ phase 1 "ปิดเกมไม่แตะเซฟ")
+4. design.md เกิน 10KB (13 KB) — ไม่ใช่ของ developer ตัดตอนปิดงาน
