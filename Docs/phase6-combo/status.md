@@ -23,3 +23,9 @@
 
 ## รอใคร (ปัจจุบัน)
 - รอพีท (ID 372330922122674179) อนุมัติ tech/tech-net/decisions → ห้ามส่ง developer จนกว่าจะเห็นข้อความอนุมัติจริง
+
+## อัปเดต 2026-10-13 14:44 UTC
+- พีท (ID 372330922122674179) อนุมัติ tech/tech-net/tech-state/decisions ("ok") → ด่าน 1 ผ่าน → ส่ง developer (background) 5 ขั้น; ห้ามอัป Drive รอพีทสั่ง
+
+## รอใคร (ปัจจุบัน)
+- รอ developer ส่งรายงาน → director ด่าน 2 (build, selftest 0 FAIL, mptest.ps1 + mptest-loop.ps1 FAIL=0, -menutest, git diff --stat ตรงรายการไฟล์ใน tech.md) → โพสต์ "💻 Developer:"
