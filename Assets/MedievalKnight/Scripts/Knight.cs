@@ -206,6 +206,7 @@ namespace MedievalKnight
         public float StaminaDeniedTime { get; private set; }
         public string LastAction { get; private set; }
         public int LastHitCount { get; private set; }
+        public float LastAttackStart { get; private set; }   // Time.time when the last sword attack began (test hook)
         public int ActionsSeen { get; private set; }       // attacks / skills started (local) or replayed (remote)
         public float MaxHp { get { return remote ? netMaxHp : BaseHp + HpPerLevel * (progress.level - 1) + progress.HpBonus; } }
         public float MaxArmor { get { return remote ? netMaxArmor : BaseArmor + progress.ArmorBonus; } }
@@ -250,6 +251,8 @@ namespace MedievalKnight
         Vector3 knockVel, aimPoint;
         int comboIndex, queued = -1;
         float queuedTime;
+        float nextSwingAt, dashStartTime = -10f;             // phase 6: no new swing before nextSwingAt; when the last dash began
+        Vector2 lastMove;                                    // the walk input of this frame (picks the direction attack)
 
         // remote knights only
         Vector3 netPos, slamTarget;
@@ -392,6 +395,7 @@ namespace MedievalKnight
             for (int i = 0; i < 4; i++) { cd[i] = 0f; cdMax[i] = 0f; }
             invulnUntil = 0f; protectUntil = 0f;
             dashInvulnUntil = 0f; dashMoveEnd = 0f; dashReadyAt = 0f;
+            nextSwingAt = 0f; dashStartTime = -10f;
             transform.position = at;
             transform.rotation = Quaternion.identity;
         }
@@ -512,6 +516,7 @@ namespace MedievalKnight
         void Simulate(KnightInput inp, bool canInput, float dt)
         {
             Vector2 mv = inp.move;
+            lastMove = mv;
             aimPoint = inp.aim;
             bool dashMoving = Time.time < dashMoveEnd;
             IsBlocking = canInput && !IsAttacking && inp.block && !dashMoving;      // the shield drops during a dash
@@ -523,14 +528,15 @@ namespace MedievalKnight
                 int req = inp.request;
                 if (req >= 0)
                 {
-                    if (IsAttacking) { queued = req; queuedTime = Time.time; }   // buffer the next action
+                    // a buffered action: one click is kept while a swing runs or the 0.5 s delay between swings has not passed
+                    if (IsAttacking || (req == ComboRequest && Time.time < nextSwingAt)) { queued = req; queuedTime = Time.time; }
                     else Request(req);
                 }
-                else if (!IsAttacking && queued >= 0)
+                else if (!IsAttacking && queued >= 0 && (queued != ComboRequest || Time.time >= nextSwingAt))
                 {
                     int q = queued;
                     queued = -1;
-                    if (Time.time - queuedTime < 0.45f) Request(q);
+                    if (Time.time - queuedTime < 0.6f) Request(q);
                 }
             }
 
@@ -595,6 +601,8 @@ namespace MedievalKnight
             lastSpendTime = Time.time;
             dashReadyAt = Time.time + DashCooldown;
             dashMoveEnd = Time.time + DashMoveTime;
+            dashStartTime = Time.time;
+            nextSwingAt = 0f;                                                     // a dash clears the 0.5 s delay: Dash Slash can follow at once
             dashInvulnUntil = Time.time + DashInvuln;
             knockVel = Vector3.zero;
             Vector3 dir = new Vector3(inp.move.x, 0f, inp.move.y);
@@ -885,13 +893,40 @@ namespace MedievalKnight
         {
             int index = request;
             bool fromCombo = request == ComboRequest;
+            int slot = index < ComboLen ? index : 0, side = 1;
             if (fromCombo)
             {
                 if (Time.time - lastAttackEnd > 0.9f) comboIndex = 0;   // combo timed out
-                index = comboIndex;
+                slot = comboIndex;
+                index = PickAttack(ref slot, out side);
+                comboIndex = (slot + 1) % ComboLen;
+                nextSwingAt = Time.time + SwingDelay;
             }
-            if (fromCombo) comboIndex = (index + 1) % ComboLen;
-            StartAttack(index, index, 1);
+            StartAttack(index, slot, side);
+        }
+
+        public const float SwingDelay = 0.5f, DashSlashWindow = 0.35f;
+
+        // Which attack a click starts at combo position slot (0-based). Order: Dash Slash > direction > the plain attack.
+        // A new attack takes the place of position 1 or 3 and never lengthens the combo. The direction is the walk input
+        // compared with where the knight faces now: W = towards the cursor, S = away, A / D = to his left / right.
+        int PickAttack(ref int slot, out int side)
+        {
+            side = 1;
+            if (Time.time - dashStartTime <= DashSlashWindow)
+            {
+                dashStartTime = -10f;
+                slot = 0;                                               // counts as click 1: the next click is Overhead Chop
+                return 5;
+            }
+            if ((slot != 0 && slot != 2) || lastMove.sqrMagnitude < 0.01f) return slot;
+            Vector3 f = transform.forward; f.y = 0f;
+            Vector3 m = new Vector3(lastMove.x, 0f, lastMove.y);
+            float angle = Vector3.Angle(f, m);
+            bool fwd = angle < 45f, back = angle > 135f;
+            if (!fwd && !back) side = Vector3.Dot(Quaternion.Euler(0f, 90f, 0f) * f, m) >= 0f ? 1 : -1;
+            if (slot == 0) return fwd ? 6 : back ? 8 : 7;                  // Advance Cleave / Shield Jab / Sidestep Slash
+            return fwd ? 9 : back ? 10 : 2;                                // Vault Chop / Retreat Slash / Rising Slash
         }
 
         // slot = the combo position shown in the HUD (0-based); side = +1 / -1 for the sidestep.
@@ -900,6 +935,7 @@ namespace MedievalKnight
             AttackDef a = Attacks[index];
             float speed = SwingSpeed;
             LastAction = a.name;
+            LastAttackStart = Time.time;
             ActionsSeen++;
             Game.I.hud.Action((slot + 1) + "  " + a.name, a.fxColor);
             Net.SendAct(NetKind(index), speed, new Vector3(side < 0 ? -1f : 1f, 0f, 0f));

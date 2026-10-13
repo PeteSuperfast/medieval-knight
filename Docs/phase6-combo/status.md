@@ -34,3 +34,8 @@
 - AttackDef ฟิลด์ใหม่ + Attacks[5..11] + ComboLen=5 + NetKind/AttackFromNetKind (30..36) + DebugMove + Protocol 3->4 + ClientHit map ชื่อท่า
 - build ผ่าน; selftest -looponly 0 FAIL (207 PASS); mptest.ps1 FAIL=0 (H61 A4 B2 C2 X1 V1)
 - เหลือ: ขั้น 2 (เลือกท่า+หน่วง+Dash Slash) 3 (charge) 4 (ออนไลน์) 5 (เอกสาร+รันครบ)
+
+## Developer 2026-10-13: ขั้น 2 เสร็จ (เลือกท่า + หน่วง 0.5 + Dash Slash)
+- PickAttack (dash > ทิศ > เดิม), nextSwingAt + คิว 1 คลิก (หน้าต่าง 0.6 วิ), Sidestep/Jab/Retreat ก้าวเป็นเมตรรวม, SelfTest เคสใหม่ + โหมด `-p6only` (รันเฉพาะเคส phase 6 ~1 นาที)
+- build ผ่าน; selftest -p6only 0 FAIL (26 PASS)
+- เหลือ: ขั้น 3 (charge local) 4 (ออนไลน์) 5 (เอกสาร + รันครบ)
