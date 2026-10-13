@@ -16,3 +16,10 @@
 
 ## บันทึกผลตรวจ director
 - ด่าน 1: เสาหลัก 1; ไม่ชน "ไม่ทำ"; ข้อ B2 ชน loop/vision จึงตัดและแจ้งพีท; พีทสั่งโดยตรง → ผ่าน
+
+## อัปเดต 2026-10-13 (ปูส้ม)
+- designer ส่ง design.md + design-ui.md → ด่าน 2 ผ่าน: ตรง requirement ข้อ 1–8, ไม่มีของที่ไม่ได้สั่ง (ข้อเสนอเกินอยู่ในคำถาม ปูส้มตัดสินใน decisions.md), ไม่แตะ B2; แยก design.md เป็น design-enemy.md ให้ ≤10KB
+- ส่ง architect (background) ทำ tech.md
+
+## รอใคร (ปัจจุบัน)
+- รอ architect
