@@ -48,6 +48,14 @@ namespace MedievalKnight
             return w.Done();
         }
 
+        // C>H: an item put down in the world
+        public static byte[] Drop(Item it, float x, float z)
+        {
+            var w = new NetW(Msg.Drop);
+            PutItem(w, it);
+            return w.Pos(x).Pos(z).Done();
+        }
+
         // H>C: who is in the room and what state they are in
         public static byte[] Team(TeamRun t)
         {
@@ -74,6 +82,14 @@ namespace MedievalKnight
             TeamRun t = g.run.team;
             switch (type)
             {
+                case Msg.Drop:
+                {
+                    Item it = GetItem(r);
+                    float x = r.Pos(), z = r.Pos();
+                    t.OnDrop(c.pid, it, x, z);
+                    break;
+                }
+
                 case Msg.Pack:
                 {
                     bool ready = r.U8() != 0;

@@ -238,6 +238,21 @@ namespace MedievalKnight
             return same;
         }
 
+        // like Eq but only over the processes that play the run (the host and the clients in `who`)
+        bool EqP(string key, params string[] who)
+        {
+            string seen = "", first = null;
+            bool same = true;
+            foreach (string r in who)
+            {
+                string v = S(r, key);
+                seen += r + "=" + v + " ";
+                if (first == null) first = v; else if (v != first) same = false;
+            }
+            note += key + "[" + seen.Trim() + "] ";
+            return same;
+        }
+
         void Ck(bool ok, string what)
         {
             Check(what + (note.Length > 0 ? "   {" + note.Trim() + "}" : ""), ok);
@@ -272,6 +287,13 @@ namespace MedievalKnight
                     stat += m.pid + ":" + (int)m.status + ",";
                 }
                 sb.Append(";room=").Append(room).Append(";ready=").Append(ready).Append(";inrun=").Append(inrun).Append(";stat=").Append(stat);
+                if (Net.IsHost)
+                    foreach (Member m in t.roster)
+                    {
+                        string ml = "";
+                        foreach (Item it in m.mirror.All()) ml += (it.IsWeapon ? "W" : "F") + it.id + "+" + it.plus + ",";
+                        sb.Append(";mir").Append(m.pid).Append('=').Append(m.mirror.Total).Append(";mirlist").Append(m.pid).Append('=').Append(ml).Append(";grants").Append(m.pid).Append('=').Append(m.grants);
+                    }
                 sb.Append(";rows=").Append(run.teamUi != null ? run.teamUi.RowsShown : -1).Append(";wait=").Append((run.teamUi != null ? run.teamUi.WaitingText : "").Replace(';', ',').Replace('=', ':'));
             }
             if (run != null && run.data != null)
@@ -409,6 +431,30 @@ namespace MedievalKnight
                     yield return null;
                     Reply(id, "ok");
                     break;
+
+                case "hp":                                           // fraction of the maximum: autoheal off
+                    autoHeal = false;
+                    k.hp = k.MaxHp * P(a[0]);
+                    Reply(id, "hp=" + F1(k.hp));
+                    break;
+
+                case "eat":
+                {
+                    int before = run.data.carry.Total;
+                    bool ate = run.EatFirst();
+                    yield return null;
+                    Reply(id, "ate=" + ate + ";carry=" + run.data.carry.Total + ";before=" + before + ";hp=" + F1(k.hp));
+                    break;
+                }
+
+                case "drop":                                         // section index
+                {
+                    int before = run.data.carry.Total;
+                    bool ok = run.UiCarryDrop((Section)int.Parse(a[0]), int.Parse(a[1]));
+                    yield return null;
+                    Reply(id, "ok=" + ok + ";carry=" + run.data.carry.Total + ";before=" + before);
+                    break;
+                }
 
                 case "autoheal":
                     autoHeal = a[0] == "1";
@@ -552,6 +598,66 @@ namespace MedievalKnight
                 && Flat(new Vector3(N("H", "x"), 0f, N("H", "z")), new Vector3(N("H", "x" + pidB), 0f, N("H", "z" + pidB))) < 8f);
             Ck(Eq("rseed") && S("H", "rseed") == "0", "it is a new world (no old world seed) everywhere");
             Shot("in_world");
+
+            // ------------------------------------------------ 4. items: pickup into the mirror, a full pack, a race, eat, drop
+            yield return Cmd("all", "autoheal", "1");
+            g.packsOff = true;
+            foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+            Vector3 spot = new Vector3(-6f, 0f, -140f);
+            yield return Cmd(A, "tp", F2(spot.x), F2(spot.z));
+            yield return Cmd(B, "tp", F2(spot.x + 30f), F2(spot.z));
+            yield return Cmd("H", "tp", F2(spot.x - 20f), F2(spot.z));
+            yield return W(0.4f);
+            yield return Sum();
+            int carryA0 = (int)N(A, "carry");
+            g.SpawnPickup(Weapons.Fang, spot + new Vector3(0.2f, 0f, 0f));
+            yield return W(1.2f);
+            yield return Sum();
+            Ck(S(A, "carry") == (carryA0 + 1).ToString() && S("H", "mir" + pidA) == (carryA0 + 1).ToString() && EqP("pk", "H", A, B) && S("H", "pk") == "0",
+                A + " walked over a Crimson Fang: it is in his carry (" + S(A, "carry") + ") and in the host's copy (" + S("H", "mir" + pidA) + "), gone from the ground everywhere");
+            Ck(S("H", "mirlist" + pidA) == S(A, "carrylist") || S("H", "mirlist" + pidA).Length == S(A, "carrylist").Length, "the host's copy of " + A + "'s pack lists the same items (" + S("H", "mirlist" + pidA) + " / " + S(A, "carrylist") + ")");
+
+            // a full pack: the item stays on the ground, nothing is lost
+            for (int i = 0; i < 6; i++) yield return Cmd(A, "give", i % 2 == 0 ? "f" : "w", i % 2 == 0 ? Foods.Meat.ToString() : (i == 1 ? Weapons.Dao : i == 3 ? Weapons.Rapier : Weapons.Greatsword).ToString(), "0");
+            yield return W(0.5f);
+            yield return Sum();
+            int full = (int)N(A, "carry");
+            g.SpawnPickup(Weapons.Boss, spot + new Vector3(0.3f, 0f, 0f));
+            yield return W(1.2f);
+            yield return Sum();
+            Ck(S(A, "carry") == full.ToString() && S("H", "mir" + pidA) == full.ToString() && S("H", "pk") == "1" && EqP("pk", "H", A, B),
+                A + "'s pack is full (" + full + "): the Horned King's Blade stays on the ground on every screen, nothing is lost");
+            Check(A + " was told 'Pack full' (" + S(A, "notice") + ")", S(A, "notice").Contains("Pack full"));
+
+            // eating: HP + one item less, the host's copy follows
+            yield return Cmd(A, "hp", "0.4");
+            yield return Cmd(A, "eat");
+            Map ate = Parse(Rep(last, A));
+            yield return W(0.6f);
+            yield return Sum();
+            Ck(ate.G("ate") == "True" && S(A, "carry") == (full - 1).ToString() && S("H", "mir" + pidA) == (full - 1).ToString(), A + " ate: his carry and the host's copy both went " + full + " -> " + (full - 1));
+            yield return Cmd(A, "autoheal", "1");
+            // the freed slot: the item on the ground is not taken by itself (A has room, a Blade is a Weapon: needs a Weapons / Supplies slot)
+            yield return W(1.0f);
+            yield return Sum();
+            Ck(EqP("pk", "H", A, B), "after the meal the pickups are still the same on every screen (" + S("H", "pk") + ")");
+
+            // dropping: A puts a Dao down; B walks over it
+            yield return Cmd(A, "drop", "2", "0");
+            Map dropped = Parse(Rep(last, A));
+            yield return W(0.8f);
+            yield return Sum();
+            Ck(dropped.G("ok") == "True" && EqP("pk", "H", A, B) && S("H", "mir" + pidA) == S(A, "carry"), A + " dropped an item: it lies in the world on every screen and the host's copy matches his pack (" + S(A, "carry") + ")");
+            Shot("items");
+
+            // ------------------------------------------------ the extra join attempts were turned away
+            if (Args.refusals)
+            {
+                t0 = RT;
+                while ((Net.RefusedFull < 1 || Net.RefusedVersion < 1) && RT - t0 < 40f) yield return W(0.25f);
+                Check("a 5th player was refused because the room is full (" + Net.RefusedFull + " refusal(s)) while the room kept its 4 players", Net.RefusedFull >= 1 && g.run.team.RoomCount == 4);
+                Check("a client with another network version was refused (" + Net.RefusedVersion + " refusal(s))", Net.RefusedVersion >= 1);
+            }
 
             yield return Cmd("all", "prepquit");
             Finish();

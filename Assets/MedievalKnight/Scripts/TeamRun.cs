@@ -268,13 +268,62 @@ namespace MedievalKnight
 
         public void OnLocalDown() { }
 
-        // host: a teammate stands on an item. Taken into his mirror (true) or left lying (false).
-        public bool HostCollect(Knight k, Pickup p) { return false; }
+        // ---------------------------------------------------------------- items
+
+        bool packDirty;
+        float nextPackSend;
+
+        // The local carry changed (eaten, dropped, picked up, moved): a client tells the host (not more than 4 times a second).
+        public void PackChanged() { packDirty = true; }
+
+        // host: a teammate stands on an item. It goes into his mirror and he is told (PickupTaken: the item, its +N) -
+        // true; when the mirror says it does not fit it stays on the ground (false) and nothing changes.
+        public bool HostCollect(Knight k, Pickup p)
+        {
+            Member m = Find(k.pid);
+            if (m == null || !m.inRun || m.status == Stat.Left || !Net.IsHost) return false;
+            Item it = p.kind == PickupKind.Food ? Item.Food(p.weaponId) : Item.Weapon(p.weaponId, p.plus);
+            if (!it.Valid || it.IsNone || !m.mirror.CanAdd(it)) return false;
+            m.mirror.Add(it);
+            m.grants++;
+            int id = p.netId, wid = p.weaponId, plus = p.plus;
+            PickupKind kind = p.kind;
+            Vector3 at = p.transform.position;
+            p.gameObject.SetActive(false);
+            Object.Destroy(p.gameObject);
+            Net.BroadcastPickupTaken(id, k.pid, (int)kind, wid, at, plus);
+            Debug.Log("PICKUP by " + m.name + ": " + it.Name + " (mirror " + m.mirror.Total + " items)");
+            return true;
+        }
+
+        // host: a client put an item down. It lies there as a pickup that nobody retakes until the dropper steps away.
+        public void OnDrop(int pid, Item it, float x, float z)
+        {
+            Member m = Find(pid);
+            if (m == null || !m.inRun || m.status == Stat.Left || it.IsNone || !Net.IsHost) return;
+            Knight k = g.PlayerByPid(pid);
+            var at = new Vector3(Mathf.Clamp(x, -Game.ArenaHalf + 1f, Game.ArenaHalf - 1f), 0f, Mathf.Clamp(z, -Game.ArenaHalf + 1f, Game.ArenaHalf - 1f));
+            if (k != null)
+            {
+                Vector3 d = at - k.Pos; d.y = 0f;
+                if (d.magnitude > 6f) at = k.Pos;                       // a believable spot: next to him
+            }
+            Pickup p = it.IsWeapon ? g.SpawnPickup(it.id, at) : g.SpawnFood(it.id, at);
+            p.plus = it.plus;
+            p.dropped = true;
+            Debug.Log("DROP by " + m.name + ": " + it.Name);
+        }
 
         // ---------------------------------------------------------------- every frame
 
         public void Tick()
         {
+            if (Net.IsClient && packDirty && Time.unscaledTime >= nextPackSend)
+            {
+                packDirty = false;
+                nextPackSend = Time.unscaledTime + 0.25f;
+                SendPack();
+            }
             if (Net.IsHost)
             {
                 foreach (Member m in roster)

@@ -123,6 +123,7 @@ namespace MedievalKnight
             if (State == LoopState.World) TickPortal();
             if (State == LoopState.World) TickPosition();
             if (State == LoopState.World) TickPile();
+            if (State == LoopState.World && team != null && Net.IsClient && !dying) TickWorldFullHint();
             if (dying)
             {
                 float t = Mathf.Clamp01((Time.unscaledTime - dieStart) / DimSeconds);
@@ -676,19 +677,53 @@ namespace MedievalKnight
         {
             Item it = p.kind == PickupKind.Food ? Item.Food(p.weaponId) : Item.Weapon(p.weaponId, p.plus);
             Vector3 at = p.transform.position;
-            Knight k = g.knight;
             if (!data.carry.CanAdd(it))
             {
-                if (Time.unscaledTime >= nextFullHint)
-                {
-                    nextFullHint = Time.unscaledTime + 1.5f;
-                    PackFullHints++;
-                    g.lastNotice = "Pack full! Can't pick up " + it.Name;
-                    g.hud.Notice(g.lastNotice, LoopUi.Yellow);
-                    g.hud.Popup(k.transform.position + new Vector3(0f, 2.7f, 0f), "Pack full", LoopUi.Yellow, 18);
-                }
+                FullHint(it);
                 return false;
             }
+            int netId = p.netId, wid = p.weaponId, plus = p.plus;
+            PickupKind pk = p.kind;
+            p.gameObject.SetActive(false);
+            Object.Destroy(p.gameObject);
+            ApplyCollected(it, at);
+            if (team != null && Net.IsHost) Net.BroadcastPickupTaken(netId, Net.LocalPid, (int)pk, wid, at, plus);     // the others lose the item from the ground
+            return true;
+        }
+
+        // "Pack full! Can't pick up X" (not more often than every 1.5 s)
+        void FullHint(Item it)
+        {
+            if (Time.unscaledTime < nextFullHint) return;
+            nextFullHint = Time.unscaledTime + 1.5f;
+            PackFullHints++;
+            g.lastNotice = "Pack full! Can't pick up " + it.Name;
+            g.hud.Notice(g.lastNotice, LoopUi.Yellow);
+            g.hud.Popup(g.knight.transform.position + new Vector3(0f, 2.7f, 0f), "Pack full", LoopUi.Yellow, 18);
+        }
+
+        // Client, online: an item lies near his knight that does not fit (the host's mirror says so too, so it stays on the ground).
+        float nextWorldFullCheck;
+
+        void TickWorldFullHint()
+        {
+            if (Time.unscaledTime < nextWorldFullCheck || g.knight.Dead) return;
+            nextWorldFullCheck = Time.unscaledTime + 0.3f;
+            Vector3 kp = g.knight.Pos;
+            foreach (Pickup p in Pickup.All)
+            {
+                if (p.hidden || p.dropped) continue;
+                Vector3 d = p.transform.position - kp; d.y = 0f;
+                if (d.sqrMagnitude > Pickup.CollectRadius * Pickup.CollectRadius) continue;
+                Item it = p.kind == PickupKind.Food ? Item.Food(p.weaponId) : Item.Weapon(p.weaponId, 0);
+                if (!data.carry.CanAdd(it)) FullHint(it);
+                return;
+            }
+        }
+
+        // The item goes into the carry (the caller checked that it fits): merge / own group / Supplies, notice, effects.
+        void ApplyCollected(Item it, Vector3 at)
+        {
             bool maxed = false;
             if (it.IsWeapon)
             {
@@ -696,8 +731,6 @@ namespace MedievalKnight
                 foreach (Item c in data.carry.supplies) if (c.IsWeapon && c.id == it.id && c.plus >= Weapons.MaxPlus) maxed = true;
             }
             BagResult r = data.carry.Add(it);
-            p.gameObject.SetActive(false);
-            Object.Destroy(p.gameObject);
             Color col = it.IsWeapon ? Weapons.All[it.id].uiColor : Foods.All[it.id].color;
             string text;
             if (it.IsWeapon && r == BagResult.Merged)
@@ -723,7 +756,23 @@ namespace MedievalKnight
             Fx.I.Burst(at + Vector3.up, 16, col, 2f, 7f, Vector3.up, 0.9f, 0.6f, 6f, 0.12f);
             Debug.Log("PICKUP " + text);
             SyncHeld();
-            return true;
+            if (team != null) { Save(); team.PackChanged(); }       // online: saved and reported (the host keeps a copy)
+        }
+
+        // Online, a client: the host gave him this item (a pickup he stood on, an item he took from a pile). Counted
+        // first, so the next Pack tells the host it has arrived. It fits (the host checked a copy of the pack); if it
+        // somehow does not, it goes back on the ground and he is told - nothing is lost quietly.
+        public void OnGrant(Item it, Vector3 at)
+        {
+            if (team == null) return;
+            team.applied++;
+            if (data.carry.CanAdd(it)) { ApplyCollected(it, at); return; }
+            Debug.Log("GRANT could not fit " + it.Name + ": put back on the ground");
+            Vector3 p = g.knight.Pos;
+            Net.ToServer(TeamNet.Drop(it, p.x, p.z));
+            g.lastNotice = "Pack full! " + it.Name + " was put back on the ground";
+            g.hud.Notice(g.lastNotice, LoopUi.Yellow);
+            team.PackChanged();
         }
 
         public bool Eat(Section sec, int index)
@@ -741,6 +790,7 @@ namespace MedievalKnight
             data.carry.Slots(sec)[index] = Item.None;
             g.CollectFood(it.id, k.transform.position);              // heals, shows "+N", plays the sound
             g.hud.Notice(g.lastNotice, Foods.All[it.id].color);
+            if (team != null) { Save(); team.PackChanged(); }
             return true;
         }
 
@@ -760,7 +810,7 @@ namespace MedievalKnight
             if (it.IsNone) return;
             if (it.kind == ItemKind.Food) { Eat(sec, index); return; }
             if (sec == Section.Weapons) { SwitchHeld(index); return; }
-            if (data.MoveWithinCarry(index)) { SyncHeld(); g.hud.Notice(it.Name + " moved to a Weapon slot", LoopUi.Green); }
+            if (data.MoveWithinCarry(index)) { SyncHeld(); g.hud.Notice(it.Name + " moved to a Weapon slot", LoopUi.Green); if (team != null) team.PackChanged(); }
             else g.hud.Notice("No free Weapon slot  -  drop a Weapon first", LoopUi.Yellow);
         }
 
@@ -778,9 +828,14 @@ namespace MedievalKnight
             data.carry.Slots(sec)[index] = Item.None;
             Transform t = g.knight.transform;
             Vector3 at = t.position + t.forward * 1.3f;
-            Pickup p = it.IsWeapon ? g.SpawnPickup(it.id, at) : g.SpawnFood(it.id, at);
-            p.plus = it.plus;
-            p.dropped = true;
+            if (team != null && Net.IsClient) Net.ToServer(TeamNet.Drop(it, at.x, at.z));       // the host puts it on the ground (it comes back in a snapshot)
+            else
+            {
+                Pickup p = it.IsWeapon ? g.SpawnPickup(it.id, at) : g.SpawnFood(it.id, at);
+                p.plus = it.plus;
+                p.dropped = true;
+            }
+            if (team != null) { Save(); team.PackChanged(); }
             g.lastNotice = "Dropped " + it.Name;
             g.hud.Notice(g.lastNotice, LoopUi.Gray);
             Debug.Log("DROP " + it.Name);

@@ -435,6 +435,12 @@ namespace MedievalKnight
                 p.gameObject.SetActive(false);
                 Destroy(p.gameObject);
             }
+            if (Coop && pid == Net.LocalPid && run != null)           // the loop online: the host gave me this item (it goes into my carry)
+            {
+                if (kind == (int)PickupKind.Food ? itemId < Foods.All.Length : itemId < Weapons.All.Length)
+                    run.OnGrant(kind == (int)PickupKind.Food ? Item.Food(itemId) : Item.Weapon(itemId, Mathf.Clamp(plus, 0, Weapons.MaxPlus)), at);
+                return;
+            }
             if (kind == (int)PickupKind.Food)
             {
                 if (itemId >= Foods.All.Length) return;
