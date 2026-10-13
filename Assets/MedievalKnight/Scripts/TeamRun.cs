@@ -28,6 +28,17 @@ namespace MedievalKnight
     public class TeamRun
     {
         public readonly List<Member> roster = new List<Member>();
+        // players who left in the middle of the open run (their slot is free again): kept for the table and for the wipe
+        public readonly List<Member> leavers = new List<Member>();
+
+        // everybody the open run counts: the ones who play and the ones who left it
+        public List<Member> RunMembers()
+        {
+            var l = new List<Member>();
+            foreach (Member m in roster) if (m.inRun) l.Add(m);
+            l.AddRange(leavers);
+            return l;
+        }
         readonly RunLoop run;
         readonly Game g;
 
@@ -98,10 +109,14 @@ namespace MedievalKnight
             }
             g.hud.Notice(m.name + " left the game", new Color(1f, 0.7f, 0.5f));
             Debug.Log("PLAYER left: " + pid + " '" + m.name + "' (" + why + "), in run " + m.inRun);
-            if (m.inRun && runLive) { m.status = Stat.Left; m.ready = false; }
-            else roster.Remove(m);
+            roster.Remove(m);
+            if (m.inRun && runLive)
+            {
+                m.status = Stat.Left;
+                m.ready = false;
+                leavers.Add(m);                                       // his carry (the mirror) and his last place still count for the end of the run
+            }
             dirty = true;
-            if (Net.IsHost && runLive) wipeChecked = false;
         }
 
         // ---------------------------------------------------------------- READY
@@ -187,6 +202,7 @@ namespace MedievalKnight
                 if (play) pids.Add(m.pid);
             }
             runLive = true;
+            leavers.Clear();
             worldSeed = seed;
             worldLeft = left;
             Net.ToAll(TeamNet.Enter(seed, left, pids), null);
@@ -217,8 +233,10 @@ namespace MedievalKnight
             worldLeft = left;
             bool myReady = LocalReady;
             roster.Clear();
+            leavers.Clear();
             foreach (Member m in list)
             {
+                if (m.status == Stat.Left) { leavers.Add(m); continue; }
                 if (m.pid == Net.LocalPid) m.ready = myReady;       // my own button is the truth for me
                 roster.Add(m);
             }
@@ -231,7 +249,7 @@ namespace MedievalKnight
         {
             homeAt = -1f;
             reachedSent = false;
-            roster.RemoveAll(m => m.status == Stat.Left);
+            leavers.Clear();
             view = null;
             lastTakerPid = 255;
             runLive = false;
@@ -405,8 +423,6 @@ namespace MedievalKnight
         }
 
         // host, every frame: everybody who plays is down or fallen (and the team is not on its way home): the run is lost.
-        bool wipeChecked;
-
         void TickWipe()
         {
             int n = 0;

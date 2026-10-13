@@ -1609,6 +1609,8 @@ namespace MedievalKnight
             yield return OldWorldLootTests();
             Log("---- old world: several piles in one world");
             yield return OldWorldPilesTests();
+            Log("---- phase 4: an online run cut short");
+            yield return OnlineRunCutShortTests();
         }
 
         // From PREPARE: OLD WORLDS -> pick the row of "seed" -> ENTER OLD WORLD (answers the food question) -> in the world.
@@ -1805,6 +1807,42 @@ namespace MedievalKnight
             Check("piles: falling 20 m from the nearest pile adds a third pile (the others stay)", w.piles.Count == 3 && w.ItemCount == 4 + carried && d.worlds.Count == 1);
             yield return Click(run.ui.ReturnRect.position);
             yield return W(0.4f);
+            g.LeaveToMenu();
+            yield return W(0.3f);
+        }
+
+        // Phase 4: a save that says "in an online run" (the game was closed / crashed during a team run) opens as ABANDONED
+        // with nothing made or counted down: the host's world is not in this file.
+        IEnumerator OnlineRunCutShortTests()
+        {
+            string file = Path.Combine(dir, "save_loop.json");
+            LoopSave.PathOverride = file;
+            if (g.InSession) g.LeaveToMenu();
+            yield return W(0.3f);
+            foreach (string suffix in new[] { "", ".bak", ".tmp", ".corrupt" }) if (File.Exists(file + suffix)) File.Delete(file + suffix);
+            LoopSave.ResetMemory();
+            var l = Loadout.NewGame();
+            l.stash.Add(Item.Weapon(Weapons.Rapier, 2));
+            l.carry.weapons[0] = Item.Weapon(Weapons.Iron, 0);
+            l.carry.foods[0] = Item.Food(Foods.Apple);
+            var own = new OldWorld { seed = 0x7E57, left = 2 };
+            own.pile.Add(Item.Weapon(Weapons.Fang));
+            l.worlds.Add(own);
+            l.inRun = true; l.runCoop = true;
+            LoopSave.Save(l);
+            Net.StartSingle("Test");
+            g.StartSession(true);
+            k = g.knight;
+            yield return W(0.5f);
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            Check("online run cut short: opening the game afterwards shows ABANDONED, the carry is gone, no old world was made, the counter of the one he has is still 2",
+                run.SummaryOpen && run.result.abandoned && d.carry.Total == 0 && d.worlds.Count == 1 && d.worlds[0].left == 2 && d.worlds[0].ItemCount == 1
+                && d.stash.HasWeaponId(Weapons.Rapier) && !d.inRun && !d.runCoop && run.ui.SummaryTitle == "ABANDONED");
+            Check("online run cut short: a notice says an online run was cut short", g.hud.NoticeShown.Contains("online run"));
+            Check("online run cut short: the file was rewritten (no run open, rc off)", !LoopSave.FromJson(File.ReadAllText(LoopSave.Path)).inRun && !LoopSave.FromJson(File.ReadAllText(LoopSave.Path)).runCoop);
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.3f);
             g.LeaveToMenu();
             yield return W(0.3f);
         }
@@ -2997,6 +3035,25 @@ namespace MedievalKnight
             RunResult rb = big.Die(false, 0f, 0f, 1);
             Check("old world: a pile holds at most " + OldWorld.MaxPile + " items, the rest is reported as overflow",
                 bw.pile.Count == OldWorld.MaxPile && rb.overflow.Count == 2);
+
+            // phase 4, a client of an online team: the host's worlds are not his to count down or to make; what he carried
+            // goes into his stash on a win and is simply gone on a loss (it lies in the host's world as piles)
+            {
+                Loadout oc = Loadout.NewGame();
+                var mine = new OldWorld { seed = 0x3A3A, left = 2 }; mine.pile.Add(Item.Food(Foods.Meat));
+                oc.worlds.Add(mine);
+                oc.carry.weapons[0] = Item.Weapon(Weapons.Fang, 1); oc.carry.foods[0] = Item.Food(Foods.Apple);
+                oc.BeginRun(0, true);
+                RunResult won = oc.Survive(false);
+                Check("online client: a win puts the carry into the stash (Fang +1, Apple), touches no old world (counter still 2) and makes none",
+                    won.victory && oc.stash.HasWeaponId(Weapons.Fang) && oc.carry.Total == 0 && mine.left == 2 && oc.worlds.Count == 1 && !oc.inRun && !oc.runCoop && won.brought.Count == 2);
+                oc.carry.weapons[0] = Item.Weapon(Weapons.Dao, 0); oc.carry.foods[0] = Item.Food(Foods.Apple);
+                oc.BeginRun(0, true);
+                bool rcFlag = oc.runCoop && oc.inRun && oc.runWorld == 0;
+                RunResult lost = oc.LoseCarry(false);
+                Check("online client: a loss empties the carry (2 items lost), makes no old world, counts nothing down (counter 2), the stash is as it was",
+                    rcFlag && !lost.victory && lost.lost.Count == 2 && oc.carry.Total == 0 && oc.worlds.Count == 1 && mine.left == 2 && oc.stash.HasWeaponId(Weapons.Fang) && !oc.inRun && !oc.runCoop);
+            }
 
             // survive: counters of every old world go down; the world played in is closed when its pile is empty
             Loadout s = Loadout.NewGame();

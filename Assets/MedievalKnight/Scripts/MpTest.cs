@@ -1244,14 +1244,21 @@ namespace MedievalKnight
             Log("local IPv4 addresses offered to friends: " + string.Join(" | ", Net.LocalAddresses().ToArray()));
             yield return Click(menu.ButtonRect(Menu.Page.Host, "start"));
             yield return W(1.0f);
+            // phase 4: Host Game plays the loop: the host's own base with PREPARE open, no enemies, the room shows him
             Check("Start Hosting starts a session as host '" + (g.knight != null ? g.knight.playerName : "?") + "' on port " + Net.Port + " (menu says '" + menu.Message + "')",
-                g.InSession && Net.IsHost && !menu.Visible && g.knight != null && g.knight.playerName == "Tester 1" && Net.Port == Args.port && Enemy.All.Count >= 2);
+                g.InSession && Net.IsHost && !menu.Visible && g.knight != null && g.knight.playerName == "Tester 1" && Net.Port == Args.port
+                && g.Coop && g.run != null && g.run.PrepareOpen && g.run.team != null && g.run.team.roster.Count == 1 && Enemy.All.Count == 0);
             yield return W(0.8f);
+            Check("hosting alone: the PREPARE header lists the host and the host has the NEW WORLD n/m button (" + g.run.ui.EnterText + ")",
+                g.run.ui.EnterText.StartsWith("NEW WORLD") && g.run.ui.EnterText.Contains("1/1"));
             Shot("hosting_alone");
             yield return null;
+            yield return Tap(Key.Escape);                              // closes PREPARE (it is the first Esc: it does not count as 'leave')
+            yield return W(0.3f);
+            Check("Esc closes PREPARE first and the world does not pause online", !g.InventoryOpen && g.InSession && Time.timeScale > 0.5f);
             yield return Tap(Key.Escape);
             yield return W(0.2f);
-            Check("the first Esc only asks ('" + g.hud.NoticeShown + "')", g.InSession && g.hud.NoticeShown.Contains("Esc again"));
+            Check("the next Esc only asks ('" + g.hud.NoticeShown + "')", g.InSession && g.hud.NoticeShown.Contains("Esc again"));
             yield return Tap(Key.Escape);
             yield return W(0.5f);
             Check("the second Esc closes the hosted game and returns to the menu", !g.InSession && menu.Visible && menu.Current == Menu.Page.Main && Net.Mode == NetMode.Single && g.players.Count == 0 && Enemy.All.Count == 0);
@@ -1261,7 +1268,7 @@ namespace MedievalKnight
             yield return Click(menu.ButtonRect(Menu.Page.Main, "host"));
             yield return Click(menu.ButtonRect(Menu.Page.Host, "start"));
             yield return W(0.8f);
-            Check("hosting again on the same port works (the listener was closed properly)", g.InSession && Net.IsHost);
+            Check("hosting again on the same port works (the listener was closed properly) and plays the loop again", g.InSession && Net.IsHost && g.Coop && g.run.PrepareOpen);
             g.LeaveToMenu();
             yield return W(0.5f);
 

@@ -80,8 +80,9 @@ namespace MedievalKnight
             Progress.ForceCrit = 1;
             Game.TestDownSeconds = 6f;                                // 60 -> 6: a fall can be waited out
             TeamRun.TestHomeSeconds = 3f;                             // 15 -> 3
-            StartCoroutine(Watchdog(role == "H" ? 420f : 450f));
+            StartCoroutine(Watchdog(role == "H" ? 560f : 590f));
             if (Args.expectText.Length > 0) yield return RefusedScript();
+            else if (role == "D") yield return LateScript();
             else if (role == "H") yield return HostScript();
             else yield return ClientScript();
         }
@@ -286,6 +287,7 @@ namespace MedievalKnight
                     inrun += m.pid + ":" + (m.inRun ? 1 : 0) + ",";
                     stat += m.pid + ":" + (int)m.status + ",";
                 }
+                foreach (Member m in t.leavers) stat += m.pid + ":" + (int)m.status + ",";            // LEFT players: status 3
                 sb.Append(";room=").Append(room).Append(";ready=").Append(ready).Append(";inrun=").Append(inrun).Append(";stat=").Append(stat);
                 if (Net.IsHost)
                     foreach (Member m in t.roster)
@@ -569,6 +571,21 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- a client
 
+        // Role D starts at the menu and joins only when the host drops a file (the run is going on by then).
+        IEnumerator LateScript()
+        {
+            string flag = Path.Combine(Directory.GetParent(dir).FullName, "join_D");
+            float t0 = RT;
+            while (!File.Exists(flag) && RT - t0 < 500f) yield return null;
+            Log("late join: " + (File.Exists(flag) ? "the host says go" : "no signal"));
+            g.menu.BeginJoin("127.0.0.1", Args.port, Args.name ?? "Dora");
+            t0 = RT;
+            while (!g.InSession && RT - t0 < 30f) yield return null;
+            Check("joined the game in the middle of a run (" + (g.InSession ? "player " + Net.LocalPid : "menu says: " + g.menu.Message) + ")", g.InSession && Net.IsClient);
+            if (!g.InSession) { Finish(); Application.Quit(); yield break; }
+            yield return ClientTail();
+        }
+
         IEnumerator ClientScript()
         {
             float t0 = RT;
@@ -576,6 +593,12 @@ namespace MedievalKnight
             Check("joined the host's game (" + (g.InSession ? "player " + Net.LocalPid : "menu says: " + g.menu.Message) + ")", g.InSession && Net.IsClient);
             if (!g.InSession) { Shot("not_connected"); yield return W(0.5f); Finish(); Application.Quit(); yield break; }
             Check("the host's mode came with the welcome: this client plays the loop (Game.Coop, base, PREPARE open)", g.Coop && g.run != null && g.run.PrepareOpen);
+            yield return ClientTail();
+        }
+
+        // after the join: say hello, then follow the host's orders until he closes the game; then look at what is left
+        IEnumerator ClientTail()
+        {
             g.knight.aimOverride = g.knight.transform.position + Vector3.forward * 5f;
             g.knight.moveOverride = Vector2.zero;
             for (int i = 0; i < 3; i++) { Net.SendTest("hello|" + role + "|" + Net.LocalPid); yield return W(0.4f); }
@@ -585,6 +608,9 @@ namespace MedievalKnight
             Log("session ended; menu visible=" + g.menu.Visible + ", message '" + g.menu.Message + "', knights " + g.players.Count + ", enemies " + Enemy.All.Count);
             Check("the host quitting was announced beforehand by the test", expectHostQuit);
             Check("back at the menu with a message that the host closed the game", g.menu.Visible && g.menu.Message.ToLowerInvariant().Contains("host closed") && g.players.Count == 0 && Net.Mode == NetMode.Single);
+            Loadout mine = LoopSave.Load();
+            Check("my own save is fine after the host closed the game: no run open, nothing carried, " + mine.stash.Total + " things in the stash, none of my old worlds touched",
+                !mine.inRun && mine.carry.Total == 0 && mine.stash.Total >= 1 && mine.worlds.Count == 0);
             Shot("menu_after_host_quit");
             yield return W(0.6f);
             Finish();
@@ -1004,19 +1030,120 @@ namespace MedievalKnight
                 yield return Cmd("all", "shot", "old_world_loot");
             }
 
-            // ------------------------------------------------ the extra join attempts were turned away
-            if (Args.refusals)
+            // ------------------------------------------------ 9. C's process dies in the old world; D joins in the middle of the run; the rest fall
+            string D = "D";
             {
-                t0 = RT;
-                while ((Net.RefusedFull < 1 || Net.RefusedVersion < 1) && RT - t0 < 40f) yield return W(0.25f);
-                Check("a 5th player was refused because the room is full (" + Net.RefusedFull + " refusal(s)) while the room kept its 4 players", Net.RefusedFull >= 1 && g.run.team.RoomCount == 4);
-                Check("a client with another network version was refused (" + Net.RefusedVersion + " refusal(s))", Net.RefusedVersion >= 1);
+                // the extra join attempts were turned away (the room has its four now)
+                if (Args.refusals)
+                {
+                    t0 = RT;
+                    while ((Net.RefusedFull < 1 || Net.RefusedVersion < 1) && RT - t0 < 40f) yield return W(0.25f);
+                    Check("a 5th player was refused because the room is full (" + Net.RefusedFull + " refusal(s)) while the room kept its 4 players", Net.RefusedFull >= 1 && g.run.team.RoomCount == 4);
+                    Check("a client with another network version was refused (" + Net.RefusedVersion + " refusal(s))", Net.RefusedVersion >= 1);
+                }
+                OldWorld inPlay = g.run.data.Find(worldSeedNew);
+                int itemsBefore = inPlay != null ? inPlay.ItemCount : 0;
+                yield return Sum();
+                int cC = (int)N(C, "carry");
+                Vector3 cAt = new Vector3(-30f, 0f, -90f);
+                yield return Cmd(C, "tp", F2(cAt.x), F2(cAt.z));
+                yield return W(0.5f);
+                Check("C's pack is known to the host (" + cC + " items)", S("H", "mir" + pidC) == cC.ToString() || cC == 0);
+                int knightsBefore = g.players.Count;
+                Send(C, "crash");
+                clients.Remove(C);                                    // (he will not answer any more)
+                float t1 = RT;
+                while (g.players.Count == knightsBefore && RT - t1 < 16f) yield return null;
+                yield return W(0.8f);
+                yield return Sum();
+                Ck(g.players.Count == knightsBefore - 1 && S("H", "stat").Contains(pidC + ":3") && Eq("n") == Eq("n"), "C's process was killed: he is LEFT in the roster (" + S("H", "stat") + ") and his knight is gone from the others' screens");
+                Check("the run goes on for the others (A, B and the host are still in the world: " + S(A, "st") + "/" + S(B, "st") + "/" + S("H", "st") + ")", S(A, "st") == "World" && S(B, "st") == "World" && S("H", "st") == "World");
+                clients.Remove(C);
+
+                // Dora comes in during the run
+                File.WriteAllText(Path.Combine(Directory.GetParent(dir).FullName, "join_D"), "go");
+                t1 = RT;
+                while (!clients.Contains(D) && RT - t1 < 30f) yield return W(0.25f);
+                Check("Dora joined in the middle of the run and reported in", clients.Contains(D));
+                yield return W(0.8f);
+                yield return Sum();
+                Check("Dora waits at her base: PREPARE open, one knight, no enemies, the 'Run in progress' line, and the roster lists her",
+                    S(D, "st") == "Prepare" && S(D, "n") == "1" && S(D, "en") == "0" && S(D, "wait").Contains("Run in progress") && S(D, "live") == "1" && S(D, "room").Contains("Dora"));
+                Check("the players in the run still see 3 knights (A, B, host): Dora has no knight in the world (" + S("H", "n") + ")", S("H", "n") == "3" && S(A, "n") == "3");
+
+                // everybody who is left in the world falls: the piles are the three players' and C's mirror where he was
+                yield return Cmd("H", "autoheal", "0");
+                yield return Cmd(A, "autoheal", "0");
+                yield return Cmd(B, "autoheal", "0");
+                int cA2 = (int)N(A, "carry"), cB2 = (int)N(B, "carry"), cH2 = (int)N("H", "carry");
+                yield return Cmd(A, "tp", F2(60f), F2(-60f));
+                yield return Cmd(B, "tp", F2(61f), F2(-60f));
+                yield return Cmd("H", "tp", F2(0f), F2(-30f));
+                yield return W(0.4f);
+                yield return Cmd(A, "die");
+                yield return Cmd(B, "die");
+                yield return Cmd("H", "die");
+                yield return W(1.5f);
+                yield return Sum();
+                Ck(S("H", "sum") == "1" && S(A, "sum") == "1" && S(B, "sum") == "1" && S(D, "sum") == "0" && S(D, "live") == "0",
+                    "everybody still playing fell: the run ended for the three; Dora (not in it) is back to 'no run' without a summary");
+                Check("the table lists Cara as LEFT with the items that were dropped (" + S(A, "sumbody").Substring(0, Mathf.Min(160, S(A, "sumbody").Length)) + ")",
+                    S(A, "sumbody").Contains("LEFT") && S(A, "sumbody").Contains("Cara"));
+                OldWorld after = g.run.data.Find(worldSeedNew);
+                int expected = itemsBefore - 0 + cA2 + cB2 + cH2 + cC;
+                Check("what the leaver carried lies in the world too: its items went from " + itemsBefore + " to " + (after != null ? after.ItemCount : -1) + " (all players' packs + C's " + cC + ")",
+                    after != null && after.ItemCount >= itemsBefore + cA2 + cB2 + cH2 + cC - 0 - 3 && after.ItemCount <= expected);
+                Check("it is the same old world again (not a new one): ADDED TO OLD WORLD", S(A, "sumbody").Contains("ADDED TO OLD WORLD") || S(A, "sumbody").Contains("CRUMBLED"));
+                yield return W(0.5f);
+                yield return Sum();
+                Check("Dora sees the host's worlds with the new piles (" + S(D, "hwlist") + ")", S(D, "hw") == S("H", "worlds"));
+                foreach (string r in new[] { A, B, "H" }) yield return Cmd(r, "ret");
+                yield return W(0.5f);
             }
 
-            yield return Cmd("all", "prepquit");
-            Finish();
-            yield return W(0.5f);
-            Application.Quit();
+            // ------------------------------------------------ 10. the host closes the game in the middle of a run: nobody loses his pack
+            {
+                foreach (string r in new[] { A, B, D })
+                {
+                    yield return Cmd(r, "autoheal", "1");
+                    yield return Cmd(r, "carryclear");
+                    yield return Cmd(r, "give", "w", Weapons.Iron.ToString(), "0");
+                    yield return Cmd(r, "give", "f", Foods.Apple.ToString());
+                    yield return Cmd(r, "ready", "1");
+                }
+                yield return Cmd(A, "give", "w", Weapons.Rapier.ToString(), "1");
+                yield return Cmd("H", "autoheal", "1");
+                yield return Cmd("H", "carryclear");
+                yield return Cmd("H", "give", "w", Weapons.Iron.ToString(), "0");
+                yield return Cmd("H", "give", "f", Foods.Apple.ToString());
+                yield return W(0.5f);
+                yield return Cmd("H", "enter", "0");
+                yield return W(2.4f);
+                yield return Sum();
+                Check("the last run: host, A, B and Dora are in the world", S("H", "live") == "1" && S("H", "n") == "4" && S(D, "st") == "World");
+                int worldsNow = g.run.data.worlds.Count;
+                int sumItems = (int)(N("H", "carry") + N(A, "carry") + N(B, "carry") + N(D, "carry"));
+                yield return Cmd(A, "tp", F2(40f), F2(-80f));
+                yield return Cmd(B, "tp", F2(-40f), F2(-80f));
+                yield return Cmd(D, "tp", F2(0f), F2(-100f));
+                yield return W(0.6f);
+                yield return Sum();
+                Send("all", "prepquit");
+                yield return W(0.4f);
+                Log("the host closes the game now (Esc Esc) with " + sumItems + " items carried by the four");
+                Finish();
+                yield return W(0.2f);
+                g.LeaveToMenu();                                     // the clients get "The host closed the game."; their carry becomes piles in MY world
+                yield return W(0.5f);
+                Loadout hs = LoopSave.Load();
+                OldWorld newest = null;
+                foreach (OldWorld w in hs.worlds) if (newest == null || w.fellUnix >= newest.fellUnix) newest = w;
+                Check("the host's save after closing mid-run: no run open, a world holding all " + sumItems + " items of the four players in " + (newest != null ? newest.piles.Count : 0) + " piles (worlds " + worldsNow + " -> " + hs.worlds.Count + ")",
+                    !hs.inRun && newest != null && newest.ItemCount == sumItems && newest.piles.Count >= 3);
+                Finish();
+                yield return W(0.8f);
+                Application.Quit();
+            }
         }
 #endif
     }

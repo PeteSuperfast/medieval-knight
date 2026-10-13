@@ -28,15 +28,17 @@ $procs += Launch 'C' @('-join', '127.0.0.1', '-name', 'Cara')
 # must not get in: the room is full, other network version
 $procs += Launch 'X' @('-join', '127.0.0.1', '-name', 'Fifth', '-expecttext', 'full', '-joindelay', '14')
 $procs += Launch 'V' @('-join', '127.0.0.1', '-name', 'OldBuild', '-netversion', '99', '-expecttext', 'version', '-joindelay', '16')
+# joins in the middle of a run, when the host drops a file (the process starts at the menu)
+$procs += Launch 'D' @('-name', 'Dora')
 
-$deadline = (Get-Date).AddSeconds(480)
+$deadline = (Get-Date).AddSeconds(640)
 foreach ($p in $procs) {
     $left = [int](($deadline - (Get-Date)).TotalMilliseconds)
     if ($left -lt 1) { $left = 1 }
     if (-not $p.WaitForExit($left)) { $p.Kill(); "KILLED pid $($p.Id) (still running at the deadline)" }
 }
 
-foreach ($role in 'H', 'A', 'B', 'C', 'X', 'V') {
+foreach ($role in 'H', 'A', 'B', 'C', 'X', 'V', 'D') {
     $log = Join-Path $outDir "$role\player.log"
     if (-not (Test-Path $log)) { "$role : no log"; continue }
     $l = Get-Content $log

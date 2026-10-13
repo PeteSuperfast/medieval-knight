@@ -236,7 +236,10 @@ namespace MedievalKnight
             bool show = !run.PrepareOpen && !run.SummaryOpen && !run.Busy;
             int n = 0;
             if (show)
-                foreach (Member m in t.roster)
+            {
+                var rows4 = new List<Member>(t.roster);
+                if (inWorld) rows4.AddRange(t.leavers);                  // LEFT, grey, until the run is over
+                foreach (Member m in rows4)
                 {
                     if (n >= MaxRows) break;
                     Text tx = rows[n];
@@ -246,6 +249,7 @@ namespace MedievalKnight
                     tx.text = "<color=" + Hex(Knight.UiColor(m.pid)) + ">" + nm + "</color>   " + StatusOf(g, t, m, inWorld);
                     n++;
                 }
+            }
             for (int i = n; i < MaxRows; i++)
                 if (rows[i].gameObject.activeSelf) { rows[i].gameObject.SetActive(false); swatches[i].gameObject.SetActive(false); }
             // K1 / S1: the local knight is down / fallen; the reviver's prompt; "DOWN 42" over every downed knight

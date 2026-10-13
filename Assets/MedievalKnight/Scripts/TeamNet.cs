@@ -136,7 +136,7 @@ namespace MedievalKnight
         {
             var w = new NetW(Msg.RunEnd).U8(e.kind).I32(e.worldSeed).U8(e.worldNote).U8(e.leftBefore).U8(e.leftAfter)
                 .U8(e.pilesN).U16(e.itemsInPiles).U8(e.team.Count);
-            for (int i = 0; i < e.team.Count; i++) w.U8(e.pids[i]).U8(e.team[i].status).U8(Mathf.Clamp(e.team[i].items, 0, 255));
+            for (int i = 0; i < e.team.Count; i++) w.U8(e.pids[i]).Str(e.team[i].name).U8(e.team[i].status).U8(Mathf.Clamp(e.team[i].items, 0, 255));
             int nc = Mathf.Min(e.crumbs.Count, 12);
             w.U8(nc);
             for (int i = 0; i < nc; i++)
@@ -150,8 +150,10 @@ namespace MedievalKnight
         // H>C: who is in the room and what state they are in
         public static byte[] Team(TeamRun t)
         {
-            var w = new NetW(Msg.Team).U8(t.runLive ? 1 : 0).I32(t.worldSeed).U8(t.worldLeft).U8(t.roster.Count);
-            foreach (Member m in t.roster)
+            var all = new List<Member>(t.roster);
+            if (t.runLive) all.AddRange(t.leavers);                   // the ones who left show as LEFT while the run goes on
+            var w = new NetW(Msg.Team).U8(t.runLive ? 1 : 0).I32(t.worldSeed).U8(t.worldLeft).U8(all.Count);
+            foreach (Member m in all)
                 w.U8(m.pid).Str(m.name).U8((m.ready ? 1 : 0) | (m.inRun ? 2 : 0)).U8((int)m.status).U16(Mathf.Clamp(Mathf.RoundToInt(m.downLeft), 0, 65535));
             return w.Done();
         }
@@ -226,7 +228,7 @@ namespace MedievalKnight
                 {
                     bool live = r.U8() != 0;
                     int seed = r.I32(), left = r.U8();
-                    int n = Mathf.Min(r.U8(), Net.MaxPlayers);
+                    int n = Mathf.Min(r.U8(), 2 * Net.MaxPlayers);
                     var list = new List<Member>();
                     for (int i = 0; i < n; i++)
                     {
@@ -313,10 +315,11 @@ namespace MedievalKnight
                     int n = Mathf.Min(r.U8(), Net.MaxPlayers);
                     for (int i = 0; i < n; i++)
                     {
-                        int pid = r.U8(), status = r.U8(), items = r.U8();
-                        Member m = t.Find(pid);
+                        int pid = r.U8();
+                        string nm = Net.CleanName(r.Str(), pid);
+                        int status = r.U8(), items = r.U8();
                         e.pids.Add(pid);
-                        e.team.Add(new TeamLine { name = m != null ? m.name : "Player " + (pid + 1), status = Mathf.Clamp(status, 0, 2), items = items });
+                        e.team.Add(new TeamLine { name = nm, status = Mathf.Clamp(status, 0, 2), items = items });
                     }
                     int nc = Mathf.Min(r.U8(), 12);
                     for (int i = 0; i < nc; i++)

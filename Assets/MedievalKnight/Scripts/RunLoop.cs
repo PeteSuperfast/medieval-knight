@@ -107,7 +107,18 @@ namespace MedievalKnight
 
         public void Shutdown()
         {
-            SavePosition(true);                                     // closing the game mid-run: ABANDONED knows where the loot lies
+            if (team != null && data != null && data.inRun)
+            {
+                // closing the game (or losing the connection) in the middle of an online run
+                if (data.runCoop)
+                {
+                    data.LoseCarry(true);                           // a client: what he carried is gone from him (it lies in the host's world if the team falls)
+                    Save();
+                }
+                else if (team.runLive) HostAbandon();               // the host: everybody's things lie where they were
+                else SavePosition(true);
+            }
+            else SavePosition(true);                                // closing the game mid-run: ABANDONED knows where the loot lies
             ResetWorldMultipliers();
             DropPortal();
             if (ui != null) Object.Destroy(ui.gameObject);
@@ -685,9 +696,8 @@ namespace MedievalKnight
             if (State != LoopState.World || team == null || !Net.IsHost) return;
             var drops = new List<Drop>();
             var e = new RunEndInfo { kind = 2, leftBefore = team.worldLeft };
-            foreach (Member m in team.roster)
+            foreach (Member m in team.RunMembers())
             {
-                if (!m.inRun) continue;
                 var d = new Drop { who = m.name };
                 if (m.pid == Net.LocalPid)
                 {
@@ -713,6 +723,33 @@ namespace MedievalKnight
             Net.ToAll(TeamNet.RunEnd(e), null);
             EnterSummary();
             Debug.Log("TEAM wipe: " + e.team.Count + " players, " + result.lost.Count + " items fell in " + result.pilesN + " piles of world " + result.WorldCode);
+        }
+
+        // host, online: the game is closed in the middle of a run (decisions 7). Not only the host's own things: everybody who
+        // plays gets a pile where his mirror says he was, so nobody loses his carry because the host went away. It counts as
+        // ABANDONED for the whole team (the way back counts down the other old worlds, the new one starts at 3).
+        void HostAbandon()
+        {
+            var drops = new List<Drop>();
+            foreach (Member m in team.RunMembers())
+            {
+                var d = new Drop { who = m.name };
+                if (m.pid == Net.LocalPid)
+                {
+                    Vector3 p = g.knight != null ? g.knight.Pos : MapLayout.TownSpawn;
+                    d.x = p.x; d.z = p.z;
+                    d.items.AddRange(data.carry.All());
+                }
+                else
+                {
+                    d.x = m.lastPos.x; d.z = m.lastPos.z;
+                    d.items.AddRange(m.mirror.All());
+                }
+                drops.Add(d);
+            }
+            RunResult r = data.Fall(drops, true, Loadout.NowUnix());
+            Save();
+            Debug.Log("TEAM host closed mid-run: " + drops.Count + " carries became " + r.pilesN + " piles of world " + r.WorldCode);
         }
 
         // Every take is saved at once (no item can be taken twice by closing the game). A pile that ran empty vanishes; the
@@ -1077,9 +1114,8 @@ namespace MedievalKnight
             var e = new RunEndInfo { kind = 1, worldSeed = result.worldSeed, worldNote = (int)result.worldNote, leftBefore = leftBefore, leftAfter = result.worldLeft,
                 pilesN = result.pilesN, itemsInPiles = result.pileCount };
             e.crumbs.AddRange(result.crumbs);
-            foreach (Member m in team.roster)
+            foreach (Member m in team.RunMembers())
             {
-                if (!m.inRun) continue;
                 int st = m.status == Stat.Left ? TeamRun.Left : m.status == Stat.Alive ? TeamRun.Survived : TeamRun.Fell;
                 int items = m.pid == Net.LocalPid ? result.brought.Count : st == TeamRun.Left ? 0 : m.mirror.Total;
                 e.pids.Add(m.pid);
