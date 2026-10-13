@@ -32,6 +32,7 @@ namespace MedievalKnight
         public LootPile pile;                                       // the pile of the old world being played (null: none / all taken)
         public Vector3 pilePos;                                     // where it stands (PilePoint of the saved spot)
         OldWorld pileWorld;
+        Pile curPile;                                               // the pile the loot window shows (phase 4 step 2: the first one)
         bool lootMode;                                              // the inventory window is the loot window, not the Carry window
         bool pileArmed = true;                                      // false from closing the window until the knight has stepped away
         public bool Dying { get { return dying; } }                 // fallen, the screen is dimming
@@ -131,7 +132,7 @@ namespace MedievalKnight
             askedNoFood = false;
             if (State == LoopState.World)
             {
-                if (lootMode && pileWorld != null) ui.ShowLoot(data, pileWorld);
+                if (lootMode && pileWorld != null && curPile != null) ui.ShowLoot(data, pileWorld.Code, curPile);
                 else { lootMode = false; ui.ShowCarry(data, g.knight); }
                 return;
             }
@@ -162,7 +163,7 @@ namespace MedievalKnight
         public void InventoryInput()
         {
             if (State == LoopState.Prepare) { if (worldsOpen) ui.WorldsInput(data); else ui.PrepareInput(data); }
-            else if (State == LoopState.World) { if (lootMode) ui.LootInput(data, pileWorld); else ui.CarryInput(data, g.knight); }
+            else if (State == LoopState.World) { if (lootMode) { if (curPile != null) ui.LootInput(data, pileWorld.Code, curPile); } else ui.CarryInput(data, g.knight); }
         }
 
         // A cell was clicked (or Enter on it): the item goes to the other side.
@@ -267,23 +268,25 @@ namespace MedievalKnight
             ui.FadeTo(0f, 0.5f);
             ui.SetObjective("Objective: Defeat the Minotaur to return");
             OldWorld ow = data.Find(data.runWorld);
+            Pile first = ow != null && ow.piles.Count > 0 ? ow.piles[0] : null;
             if (ow != null)
             {
-                Vector3 pp = PilePoint(ow.x, ow.z);
+                Vector3 pp = first != null ? PilePoint(first.x, first.z) : MapLayout.TownSpawn;
                 float far = Mathf.Round(Vector3.Distance(MapLayout.TownSpawn, pp));
                 g.hud.Banner("OLD WORLD " + ow.Code + "\nYour loot lies where you fell. " + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
-                ui.SetObjective2(ow.pile.Count > 0 ? "Recover your loot" : "");
+                ui.SetObjective2(ow.ItemCount > 0 ? "Recover your loot" : "");
             }
             else ui.SetObjective2("");
-            if (ow != null && ow.pile.Count > 0)
+            if (ow != null && first != null)
             {
                 pileWorld = ow;
-                pilePos = PilePoint(ow.x, ow.z);
+                curPile = first;
+                pilePos = PilePoint(first.x, first.z);
                 pile = LootPile.Create(g.transform, pilePos);
                 pileArmed = true;
             }
             Sfx.I.Play(Snd.Ready);
-            Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " pile " + ow.pile.Count : ""));
+            Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " items " + ow.ItemCount : ""));
         }
 
         public void SummaryInput() { ui.SummaryInput(); }
@@ -339,8 +342,8 @@ namespace MedievalKnight
         void TickPile()
         {
             Knight k = g.knight;
-            bool show = pile != null && pileWorld != null && !dying && !k.Dead;
-            ui.SetLootMarker(g.cam, pilePos, show ? FlatDist(k.Pos, pilePos) : 0f, show ? pileWorld.pile.Count : 0, show && !g.PanelOpen);
+            bool show = pile != null && pileWorld != null && curPile != null && !dying && !k.Dead;
+            ui.SetLootMarker(g.cam, pilePos, show ? FlatDist(k.Pos, pilePos) : 0f, show ? curPile.items.Count : 0, show && !g.PanelOpen);
             if (!show || lootMode) return;
             float d = FlatDist(k.Pos, pilePos);
             if (!pileArmed && d > LootPile.RearmRadius) pileArmed = true;
@@ -357,8 +360,8 @@ namespace MedievalKnight
         // Loot window: take one item (click / Enter). The pack rules decide; a full pack leaves it in the pile.
         public void UiTake(int index)
         {
-            if (!LootOpen || pileWorld == null || index < 0 || index >= pileWorld.pile.Count) return;
-            Item it = pileWorld.pile[index];
+            if (!LootOpen || pileWorld == null || curPile == null || index < 0 || index >= curPile.items.Count) return;
+            Item it = curPile.items[index];
             bool maxed = false;
             if (it.IsWeapon)
             {
@@ -366,7 +369,7 @@ namespace MedievalKnight
                 foreach (Item c in data.carry.supplies) if (c.IsWeapon && c.id == it.id && c.plus >= Weapons.MaxPlus) maxed = true;
             }
             bool merged = it.IsWeapon && data.carry.HasWeaponId(it.id);
-            if (!data.TakeFromPile(pileWorld, index))
+            if (!data.TakeFromPile(pileWorld, curPile, index))
             {
                 PackFullHints++;
                 g.lastNotice = "Pack full! Can't take " + it.Name;
@@ -392,8 +395,8 @@ namespace MedievalKnight
         // Take all: everything that fits (in pile order).
         public void UiTakeAll()
         {
-            if (!LootOpen || pileWorld == null || pileWorld.pile.Count == 0) return;
-            int n = data.TakeAll(pileWorld);
+            if (!LootOpen || pileWorld == null || curPile == null || curPile.items.Count == 0) return;
+            int n = data.TakeAll(pileWorld, curPile);
             if (n == 0)
             {
                 PackFullHints++;
@@ -401,7 +404,7 @@ namespace MedievalKnight
                 ui.SetLootWarn(g.lastNotice, LoopUi.Yellow, 1.8f, Section.Weapons);
                 return;
             }
-            g.lastNotice = "Took " + n + (n == 1 ? " item" : " items") + (pileWorld.pile.Count > 0 ? "   -   " + pileWorld.pile.Count + " left in the pile" : "");
+            g.lastNotice = "Took " + n + (n == 1 ? " item" : " items") + (curPile.items.Count > 0 ? "   -   " + curPile.items.Count + " left in the pile" : "");
             g.hud.Notice(g.lastNotice, LoopUi.LootGold);
             SyncHeld();
             AfterPileChange();
@@ -411,7 +414,7 @@ namespace MedievalKnight
         void AfterPileChange()
         {
             Save();
-            if (pileWorld != null && pileWorld.pile.Count == 0)
+            if (pileWorld != null && curPile != null && curPile.items.Count == 0)
             {
                 g.hud.Notice("Everything recovered.", LoopUi.Green);
                 g.hud.Banner("Everything recovered.", LoopUi.Green, 2.5f);
@@ -637,6 +640,7 @@ namespace MedievalKnight
             if (pile != null) Object.Destroy(pile.gameObject);
             pile = null;
             pileWorld = null;
+            curPile = null;
             lootMode = false;
             pileArmed = true;
             if (ui != null) ui.SetLootMarker(null, Vector3.zero, 0f, 0, false);

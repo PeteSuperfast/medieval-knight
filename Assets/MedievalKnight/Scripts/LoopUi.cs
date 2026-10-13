@@ -738,7 +738,7 @@ namespace MedievalKnight
                     irt.sizeDelta = new Vector2(30, 30);
                     irt.anchoredPosition = new Vector2(x - 2f, -12f);
                 }
-                r.more = Label("More", r.rt, TL, new Vector2(556, -14), new Vector2(60, 26), 17, TextAnchor.MiddleLeft);
+                r.more = Label("More", r.rt, TL, new Vector2(556, -14), new Vector2(138, 26), 17, TextAnchor.MiddleLeft);
                 r.more.rectTransform.pivot = TL; r.more.color = LootGold;
                 for (int t = 0; t < OldWorld.StartLeft; t++)
                 {
@@ -822,18 +822,19 @@ namespace MedievalKnight
                 bool sel = idx == worldSel;
                 r.frame.color = sel ? Gold : FrameCol;
                 r.bg.color = sel ? new Color(0.17f, 0.15f, 0.25f, 1f) : SlotBg;
-                r.text.text = "<b><color=" + Hex(OldText) + ">" + w.Code + "</color></b>   " + FellText(w.fellUnix) + "   " + w.pile.Count + (w.pile.Count == 1 ? " item" : " items");
+                r.text.text = "<b><color=" + Hex(OldText) + ">" + w.Code + "</color></b>   " + FellText(w.fellUnix) + "   " + w.ItemCount + (w.ItemCount == 1 ? " item" : " items");
+                List<Item> all = w.AllItems();
                 for (int t = 0; t < 4; t++)
                 {
-                    bool show = t < w.pile.Count;
-                    Item it = show ? w.pile[t] : Item.None;
+                    bool show = t < all.Count;
+                    Item it = show ? all[t] : Item.None;
                     r.tiles[t].gameObject.SetActive(show && !it.IsWeapon);
                     r.icons[t].gameObject.SetActive(show && it.IsWeapon);
                     if (!show) continue;
                     if (it.IsWeapon) r.icons[t].texture = SwordIcons.Get(it.id);
                     else r.tiles[t].color = Foods.All[it.id].color;
                 }
-                r.more.text = w.pile.Count > 4 ? "+" + (w.pile.Count - 4) : "";
+                r.more.text = (all.Count > 4 ? "+" + (all.Count - 4) : "") + (w.piles.Count > 1 ? (all.Count > 4 ? "  " : "") + w.piles.Count + " piles" : "");
                 for (int t = 0; t < r.pips.Length; t++) r.pips[t].color = t < w.left ? (w.left <= 1 ? Yellow : Gold) : new Color(0.2f, 0.2f, 0.26f, 1f);
                 r.state.text = w.left <= 1 ? "1 left!" : w.left + " left";
                 r.state.color = w.left <= 1 ? Yellow : Color.white;
@@ -841,16 +842,17 @@ namespace MedievalKnight
             worldsMore.text = n > WorldRowsShown ? "Showing " + (worldScroll + 1) + "-" + Mathf.Min(n, worldScroll + WorldRowsShown) + " of " + n + "   (Up / Down for more)" : "";
 
             OldWorld cur = n > 0 ? worldList[worldSel] : null;
+            List<Item> curItems = cur != null ? cur.AllItems() : new List<Item>();
             for (int i = 0; i < worldCells.Count; i++)
             {
-                bool has = cur != null && i < cur.pile.Count;
+                bool has = cur != null && i < curItems.Count;
                 worldCells[i].rt.gameObject.SetActive(true);
-                FillCell(worldCells[i], has ? cur.pile[i] : Item.None, false);
+                FillCell(worldCells[i], has ? curItems[i] : Item.None, false);
             }
-            worldsPileMore.text = cur != null && cur.pile.Count > PileCellsShown ? "+" + (cur.pile.Count - PileCellsShown) + " more" : "";
+            worldsPileMore.text = cur != null && curItems.Count > PileCellsShown ? "+" + (curItems.Count - PileCellsShown) + " more" : "";
             if (cur != null)
                 worldsNote.text = (cur.left <= 1 ? "Crumbles after your next return." : "Crumbles after " + cur.left + " more returns.")
-                    + "   Leave room in your pack to carry loot back.   Dying here adds to this pile.";
+                    + "   Leave room in your pack to carry loot back.   " + (cur.piles.Count > 1 ? cur.piles.Count + " piles lie in this world.   " : "") + "Dying here adds a pile.";
             else worldsNote.text = "";
             bool can = d.CanEnter && cur != null;
             worldsEnterBtn.bg.color = can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
@@ -983,13 +985,13 @@ namespace MedievalKnight
         public string LootTitleText { get { return lootTitle.text; } }
         public string LootPileHeadText { get { return lootPileHead.text; } }
 
-        public void ShowLoot(Loadout d, OldWorld w)
+        public void ShowLoot(Loadout d, string code, Pile w)
         {
             lootRoot.SetActive(true);
             lootCursor = 0;
             lootScroll = 0;
             lootWarnUntil = 0f;
-            RefreshLoot(d, w);
+            RefreshLoot(d, code, w);
         }
 
         public void SetLootWarn(string text, Color color, float seconds, Section? shake)
@@ -1014,9 +1016,9 @@ namespace MedievalKnight
             return "<b>" + f.name + "</b>\nHeals " + Mathf.RoundToInt(f.healFrac * 100f) + "% of your max health.";
         }
 
-        void RefreshLoot(Loadout d, OldWorld w)
+        void RefreshLoot(Loadout d, string code, Pile w)
         {
-            int n = w != null ? w.pile.Count : 0;
+            int n = w != null ? w.items.Count : 0;
             lootCursor = Mathf.Clamp(lootCursor, 0, Mathf.Max(0, n - 1));
             int rows = Mathf.Max(1, Mathf.CeilToInt(n / (float)LootCols));
             int curRow = lootCursor / LootCols;
@@ -1029,17 +1031,17 @@ namespace MedievalKnight
                 int idx = lootScroll * LootCols + i;
                 Cell c = lootPileCells[i];
                 bool has = idx < n;
-                FillCell(c, has ? w.pile[idx] : Item.None, false);
-                if (has && !d.carry.CanAdd(w.pile[idx])) { c.tag.text = "FULL"; c.tag.color = Red; }
+                FillCell(c, has ? w.items[idx] : Item.None, false);
+                if (has && !d.carry.CanAdd(w.items[idx])) { c.tag.text = "FULL"; c.tag.color = Red; }
                 else c.tag.color = Green;
             }
-            if (w != null) foreach (Item it in w.pile) if (!d.carry.CanAdd(it)) cantTake++;
+            if (w != null) foreach (Item it in w.items) if (!d.carry.CanAdd(it)) cantTake++;
             for (int s = 0; s < 3; s++)
             {
                 Item[] arr = d.carry.Slots((Section)s);
                 for (int i = 0; i < arr.Length; i++) FillCell(lootPackGrid[s][i], arr[i], s == 0 && i == d.heldSlot && arr[i].IsWeapon);
             }
-            lootTitle.text = "YOUR LOOT  " + (w != null ? w.Code : "");
+            lootTitle.text = "LOOT  " + code;
             lootPileHead.text = "PILE  " + n + (n > LootCols * LootRows ? "   (rows " + (lootScroll + 1) + "-" + Mathf.Min(rows, lootScroll + LootRows) + " of " + rows + ")" : "");
             if (Time.unscaledTime >= lootWarnUntil)
             {
@@ -1053,7 +1055,7 @@ namespace MedievalKnight
         }
 
         // Called every frame while the loot window is open.
-        public void LootInput(Loadout d, OldWorld w)
+        public void LootInput(Loadout d, string code, Pile w)
         {
             if (w == null) return;
             Vector2 m = InputX.MousePos;
@@ -1063,14 +1065,14 @@ namespace MedievalKnight
             if (has)
             {
                 for (int i = 0; i < lootPileCells.Count; i++)
-                    if (lootScroll * LootCols + i < w.pile.Count && RectTransformUtility.RectangleContainsScreenPoint(lootPileCells[i].rt, m, null)) hoverPile = lootScroll * LootCols + i;
+                    if (lootScroll * LootCols + i < w.items.Count && RectTransformUtility.RectangleContainsScreenPoint(lootPileCells[i].rt, m, null)) hoverPile = lootScroll * LootCols + i;
                 foreach (Cell c in lootPackCells)
                     if (RectTransformUtility.RectangleContainsScreenPoint(c.rt, m, null)) hoverPack = c;
             }
             bool onAll = has && RectTransformUtility.RectangleContainsScreenPoint(lootTakeAllBtn.rt, m, null);
             bool clickL = has && InputX.MouseDown(0), clickR = has && InputX.MouseDown(1);
             bool key = InputX.Down(KeyCode.Return) || InputX.Down(KeyCode.KeypadEnter) || InputX.Down(KeyCode.Space);
-            int n = w.pile.Count;
+            int n = w.items.Count;
             if (n > 0)
             {
                 if (InputX.Down(KeyCode.LeftArrow) || InputX.Down(KeyCode.A)) lootCursor = Mathf.Max(0, lootCursor - 1);
@@ -1083,9 +1085,9 @@ namespace MedievalKnight
             else if (clickR && hoverPack != null) run.UiCarryDrop(hoverPack.sec, hoverPack.index);
             else if (key && n > 0) run.UiTake(lootCursor);
             if (!run.LootOpen) return;                                      // the last item was taken: the window closed
-            RefreshLoot(d, w);
-            Item shown = hoverPile >= 0 ? w.pile[hoverPile] : hoverPack != null ? d.carry.Slots(hoverPack.sec)[hoverPack.index]
-                : lootCursor < w.pile.Count ? w.pile[lootCursor] : Item.None;
+            RefreshLoot(d, code, w);
+            Item shown = hoverPile >= 0 ? w.items[hoverPile] : hoverPack != null ? d.carry.Slots(hoverPack.sec)[hoverPack.index]
+                : lootCursor < w.items.Count ? w.items[lootCursor] : Item.None;
             lootInfo.text = ItemInfo(shown);
             float now = Time.unscaledTime;
             for (int i = 0; i < lootPileCells.Count; i++)
@@ -1305,8 +1307,11 @@ namespace MedievalKnight
                 else if (r.worldNote == WorldNote.Added)
                 {
                     sb.Append("<color=" + violet + "><b>ADDED TO OLD WORLD  " + r.WorldCode + "</b></color>\n");
-                    sb.Append("The pile now holds " + r.pileCount + (r.pileCount == 1 ? " item" : " items") + ", " + r.worldLeft + (r.worldLeft == 1 ? " return" : " returns")
-                        + " left.\n");
+                    if (r.pilesN > 1)
+                        sb.Append("The world now holds " + r.pileCount + " items in " + r.pilesN + " piles, " + r.worldLeft + (r.worldLeft == 1 ? " return" : " returns") + " left.\n");
+                    else
+                        sb.Append("The pile now holds " + r.pileCount + (r.pileCount == 1 ? " item" : " items") + ", " + r.worldLeft + (r.worldLeft == 1 ? " return" : " returns")
+                            + " left.\n");
                 }
                 else if (r.worldNote == WorldNote.Crumbled)
                 {

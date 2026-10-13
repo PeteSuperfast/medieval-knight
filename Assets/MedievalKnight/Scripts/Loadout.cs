@@ -202,7 +202,10 @@ namespace MedievalKnight
         // phase 2 (old worlds)
         public WorldNote worldNote;                                           // what happened to the world this run was played in
         public int worldSeed;                                                 // that world (Created / Added / Recovered / StillInPile)
-        public int pileCount;                                                 // items in its pile after the run
+        public int pileCount;                                                 // items in its piles (all of them) after the run
+        public int pilesN;                                                    // how many piles it has after the run
+        public readonly List<TeamLine> team = new List<TeamLine>();           // online: one line per player (G3)
+        public int teamSize;                                                  // online: how many played this run (0 = single player)
         public int worldLeft;                                                 // returns it has left after the run
         public bool inOldWorld;                                               // the run was played in an old world
         public int worldCount;                                                // old worlds that exist after the run
@@ -229,6 +232,7 @@ namespace MedievalKnight
         public int runWorld;                   // the old world the open run is played in (0 = a new world)
         public float runX, runZ;               // where the knight last was in the open run (autosaved)
         public bool runPosValid;
+        public bool runCoop;                   // phase 4: the open run is an online run of a client (its world and piles are the host's)
         public readonly List<CrumbNote> unseen = new List<CrumbNote>();   // crumbled worlds the player has not been told about at the base
         public string trimNote = "";           // set by Sanitize when a damaged / edited save lost worlds or loot
 
@@ -247,9 +251,11 @@ namespace MedievalKnight
             return list;
         }
 
+        int seedCounter;                       // makes two worlds made in the same second (and with the same count of worlds) differ
+
         int NewSeed(long now)
         {
-            var rng = new System.Random(unchecked((int)(now * 31 + worlds.Count * 7919 + 17)));
+            var rng = new System.Random(unchecked((int)(now * 31 + worlds.Count * 7919 + (seedCounter++) * 104729 + 17)));
             for (int tries = 0; tries < 2000; tries++)
             {
                 int s = rng.Next(1, int.MaxValue);
@@ -346,36 +352,39 @@ namespace MedievalKnight
         }
 
         // Entering the world: the run is open from here on.
-        public void BeginRun(int oldWorldSeed = 0)
+        // coop: an online run of a client - the world (and its piles) belong to the host, so runWorld stays 0.
+        public void BeginRun(int oldWorldSeed = 0, bool coop = false)
         {
             EnsureHeld();
             ownedAtStart = OwnedIds();
             inRun = true;
-            runWorld = Find(oldWorldSeed) != null ? oldWorldSeed : 0;
+            runCoop = coop;
+            runWorld = !coop && Find(oldWorldSeed) != null ? oldWorldSeed : 0;
             runPosValid = false;
         }
 
         // Items taken from a pile go into the carry by the normal rules (merge +N, own group, Supplies); a full carry
-        // leaves the item in the pile. Returns false when it did not fit.
-        public bool TakeFromPile(OldWorld w, int index)
+        // leaves the item in the pile. A pile that runs empty is removed from its world. Returns false when it did not fit.
+        public bool TakeFromPile(OldWorld w, Pile p, int index)
         {
-            if (w == null || index < 0 || index >= w.pile.Count) return false;
-            Item it = w.pile[index];
+            if (w == null || p == null || index < 0 || index >= p.items.Count) return false;
+            Item it = p.items[index];
             if (!carry.CanAdd(it)) return false;
             carry.Add(it);
-            w.pile.RemoveAt(index);
+            p.items.RemoveAt(index);
+            if (p.items.Count == 0) w.piles.Remove(p);
             EnsureHeld();
             return true;
         }
 
-        // Everything that fits, in pile order. Returns how many items were taken.
-        public int TakeAll(OldWorld w)
+        // Everything of that pile that fits, in pile order. Returns how many items were taken.
+        public int TakeAll(OldWorld w, Pile p)
         {
-            if (w == null) return 0;
+            if (w == null || p == null) return 0;
             int n = 0;
-            for (int i = 0; i < w.pile.Count;)
+            for (int i = 0; i < p.items.Count;)
             {
-                if (TakeFromPile(w, i)) n++;
+                if (TakeFromPile(w, p, i)) n++;
                 else i++;
             }
             return n;
@@ -392,7 +401,9 @@ namespace MedievalKnight
         static ResultLine Line(Item it, bool isNew) { return new ResultLine { item = it, isNew = isNew }; }
 
         // Reached the portal: everything carried goes into the stash; what does not fit is gone (LEFT BEHIND).
-        public RunResult Survive()
+        // decay: false for a client of an online team - the old worlds belong to the host, so the counters of the ones in
+        // this save (single player ones) are not touched and no world is closed.
+        public RunResult Survive(bool decay = true)
         {
             var r = new RunResult { victory = true };
             bool[] before = ownedAtStart ?? OwnedIds();
@@ -403,7 +414,20 @@ namespace MedievalKnight
                 else r.brought.Add(Line(it, isNew));
             }
             carry.Clear();
-            SurviveWorlds(r);
+            if (decay) SurviveWorlds(r);
+            Finish(r);
+            return r;
+        }
+
+        // A client of an online team lost its run (the team fell, he left, the host closed): everything carried is gone
+        // from him (it lies in the host's world as piles, or nowhere). His own worlds, counters and stash are not touched.
+        public RunResult LoseCarry(bool abandoned)
+        {
+            var r = new RunResult { victory = false, abandoned = abandoned };
+            foreach (Item it in carry.All()) r.lost.Add(Line(it, false));
+            carry.Clear();
+            foreach (Item it in stash.All()) r.safe.Add(Line(it, false));
+            r.worldCount = worlds.Count;
             Finish(r);
             return r;
         }
@@ -417,7 +441,7 @@ namespace MedievalKnight
             {
                 r.inOldWorld = true;
                 r.worldSeed = cur.seed;
-                if (cur.pile.Count == 0)
+                if (cur.ItemCount == 0)
                 {
                     worlds.Remove(cur);                                   // everything recovered: closed, not a crumble
                     r.worldNote = WorldNote.Recovered;
@@ -427,7 +451,8 @@ namespace MedievalKnight
             if (cur != null && worlds.Contains(cur))
             {
                 r.worldNote = WorldNote.StillInPile;
-                r.pileCount = cur.pile.Count;
+                r.pileCount = cur.ItemCount;
+                r.pilesN = cur.piles.Count;
                 r.worldLeft = cur.left;
             }
         }
@@ -441,14 +466,14 @@ namespace MedievalKnight
             foreach (OldWorld w in new List<OldWorld>(worlds))
             {
                 if (w == skip) continue;
-                var line = new CrumbLine { seed = w.seed, before = w.left, after = w.left - 1, itemsLost = w.pile.Count };
+                var line = new CrumbLine { seed = w.seed, before = w.left, after = w.left - 1, itemsLost = w.ItemCount };
                 w.left--;
                 if (w.left <= 0)
                 {
                     line.crumbled = true;
                     line.after = 0;
                     worlds.Remove(w);
-                    unseen.Add(new CrumbNote { seed = w.seed, items = w.pile.Count });
+                    unseen.Add(new CrumbNote { seed = w.seed, items = w.ItemCount });
                     gone.Add(w);
                 }
                 r.crumbs.Add(line);
@@ -465,13 +490,30 @@ namespace MedievalKnight
             return Die(abandoned, MapLayout.TownSpawn.x, MapLayout.TownSpawn.z, NowUnix());
         }
 
-        // Died / left the game at (x, z): everything carried is gone from the knight and lies in one pile there - in the
-        // old world he was playing in (the pile moves to this spot) or in a new old world. Then the old counters go down.
+        // Died / left the game at (x, z): everything carried is gone from the knight and lies there - in the old world
+        // he was playing in (it joins a pile within 3 m of that spot, else a new pile; piles never move) or in a new old
+        // world. Then the old counters go down.
         public RunResult Die(bool abandoned, float x, float z, long nowUnix)
         {
+            var d = new Drop { x = x, z = z };
+            d.items.AddRange(carry.All());
+            return Fall(new List<Drop> { d }, abandoned, nowUnix);
+        }
+
+        // The end of a run that was lost: every drop (one per player who fell, the host's own carry included - it is
+        // cleared here) lies where its player was. One old world holds them all: the world the run was played in, or a new
+        // one at the first drop. Then the old counters go down (not the new world's).
+        public RunResult Fall(List<Drop> drops, bool abandoned, long nowUnix)
+        {
             var r = new RunResult { victory = false, abandoned = abandoned };
-            List<Item> items = carry.All();
-            foreach (Item it in items) r.lost.Add(Line(it, false));
+            int total = 0;
+            Drop first = null;
+            foreach (Drop d in drops)
+            {
+                foreach (Item it in d.items) r.lost.Add(Line(it, false));
+                total += d.items.Count;
+                if (first == null && d.items.Count > 0) first = d;
+            }
             carry.Clear();
             foreach (Item it in stash.All()) r.safe.Add(Line(it, false));
 
@@ -479,25 +521,23 @@ namespace MedievalKnight
             if (w != null)
             {
                 r.inOldWorld = true;
-                w.x = x; w.z = z;
-                if (items.Count > 0) r.worldNote = WorldNote.Added;
+                if (total > 0) r.worldNote = WorldNote.Added;
             }
-            else if (items.Count > 0)
+            else if (total > 0)
             {
-                w = new OldWorld { seed = NewSeed(nowUnix), fellUnix = nowUnix, left = OldWorld.StartLeft, x = x, z = z };
+                w = new OldWorld { seed = NewSeed(nowUnix), fellUnix = nowUnix, left = OldWorld.StartLeft, x = first.x, z = first.z };
                 worlds.Add(w);
                 created = w;
                 r.worldNote = WorldNote.Created;
             }
             if (w != null)
             {
-                foreach (Item it in items)
-                {
-                    if (w.pile.Count < OldWorld.MaxPile) w.pile.Add(it);
-                    else r.overflow.Add(Line(it, false));
-                }
+                var over = new List<Item>();
+                foreach (Drop d in drops) w.AddDrop(d.x, d.z, d.items, over);
+                foreach (Item it in over) r.overflow.Add(Line(it, false));
                 r.worldSeed = w.seed;
-                r.pileCount = w.pile.Count;
+                r.pileCount = w.ItemCount;
+                r.pilesN = w.piles.Count;
                 r.worldLeft = w.left;
             }
             // the way back counts: every old world that existed before this death goes down by one (the new one does not)
@@ -523,6 +563,7 @@ namespace MedievalKnight
             r.stashFoods = stash.Count(Section.Foods);
             r.worldCount = worlds.Count;
             inRun = false;
+            runCoop = false;
             runWorld = 0;
             runPosValid = false;
             ownedAtStart = null;
@@ -576,15 +617,30 @@ namespace MedievalKnight
                 if (float.IsNaN(w.x) || float.IsNaN(w.z) || float.IsInfinity(w.x) || float.IsInfinity(w.z)) { w.x = MapLayout.TownSpawn.x; w.z = MapLayout.TownSpawn.z; }
                 w.x = System.Math.Max(-lim, System.Math.Min(lim, w.x));
                 w.z = System.Math.Max(-lim, System.Math.Min(lim, w.z));
-                var items = new List<Item>();
-                foreach (Item it in w.pile)
+                // piles: valid items only, every spot inside the map, all of them together at most MaxPile items,
+                // no empty pile (a world may hold none: it closes at the next return)
+                var old = new List<Pile>(w.piles);
+                w.piles.Clear();
+                int count = 0;
+                foreach (Pile p in old)
                 {
-                    if (it.IsNone || !it.Valid) continue;
-                    if (items.Count >= OldWorld.MaxPile) { trimmedPile = true; continue; }
-                    items.Add(it);
+                    if (p == null) continue;
+                    if (float.IsNaN(p.x) || float.IsNaN(p.z) || float.IsInfinity(p.x) || float.IsInfinity(p.z)) { p.x = w.x; p.z = w.z; }
+                    p.x = System.Math.Max(-lim, System.Math.Min(lim, p.x));
+                    p.z = System.Math.Max(-lim, System.Math.Min(lim, p.z));
+                    var items = new List<Item>();
+                    foreach (Item it in p.items)
+                    {
+                        if (it.IsNone || !it.Valid) continue;
+                        if (count >= OldWorld.MaxPile) { trimmedPile = true; continue; }
+                        items.Add(it);
+                        count++;
+                    }
+                    p.items.Clear();
+                    p.items.AddRange(items);
+                    if (p.items.Count > 0) w.AddLoaded(p);
                 }
-                w.pile.Clear();
-                w.pile.AddRange(items);
+                if (w.piles.Count > 0) { w.x = w.piles[0].x; w.z = w.piles[0].z; }
                 keep.Add(w);
             }
             worlds.Clear();
@@ -593,7 +649,7 @@ namespace MedievalKnight
                 if (i < OldWorld.MaxWorlds) worlds.Add(keep[i]);
                 else
                 {
-                    unseen.Add(new CrumbNote { seed = keep[i].seed, items = keep[i].pile.Count });
+                    unseen.Add(new CrumbNote { seed = keep[i].seed, items = keep[i].ItemCount });
                     trimNote = "Too many old worlds: the extra ones crumbled.";
                 }
             }

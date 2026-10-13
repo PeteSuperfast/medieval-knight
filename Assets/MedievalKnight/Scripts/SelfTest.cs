@@ -1702,10 +1702,11 @@ namespace MedievalKnight
             Vector3 fellAt = k.Pos;
             k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
             yield return W(3.5f);
-            Check("old world loot: dying in the old world adds the carried items to the same pile (2 + " + carried + "), the counter goes 2 -> 1, the pile moves to the new spot",
-                d.worlds.Count == 1 && w.pile.Count == 2 + carried && w.left == 1 && Mathf.Abs(w.x - fellAt.x) < 1f && Mathf.Abs(w.z - fellAt.z) < 1f);
-            Check("old world loot: YOU FELL says ADDED TO OLD WORLD #C0DE with the new pile size, 1 return left, the OLD WORLDS block (2 -> 1) and no 'only fade' text",
-                run.ui.SummaryBody.Contains("ADDED TO OLD WORLD") && run.ui.SummaryBody.Contains("#C0DE") && run.ui.SummaryBody.Contains("The pile now holds " + (2 + carried) + " items")
+            Check("old world loot: dying in the old world 12 m from the pile makes a second pile there (the old one stays, 2 items; the new one " + carried + "), the counter goes 2 -> 1",
+                d.worlds.Count == 1 && w.piles.Count == 2 && w.ItemCount == 2 + carried && w.piles[0].items.Count == 2 && w.piles[1].items.Count == carried && w.left == 1
+                && Mathf.Abs(w.piles[1].x - fellAt.x) < 1f && Mathf.Abs(w.piles[1].z - fellAt.z) < 1f);
+            Check("old world loot: YOU FELL says ADDED TO OLD WORLD #C0DE with the new item count in 2 piles, 1 return left, the OLD WORLDS block (2 -> 1) and no 'only fade' text",
+                run.ui.SummaryBody.Contains("ADDED TO OLD WORLD") && run.ui.SummaryBody.Contains("#C0DE") && run.ui.SummaryBody.Contains("now holds " + (2 + carried) + " items in 2 piles")
                 && run.ui.SummaryBody.Contains("1 return left") && run.ui.SummaryBody.Contains("OLD WORLDS") && run.ui.SummaryBody.Contains("#C0DE  2 -> 1 left")
                 && !run.ui.SummaryBody.Contains("only fade when you return alive"));
             Shot("old_world_added");
@@ -2759,6 +2760,30 @@ namespace MedievalKnight
             Check("old world save: writing then loading keeps every old world (seed, counter, time, spot, pile in order), the unseen notes and the open run's world and spot", same);
             Check("old world save: the JSON carries the old worlds and the save version is still 1", File.ReadAllText(file).Contains("\"ow\":[") && LoopSave.Version == 1);
 
+            // phase 4: several piles (pv 2) round-trip with their spots; the first pile is also written to the old x / z / pile
+            // fields (a build that does not know piles still reads one); a file without pv is one pile at x, z; rc = an online run
+            var mp = new Loadout();
+            mp.stash.weapons[0] = Item.Weapon(Weapons.Iron);
+            var mpw = new OldWorld { seed = 0x5151, left = 2, fellUnix = 99L };
+            Pile pa = mpw.NewPile(10.5f, -20.25f), pb = mpw.NewPile(-60f, 44f);
+            pa.items.Add(Item.Weapon(Weapons.Dao, 1)); pa.items.Add(Item.Food(Foods.Apple));
+            pb.items.Add(Item.Weapon(Weapons.Boss));
+            mp.worlds.Add(mpw);
+            mp.inRun = true; mp.runCoop = true;
+            string mpJson = LoopSave.ToJson(mp);
+            Loadout mq = LoopSave.FromJson(mpJson);
+            OldWorld mqw = mq != null ? mq.Find(0x5151) : null;
+            Check("phase 4 save: a world with two piles keeps both (spots, items in order) and the online-run flag",
+                mqw != null && mqw.piles.Count == 2 && mqw.ItemCount == 3 && Mathf.Abs(mqw.piles[0].x - 10.5f) < 0.001f && Mathf.Abs(mqw.piles[1].z - 44f) < 0.001f
+                && mqw.piles[0].items.Count == 2 && mqw.piles[0].items[0].Same(Item.Weapon(Weapons.Dao, 1)) && mqw.piles[1].items[0].Same(Item.Weapon(Weapons.Boss))
+                && mq.runCoop && mq.inRun);
+            Check("phase 4 save: the JSON says pv 2 and still writes the first pile in the old x / z / pile fields",
+                mpJson.Contains("\"pv\":2") && mpJson.Contains("\"x\":10.5") && mpJson.Contains("\"rc\":true"));
+            Loadout old3 = LoopSave.FromJson(mpJson.Replace("\"pv\":2", "\"pv\":0"));       // what a phase 2 / 3 build wrote has no pv
+            OldWorld o3 = old3 != null ? old3.Find(0x5151) : null;
+            Check("phase 4 save: a phase 2 / 3 file (no pv) opens as one pile at x, z with the pile items",
+                o3 != null && o3.piles.Count == 1 && o3.piles[0].items.Count == 2 && Mathf.Abs(o3.piles[0].x - 10.5f) < 0.001f && Mathf.Abs(o3.piles[0].z + 20.25f) < 0.001f);
+
             // a phase 1 file (no old world fields) opens with an empty list and the same stash
             File.WriteAllText(file, "{\"v\":1,\"inRun\":false,\"intro\":true,\"held\":0,"
                 + "\"stash\":{\"w\":[{\"k\":1,\"id\":0,\"p\":2},{\"k\":1,\"id\":2,\"p\":0}],\"f\":[{\"k\":2,\"id\":1,\"p\":0}],\"s\":[]},"
@@ -2831,16 +2856,56 @@ namespace MedievalKnight
             foreach (Item it in mw.pile) if (it.IsWeapon && it.id == Weapons.Iron && it.plus == 1) ironInPile++;
             Check("old world: items keep their +N in the pile (Iron +1, Fang, Roast Meat)", mw.pile.Count == 3 && ironInPile == 1);
 
-            // entering the old world, dying again: same world, the counter goes down by one, the pile moves and grows
+            // entering the old world, dying again far from the pile: same world, the counter goes down by one, a SECOND pile
+            // is made where he fell (piles never move; phase 4 replaced "the pile moves to the last death")
             mw.left = 2;
             m.carry.weapons[0] = Item.Weapon(Weapons.Dao, 0);
             m.carry.foods[0] = Item.Food(Foods.Apple);
             m.BeginRun(mw.seed);
             RunResult r2 = m.Die(false, -30f, 20f, 99999);
-            Check("old world: dying again in the old world adds to the same pile (3 + 2 items), counts the counter down 2 -> 1 and moves the pile",
-                m.worlds.Count == 1 && mw.pile.Count == 5 && mw.left == 1 && Mathf.Abs(mw.x + 30f) < 0.01f && Mathf.Abs(mw.z - 20f) < 0.01f
-                && r2.worldNote == WorldNote.Added && r2.inOldWorld && mw.fellUnix == 50 && r2.pileCount == 5 && r2.worldLeft == 1
+            Check("old world: dying again far from the pile makes a second pile (3 + 2 items), counts the counter down 2 -> 1, the first pile stays where it was",
+                m.worlds.Count == 1 && mw.piles.Count == 2 && mw.ItemCount == 5 && mw.piles[0].items.Count == 3 && mw.piles[1].items.Count == 2 && mw.left == 1
+                && Mathf.Abs(mw.piles[0].x - 1f) < 0.01f && Mathf.Abs(mw.piles[1].x + 30f) < 0.01f && Mathf.Abs(mw.piles[1].z - 20f) < 0.01f
+                && r2.worldNote == WorldNote.Added && r2.inOldWorld && mw.fellUnix == 50 && r2.pileCount == 5 && r2.pilesN == 2 && r2.worldLeft == 1
                 && r2.crumbs.Count == 1 && r2.crumbs[0].before == 2 && r2.crumbs[0].after == 1);
+
+            // dying again within 3 m of a pile joins it (and 3.1 m away does not)
+            mw.left = 3;
+            m.carry.foods[0] = Item.Food(Foods.Apple);
+            m.BeginRun(mw.seed);
+            m.Die(false, -30f + 2.9f, 20f, 100000);
+            Check("old world: a fall 2.9 m from a pile joins that pile (it does not move); still 2 piles, 6 items", mw.piles.Count == 2 && mw.piles[1].items.Count == 3 && mw.ItemCount == 6
+                && Mathf.Abs(mw.piles[1].x + 30f) < 0.01f);
+            mw.left = 3;
+            m.carry.foods[0] = Item.Food(Foods.Meat);
+            m.BeginRun(mw.seed);
+            m.Die(false, -30f + 3.1f, 20f, 100001);
+            Check("old world: a fall 3.1 m from the nearest pile makes a third pile there", mw.piles.Count == 3 && mw.piles[2].items.Count == 1 && mw.ItemCount == 7);
+
+            // a team wipe: one drop per player, each where that player was; two within 3 m of each other share a pile
+            Loadout tm = Loadout.NewGame();
+            tm.BeginRun();
+            var drops = new List<Drop>();
+            var da = new Drop { x = 10f, z = 10f, who = "A" }; da.items.Add(Item.Weapon(Weapons.Fang)); da.items.Add(Item.Food(Foods.Apple));
+            var db = new Drop { x = 11f, z = 10.5f, who = "B" }; db.items.Add(Item.Weapon(Weapons.Dao));
+            var dc = new Drop { x = -40f, z = 12f, who = "C" }; dc.items.Add(Item.Food(Foods.Meat));
+            var dd = new Drop { x = 80f, z = 0f, who = "D" };                                 // carried nothing: no pile
+            drops.Add(da); drops.Add(db); drops.Add(dc); drops.Add(dd);
+            RunResult rt = tm.Fall(drops, false, 777);
+            OldWorld tw2 = tm.worlds.Count == 1 ? tm.worlds[0] : null;
+            Check("old world: a wipe with 4 drops makes ONE new old world with 2 piles (A+B share one at A's spot, C alone; D carried nothing), 4 items, 3 returns",
+                tw2 != null && tw2.piles.Count == 2 && tw2.ItemCount == 4 && tw2.piles[0].items.Count == 3 && tw2.piles[1].items.Count == 1 && tw2.left == 3
+                && Mathf.Abs(tw2.piles[0].x - 10f) < 0.01f && Mathf.Abs(tw2.piles[1].x + 40f) < 0.01f && rt.worldNote == WorldNote.Created && rt.pilesN == 2 && rt.pileCount == 4
+                && rt.lost.Count == 4 && tm.carry.Total == 0 && !tm.inRun);
+
+            // the pile limit is for the whole world, all piles together
+            Loadout cap = Loadout.NewGame();
+            cap.BeginRun();
+            var d1 = new Drop { x = 0f, z = 0f }; for (int i = 0; i < 30; i++) d1.items.Add(Item.Food(Foods.Apple));
+            var d2 = new Drop { x = 50f, z = 0f }; for (int i = 0; i < 30; i++) d2.items.Add(Item.Food(Foods.Meat));
+            RunResult rcap = cap.Fall(new List<Drop> { d1, d2 }, false, 5);
+            Check("old world: the 48-item limit covers all piles of the world (30 + 30: 48 kept, 12 gone)",
+                cap.worlds[0].ItemCount == 48 && cap.worlds[0].piles.Count == 2 && rcap.overflow.Count == 12);
 
             // taking things back: merge +N, the pack limit, Take all
             Loadout t = Loadout.NewGame();
@@ -2854,14 +2919,14 @@ namespace MedievalKnight
             for (int i = 0; i < 4; i++) tw.pile.Add(Item.Food(Foods.Apple));
             t.worlds.Add(tw);
             t.carry.weapons[0] = Item.Weapon(Weapons.Greatsword, 0);
-            bool a = t.TakeFromPile(tw, 0) && t.carry.weapons[1].id == Weapons.Iron;            // free Weapons slot
-            bool b = t.TakeFromPile(tw, 0) && t.carry.weapons[1].plus == 1;                   // the other Iron merges: +1
-            int n = t.TakeAll(tw);                                                            // Rapier, Fang, Dao, Boss, 4 Apples: the 4th Apple does not fit
+            bool a = t.TakeFromPile(tw, tw.piles[0], 0) && t.carry.weapons[1].id == Weapons.Iron;            // free Weapons slot
+            bool b = t.TakeFromPile(tw, tw.piles[0], 0) && t.carry.weapons[1].plus == 1;                   // the other Iron merges: +1
+            int n = t.TakeAll(tw, tw.piles[0]);                                                            // Rapier, Fang, Dao, Boss, 4 Apples: the 4th Apple does not fit
             Check("old world: taking from the pile follows the pack rules (second Iron merges to +1, Take all stops when the pack is full and leaves the rest)",
                 a && b && n == 7 && tw.pile.Count == 1 && t.carry.Count(Section.Weapons) == 2 && t.carry.Count(Section.Supplies) == 4 && t.carry.Count(Section.Foods) == 3);
             int before = tw.pile.Count;
             Item left = before > 0 ? tw.pile[0] : Item.None;
-            Check("old world: a full pack refuses the item and the pile does not change", before == 1 && !t.carry.CanAdd(left) && !t.TakeFromPile(tw, 0) && tw.pile.Count == before);
+            Check("old world: a full pack refuses the item and the pile does not change", before == 1 && !t.carry.CanAdd(left) && !t.TakeFromPile(tw, tw.piles[0], 0) && tw.pile.Count == before);
 
             // the pile limit
             Loadout big = Loadout.NewGame();
@@ -2942,7 +3007,7 @@ namespace MedievalKnight
             dw.BeginRun(0x6001);
             RunResult rdw = dw.Die(false, 9f, 9f, 3000);
             Check("old world: dying in an old world with 2 left makes it 1, the pile holds the old and the new items, the others count down too, nothing crumbles",
-                ow.left == 1 && ow.pile.Count == 2 && other.left == 2 && rdw.worldNote == WorldNote.Added && rdw.worldLeft == 1 && dw.worlds.Count == 2 && dw.unseen.Count == 0);
+                ow.left == 1 && ow.ItemCount == 2 && other.left == 2 && rdw.worldNote == WorldNote.Added && rdw.worldLeft == 1 && dw.worlds.Count == 2 && dw.unseen.Count == 0);
 
             // dying in an old world with 1 left: it crumbles with the pile (the new items too) and lands in unseen
             Loadout cw = Loadout.NewGame();
@@ -2977,7 +3042,7 @@ namespace MedievalKnight
             Loadout back2 = LoopSave.FromJson(LoopSave.ToJson(dw));
             Check("old world: save then load after a counted-down death keeps the counters, the piles and the unseen note",
                 back != null && back.worlds.Count == 0 && back.unseen.Count == 1 && back.unseen[0].seed == 0x7001 && back.unseen[0].items == 2
-                && back2 != null && back2.Find(0x6001) != null && back2.Find(0x6001).left == 1 && back2.Find(0x6001).pile.Count == 2 && back2.Find(0x6002).left == 2);
+                && back2 != null && back2.Find(0x6001) != null && back2.Find(0x6001).left == 1 && back2.Find(0x6001).ItemCount == 2 && back2.Find(0x6002).left == 2);
 
             // Sanitize
             Loadout sz = new Loadout();

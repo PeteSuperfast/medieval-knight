@@ -13,7 +13,10 @@ namespace MedievalKnight
 
         [Serializable] class ItemDto { public int k, id, p; }
         [Serializable] class BagDto { public ItemDto[] w, f, s; }
-        [Serializable] class WorldDto { public int seed, left; public long t; public float x, z; public ItemDto[] pile; }
+        [Serializable] class PileDto { public float x, z; public ItemDto[] items; }
+        // pv = 2: the piles are in "piles" (several, none moves). Without pv (a phase 1-3 save) there is one pile at x, z holding "pile".
+        // x / z / pile of a pv 2 file hold the first pile too, so an older build still reads something sensible.
+        [Serializable] class WorldDto { public int seed, left; public long t; public float x, z; public ItemDto[] pile; public int pv; public PileDto[] piles; }
         [Serializable] class CrumbDto { public int seed, n; }
         // Phase 2 fields (ow, runWorld, rx, rz, rpos, unseen) are missing in a phase 1 file: that reads as "no old worlds".
         [Serializable]
@@ -21,6 +24,7 @@ namespace MedievalKnight
         {
             public int v; public bool inRun, intro; public int held; public BagDto stash, carry;
             public WorldDto[] ow; public int runWorld; public float rx, rz; public bool rpos; public CrumbDto[] unseen;
+            public bool rc;                                    // phase 4: the open run is an online run of a client
         }
 
         public static string PathOverride;                 // test hook: use this file (SelfTest sets it)
@@ -59,6 +63,17 @@ namespace MedievalKnight
             return d;
         }
 
+        // Pile items of a file: anything that is not a Weapon / Food is skipped (Sanitize drops the invalid ones).
+        static void ReadItems(ItemDto[] src, System.Collections.Generic.List<Item> dst)
+        {
+            if (src == null) return;
+            foreach (ItemDto id in src)
+            {
+                if (id == null || id.k <= 0 || id.k > (int)ItemKind.Food) continue;
+                dst.Add(new Item { kind = (ItemKind)id.k, id = id.id, plus = id.p });
+            }
+        }
+
         static BagDto ToDto(ItemBag b) { return new BagDto { w = ToDto(b.weapons), f = ToDto(b.foods), s = ToDto(b.supplies) }; }
 
         static void FromDto(ItemDto[] src, Item[] dst)
@@ -86,9 +101,17 @@ namespace MedievalKnight
             for (int i = 0; i < dto.ow.Length; i++)
             {
                 OldWorld w = l.worlds[i];
-                dto.ow[i] = new WorldDto { seed = w.seed, left = w.left, t = w.fellUnix, x = w.x, z = w.z, pile = ToDto(w.pile.ToArray()) };
+                Pile first = w.piles.Count > 0 ? w.piles[0] : null;
+                var wd = new WorldDto
+                {
+                    seed = w.seed, left = w.left, t = w.fellUnix, x = first != null ? first.x : w.x, z = first != null ? first.z : w.z,
+                    pile = ToDto(first != null ? first.items.ToArray() : new Item[0]), pv = 2, piles = new PileDto[w.piles.Count]
+                };
+                for (int p = 0; p < wd.piles.Length; p++)
+                    wd.piles[p] = new PileDto { x = w.piles[p].x, z = w.piles[p].z, items = ToDto(w.piles[p].items.ToArray()) };
+                dto.ow[i] = wd;
             }
-            dto.runWorld = l.runWorld; dto.rx = l.runX; dto.rz = l.runZ; dto.rpos = l.runPosValid;
+            dto.runWorld = l.runWorld; dto.rx = l.runX; dto.rz = l.runZ; dto.rpos = l.runPosValid; dto.rc = l.runCoop;
             dto.unseen = new CrumbDto[l.unseen.Count];
             for (int i = 0; i < dto.unseen.Length; i++) dto.unseen[i] = new CrumbDto { seed = l.unseen[i].seed, n = l.unseen[i].items };
             return JsonUtility.ToJson(dto);
@@ -110,15 +133,26 @@ namespace MedievalKnight
                 {
                     if (wd == null) continue;
                     var w = new OldWorld { seed = wd.seed, left = wd.left, fellUnix = wd.t, x = wd.x, z = wd.z };
-                    if (wd.pile != null)
-                        foreach (ItemDto id in wd.pile)
-                        {
-                            if (id == null || id.k <= 0 || id.k > (int)ItemKind.Food) continue;
-                            w.pile.Add(new Item { kind = (ItemKind)id.k, id = id.id, plus = id.p });
-                        }
+                    if (wd.pv >= 2)
+                    {
+                        if (wd.piles != null)
+                            foreach (PileDto pd in wd.piles)
+                            {
+                                if (pd == null) continue;
+                                var p = new Pile { x = pd.x, z = pd.z };
+                                ReadItems(pd.items, p.items);
+                                if (p.items.Count > 0) w.AddLoaded(p);
+                            }
+                    }
+                    else if (wd.pile != null)                          // a phase 1-3 save: one pile at x, z
+                    {
+                        var p = new Pile { x = wd.x, z = wd.z };
+                        ReadItems(wd.pile, p.items);
+                        if (p.items.Count > 0) w.AddLoaded(p);
+                    }
                     l.worlds.Add(w);
                 }
-            l.runWorld = dto.runWorld; l.runX = dto.rx; l.runZ = dto.rz; l.runPosValid = dto.rpos;
+            l.runWorld = dto.runWorld; l.runX = dto.rx; l.runZ = dto.rz; l.runPosValid = dto.rpos; l.runCoop = dto.rc;
             if (dto.unseen != null)
                 foreach (CrumbDto c in dto.unseen) if (c != null && c.seed != 0) l.unseen.Add(new CrumbNote { seed = c.seed, items = Mathf.Max(0, c.n) });
             l.Sanitize();
