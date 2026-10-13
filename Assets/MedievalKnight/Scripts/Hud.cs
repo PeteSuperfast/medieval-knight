@@ -1089,7 +1089,7 @@ namespace MedievalKnight
                 + "Space    Dash - dodge, 0.5 s untouchable (25 stamina)\n"
                 + "Right Click (hold)    Shield block\n"
                 + "Q  Whirlwind          E  Dash Thrust\n"
-                + "R  Shield Bash        F  Ground Slam\n"
+                + "R  Shield Bash        F  Ground Slam  /  hold F next to a downed friend: revive\n"
                 + "1 / 2    Hold Weapon slot 1 / 2         C  Eat\n"
                 + "Tab    Carry window  (at the base: PREPARE)\n"
                 + "Level-up cards: 1 / 2 / 3 or Click\n"
@@ -1192,7 +1192,7 @@ namespace MedievalKnight
                 }
                 for (int i = row; i < party.Length; i++) if (party[i].go.activeSelf) party[i].go.SetActive(false);
                 partyPanel.rectTransform.sizeDelta = new Vector2(400f, row == 0 ? 28f : 32f + row * 26f);
-                if (row == 0 && g.players.Count <= 1) netText.text += Net.IsHost ? "   - waiting for friends" : "";
+                if (row == 0 && Net.PlayerCount <= 1) netText.text += Net.IsHost ? "   - waiting for friends" : "";
             }
             for (int i = tagCount; i < tags.Count; i++) if (tags[i].gameObject.activeSelf) tags[i].gameObject.SetActive(false);
         }

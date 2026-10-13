@@ -21,6 +21,8 @@ namespace MedievalKnight
         public int grants;                    // items the host gave him from the world (pickups, takes); his Pack counts what he applied
         public Vector3 lastPos;               // where he last was (a drop spot if he falls or leaves)
         public bool hasPack;                  // a Pack has arrived: the mirror is real
+        public float dropWindow;              // rate limit of Drop messages
+        public int dropsInWindow;
     }
 
     // Phase 4: the team around a RunLoop - who is in the room, who plays the open run, (host) the copy of every carry,
@@ -625,11 +627,22 @@ namespace MedievalKnight
             return true;
         }
 
+        // host: one message to every client who plays the open run (not to the ones waiting at the base)
+        public void SendToPlaying(byte[] msg)
+        {
+            if (!Net.IsHost) return;
+            foreach (Member m in roster)
+                if (m.inRun && m.pid != Net.LocalPid && m.status != Stat.Left) Net.ToPid(m.pid, msg);
+        }
+
         // host: a client put an item down. It lies there as a pickup that nobody retakes until the dropper steps away.
+        // (A believable rate only: friends play, but a runaway client must not fill the world with pickups.)
         public void OnDrop(int pid, Item it, float x, float z)
         {
             Member m = Find(pid);
             if (m == null || !m.inRun || m.status == Stat.Left || it.IsNone || !Net.IsHost) return;
+            if (Time.unscaledTime - m.dropWindow > 5f) { m.dropWindow = Time.unscaledTime; m.dropsInWindow = 0; }
+            if (++m.dropsInWindow > 20) return;
             Knight k = g.PlayerByPid(pid);
             var at = new Vector3(Mathf.Clamp(x, -Game.ArenaHalf + 1f, Game.ArenaHalf - 1f), 0f, Mathf.Clamp(z, -Game.ArenaHalf + 1f, Game.ArenaHalf - 1f));
             if (k != null)

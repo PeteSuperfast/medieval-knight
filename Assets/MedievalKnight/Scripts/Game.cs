@@ -721,7 +721,8 @@ namespace MedievalKnight
         public void WorldBanner(string text, Color color)
         {
             hud.Banner(text, color);
-            if (Net.IsHost) Net.BroadcastBanner(text, color);
+            if (Coop && run.team != null) run.team.SendToPlaying(Net.BannerMsg(text, color));      // the ones waiting at the base do not see the team
+            else if (Net.IsHost) Net.BroadcastBanner(text, color);
         }
 
         // Runs where the world is simulated (single player / host). "by" = who landed the last hit (null: nobody in particular).

@@ -448,6 +448,7 @@ namespace MedievalKnight
         public void SetCoop(bool on, bool host)
         {
             coop = on; coopHost = host;
+            badgeFrame.rectTransform.anchoredPosition = new Vector2(16f, on ? -346f : -206f);       // online: under the HUD status line and the roster rows
             readyBtn.rt.gameObject.SetActive(on && !host);
             enterBtn.rt.gameObject.SetActive(!on || host);
         }

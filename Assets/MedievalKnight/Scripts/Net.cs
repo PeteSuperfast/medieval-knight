@@ -295,7 +295,16 @@ namespace MedievalKnight
         public static bool Authority { get { return Mode != NetMode.Client; } }
         public static bool IsHost { get { return Mode == NetMode.Host; } }
         public static bool IsClient { get { return Mode == NetMode.Client; } }
-        public static int PlayerCount { get { return Game.I != null ? Game.I.players.Count : 0; } }
+        // players in the game: the knights in the arena; in the loop everybody in the room (they are not all in the world)
+        public static int PlayerCount
+        {
+            get
+            {
+                if (Game.I == null) return 0;
+                if (Game.I.Coop && Game.I.run.team != null) return Game.I.run.team.RoomCount;
+                return Game.I.players.Count;
+            }
+        }
 
         public static Action<string> OnTest;                                 // test-script messages (MpTest.cs)
         public static int RefusedFull, RefusedVersion;                       // host: how many joins were turned away, by reason
@@ -1032,9 +1041,14 @@ namespace MedievalKnight
             if (IsHost) ToAll(new NetW(Msg.PickupTaken).U16(id).U8(pid).U8(kind).U8(item).Vec(at).U8(plus).Done(), null);
         }
 
+        internal static byte[] BannerMsg(string text, Color color)
+        {
+            return new NetW(Msg.Banner).Str(text).U8((int)(Mathf.Clamp01(color.r) * 255f)).U8((int)(Mathf.Clamp01(color.g) * 255f)).U8((int)(Mathf.Clamp01(color.b) * 255f)).Done();
+        }
+
         public static void BroadcastBanner(string text, Color color)
         {
-            if (IsHost) ToAll(new NetW(Msg.Banner).Str(text).U8((int)(Mathf.Clamp01(color.r) * 255f)).U8((int)(Mathf.Clamp01(color.g) * 255f)).U8((int)(Mathf.Clamp01(color.b) * 255f)).Done(), null);
+            if (IsHost) ToAll(BannerMsg(text, color), null);
         }
 
         public static void BroadcastReset()

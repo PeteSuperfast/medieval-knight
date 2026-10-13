@@ -11,5 +11,5 @@
 - เพิ่มศัตรูใหม่: สืบทอด `Enemy`, สร้างโมเดลด้วย `Prims.Box / Part / Lathe / Strip`, เรียก `BaseTick(dt)` ทุกเฟรม แล้วให้ `Game` เป็นคน spawn
 - สีทุกอย่างมาจาก `Prims.Lit(color, smoothness, metallic)` / `Prims.Glow(color)` ไม่ต้องสร้างไฟล์ material เพิ่ม
 - hook สำหรับเทสต์ใน `Game`: `dropOverride` (ดรอปดาบ), `foodOverride` (ดรอปอาหาร), `packsOff` (ปิดการเกิดแพ็คและการลบสไลม์ที่ไกล เพื่อให้เทสต์คุมชุดศัตรูเอง)
-- หลังแก้ ให้รัน `build.bat` แล้วลอง `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log` ดู log บรรทัด `SELFTEST` (ต้องไม่มี `FAIL`, ใช้เวลา ~3 นาที) แล้วรัน `powershell -ExecutionPolicy Bypass -File mptest.ps1` (ทดสอบออนไลน์ 4 คนบนเครื่องเดียว ดูหัวข้อ Online co-op)
+- หลังแก้ ให้รัน `build.bat` แล้วลอง `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log` ดู log บรรทัด `SELFTEST` (ต้องไม่มี `FAIL`, ใช้เวลา ~3 นาที) แล้วรัน `mptest.ps1` (ออนไลน์ชุด v1, ใส่ `-arena` ให้เอง) และ `mptest-loop.ps1` (loop ออนไลน์ 4 คน + เข้ากลางรอบ) — ดู `online-coop.md`
 
