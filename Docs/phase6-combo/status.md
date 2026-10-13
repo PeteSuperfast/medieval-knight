@@ -44,3 +44,7 @@
 - คลิกตัดสินตอนปล่อย (TestHoldSeconds 0.15), ชาร์จเต็ม 1 วิ นับจากกด, Heavy Strike, เดินช้า 50%, วง+ดาบเรือง, ยกเลิกด้วยคลิกขวา/dash/สกิล/ล้ม, TeamRun ไม่ชุบขณะชาร์จ
 - selftest เต็ม 0 FAIL (382 PASS) รวมเคสชาร์จ/ล้มกลางชาร์จ/loop smoke; `-p6only` ใช้รันเฉพาะเคส phase 6
 - หมายเหตุ: บิต NetCharging ฝั่ง Knight ถูกใส่ใน build เดียวกัน; เคสเครือข่าย (MpTest) commit ในขั้น 4
+
+## Developer 2026-10-13: ขั้น 4 เสร็จ (ออนไลน์)
+- NetCharging (bit 32) ใน NetFlags, remote pose/glow, Act kind 30..36, Protocol 4; MpTest: holdon/holdoff, chg<pid>, เคส Vault Chop + Heavy + ยกเลิกชาร์จ + ล้มกลางชาร์จ
+- mptest.ps1 (-arena) FAIL=0: H70 A4 B2 C2 X1 V1

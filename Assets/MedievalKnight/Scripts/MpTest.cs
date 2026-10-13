@@ -306,6 +306,7 @@ namespace MedievalKnight
                   .Append(";ac").Append(p.pid).Append('=').Append(p.ActionsSeen)
                   .Append(";an").Append(p.pid).Append('=').Append(p.LastAction)
                   .Append(";blk").Append(p.pid).Append('=').Append(p.IsBlocking ? 1 : 0)
+                  .Append(";chg").Append(p.pid).Append('=').Append(p.ShowsCharge ? 1 : 0)
                   .Append(";hp").Append(p.pid).Append('=').Append(F1(p.hp));
             }
             Dummy d = g.dummy;
@@ -384,6 +385,19 @@ namespace MedievalKnight
                     InputSystem.QueueStateEvent(Mouse.current, new MouseState());
                     yield return null;
                     Reply(id, "ok");
+                    break;
+
+                case "holdon":                                        // phase 6: the left button goes down and stays (a charge)
+                    k.attackHeldOverride = true;
+                    Reply(id, "ok");
+                    break;
+
+                case "holdoff":                                       // the button comes up: a full charge swings the Heavy Strike
+                    k.attackHeldOverride = false;
+                    yield return null; yield return null;
+                    yield return WaitIdle(3f);
+                    k.attackHeldOverride = null;
+                    Reply(id, "an=" + k.LastAction + ";ac=" + k.ActionsSeen);
                     break;
 
                 case "atk":
@@ -851,6 +865,55 @@ namespace MedievalKnight
             }
             Log("dummy took " + (d.hits - hits0) + " hits / " + F1(d.totalDamage - tot0) + " damage from " + A + " in total");
 
+            // ------------------------------------------------ 3b. phase 6: a new attack (Vault Chop), the charge flag, Heavy Strike, a cancelled charge
+            {
+                AttackDef vault = Knight.Attacks[9];
+                yield return Tp(A, dp.x - (d.radius + 1.3f), dp.z, dp.x, dp.z);
+                yield return Sum();
+                float ac0 = N("H", "ac" + pidA), acB0 = N(B, "ac" + pidA);
+                int h0 = d.hits; float dt0 = d.totalDamage;
+                yield return Cmd(A, "atk", "9");
+                yield return W(0.5f);
+                yield return Sum();
+                Ck(Eq("an" + pidA) && S("H", "an" + pidA) == vault.name && N("H", "ac" + pidA) == ac0 + 1 && N(B, "ac" + pidA) == acB0 + 1,
+                    "new attack " + vault.name + " (net kind " + Knight.NetKind(9) + ") by " + A + " is replayed once on every screen");
+                Check("new attack " + vault.name + ": the host's dummy took exactly " + vault.damage + " (hits +" + (d.hits - h0) + ", damage +" + F1(d.totalDamage - dt0) + ")",
+                    d.hits - h0 == 1 && Mathf.Abs(d.totalDamage - dt0 - vault.damage) < 0.01f);
+
+                // charge: the flag is seen on every screen while held, and goes out with the release
+                yield return W(1.0f);
+                AttackDef heavy = Knight.Attacks[Knight.HeavyIndex];
+                yield return Cmd(A, "holdon");
+                yield return W(0.8f);
+                yield return Sum();
+                Ck(Eq("chg" + pidA) && S("H", "chg" + pidA) == "1", A + " holding a charge is seen on every screen");
+                yield return W(0.6f);
+                float acH = N("H", "ac" + pidA);
+                int h1 = d.hits; float dt1 = d.totalDamage;
+                yield return Cmd(A, "holdoff");
+                yield return W(0.3f);
+                yield return Sum();
+                Ck(Eq("an" + pidA) && S("H", "an" + pidA) == heavy.name && N("H", "ac" + pidA) == acH + 1 && Eq("chg" + pidA) && S("H", "chg" + pidA) == "0",
+                    A + " released a full charge: " + heavy.name + " is replayed once on every screen and the charge flag is out");
+                Check(heavy.name + ": the client's hit took exactly " + heavy.damage + " from the host's dummy (hits +" + (d.hits - h1) + ", damage +" + F1(d.totalDamage - dt1) + ")",
+                    d.hits - h1 == 1 && Mathf.Abs(d.totalDamage - dt1 - heavy.damage) < 0.01f);
+
+                // a charge dropped with the right mouse button: the flag goes out, nothing swings when the button comes up
+                yield return W(1.0f);
+                yield return Sum();
+                float acX = N("H", "ac" + pidA);
+                yield return Cmd(A, "holdon");
+                yield return W(0.7f);
+                yield return Cmd(A, "block", "0.5");
+                yield return W(0.3f);
+                yield return Sum();
+                Ck(Eq("chg" + pidA) && S("H", "chg" + pidA) == "0", A + " dropped the charge with the shield: the flag is out everywhere");
+                yield return Cmd(A, "holdoff");
+                yield return W(0.4f);
+                yield return Sum();
+                Ck(Eq("ac" + pidA) && N("H", "ac" + pidA) == acX, "nothing swung when the button came up after the dropped charge");
+            }
+
             // ------------------------------------------------ 4. a client kills a slime: EXP for everybody, a sword drops, another client takes it
             {
                 yield return Cmd("all", "settle");
@@ -1017,11 +1080,18 @@ namespace MedievalKnight
                 yield return Tp(C, 6f, -14f, 6f, 0f);
                 for (int i = 0; i < peers.Length; i++) if (peers[i] != C) yield return Tp(peers[i], 2f + i, -11f, 6f, -14f);
                 yield return Cmd(C, "autoheal", "0");
+                yield return Cmd(C, "holdon");                           // phase 6: he is charging when he falls
+                yield return W(0.8f);
+                yield return Sum();
+                Ck(Eq("chg" + pidC) && S("H", "chg" + pidC) == "1", C + " charging is seen on every screen before he falls");
+                float acC0 = N("H", "ac" + pidC);
                 yield return Cmd(C, "die");
                 Check(C + " took a deadly blow", Parse(Rep(last, C)).G("dead") == "True");
+                yield return Cmd(C, "holdoff");
                 yield return W(1.0f);
                 yield return Sum();
                 Ck(Eq("dead" + pidC) && S("H", "dead" + pidC) == "1", C + " is down, and down on every screen");
+                Ck(Eq("chg" + pidC) && S("H", "chg" + pidC) == "0" && N("H", "ac" + pidC) == acC0, C + " fell while charging: the charge flag is out everywhere and nothing swung");
                 yield return Cmd("all", "shot", "knight_down");
                 yield return W(Game.ReviveDelayCoop + 1.2f);
                 yield return Cmd(C, "autoheal", "1");
