@@ -27,3 +27,11 @@
 
 ## รอใคร (ปัจจุบัน)
 - รอ designer ส่ง design.md → ตรวจด่าน 2 → ส่ง architect
+
+## อัปเดต 2026-10-13 (ปูส้ม)
+- designer ส่ง design.md → ด่าน 2 ผ่าน → ปูส้มตัดสิน decisions ข้อ 1–5
+- architect ส่ง tech.md + tech-net.md (11 ขั้น ขนาดใหญ่ Protocol 2→3) → ด่าน 2 ผ่าน: ตรง requirement/design, ฐาน=โลกพื้นที่เดียวยืนยันจากโค้ดจริง, v1 ย้ายไป -arena + mptest เดิมต้องผ่านทุกขั้น → ปูส้มตัดสิน decisions ข้อ 6–11
+- โพสต์ขออนุมัติใน Discord แล้ว
+
+## รอใคร (ปัจจุบัน)
+- รอพีท (ID 372330922122674179) อนุมัติ design/tech/tech-net/decisions → ห้ามส่ง developer จนกว่าจะเห็นข้อความอนุมัติจริง
