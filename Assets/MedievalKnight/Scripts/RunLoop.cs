@@ -120,6 +120,7 @@ namespace MedievalKnight
         {
             if (entering && Time.unscaledTime >= enterAt) StartWorld();
             if (team != null) { team.Tick(); ui.SetRosterLine(TeamUi.RosterLine(g, team)); }
+            if (team != null && State == LoopState.World) team.TickLocal();
             if (State == LoopState.World) TickPortal();
             if (State == LoopState.World) TickPosition();
             if (State == LoopState.World) TickPile();

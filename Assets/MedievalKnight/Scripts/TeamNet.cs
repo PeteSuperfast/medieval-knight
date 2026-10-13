@@ -66,6 +66,12 @@ namespace MedievalKnight
             return w.Pos(x).Pos(z).Done();
         }
 
+        // C>H: I am holding F on this player (phase 1) / let go (0) / 2 s are up (2)
+        public static byte[] Revive(int target, int phase) { return new NetW(Msg.Revive).U8(target).U8(phase).Done(); }
+
+        // H>C: the same, relayed to the one who is being revived (with who does it)
+        public static byte[] ReviveRelay(int reviver, int target, int phase) { return new NetW(Msg.Revive).U8(reviver).U8(target).U8(phase).Done(); }
+
         // C>H: stood in the portal for the whole 1.5 s
         public static byte[] Reached() { return new NetW(Msg.Reached).Done(); }
 
@@ -129,6 +135,13 @@ namespace MedievalKnight
                     t.HostReached(c.pid);
                     break;
 
+                case Msg.Revive:
+                {
+                    int target = r.U8(), phase = r.U8();
+                    t.HostRevive(c.pid, target, phase);
+                    break;
+                }
+
                 case Msg.Pack:
                 {
                     bool ready = r.U8() != 0;
@@ -177,6 +190,13 @@ namespace MedievalKnight
                 case Msg.HomeIn:
                     t.OnHomeIn(r.F32());
                     break;
+
+                case Msg.Revive:
+                {
+                    int reviver = r.U8(), target = r.U8(), phase = r.U8();
+                    t.OnReviveRelay(reviver, target, phase);
+                    break;
+                }
 
                 case Msg.RunEnd:
                 {

@@ -1178,7 +1178,7 @@ namespace MedievalKnight
                     }
 
                     // party row (the local knight has the big bars already)
-                    if (p == me || row >= party.Length) continue;
+                    if (p == me || row >= party.Length || g.Coop) continue;      // the loop online has its own roster (TeamUi)
                     PartyUi u = party[row++];
                     if (!u.go.activeSelf) u.go.SetActive(true);
                     u.swatch.color = Knight.MainColors[p.pid & 3];

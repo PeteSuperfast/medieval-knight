@@ -329,6 +329,11 @@ namespace MedievalKnight
             foreach (Pickup q in Pickup.All) if (!q.hidden) pk += q.weaponId + "@" + F1(q.transform.position.x) + "," + F1(q.transform.position.z) + " ";
             if (run != null) sb.Append(";portal=").Append(run.portal != null ? 1 : 0).Append(";boss=").Append(run.BossDown ? 1 : 0)
                 .Append(";home=").Append(t != null && t.HomeStarted ? F1(t.HomeLeft) : "-").Append(";hometext=").Append(run.teamUi != null ? run.teamUi.HomeTextShown.Replace(';', ',').Replace('=', ':').Replace('\n', '~') : "");
+            if (run != null && run.teamUi != null)
+                sb.Append(";downui=").Append(run.teamUi.DownShown ? 1 : 0).Append(";downsub=").Append(run.teamUi.DownSubText.Replace(';', ',').Replace('=', ':'))
+                  .Append(";revby=").Append(run.teamUi.ReviveByText.Replace(';', ',').Replace('=', ':')).Append(";revprompt=").Append(run.teamUi.RevivePromptText.Replace(';', ',').Replace('=', ':'))
+                  .Append(";spec=").Append(run.teamUi.SpectatingText.Replace(';', ',').Replace('=', ':')).Append(";overhead=").Append(run.teamUi.OverheadShown);
+            if (me != null) sb.Append(";lastact=").Append(me.LastAction).Append(";downleft=").Append(F1(me.DownLeft));
             sb.Append(";pk=").Append(Pickup.All.Count).Append(";pklist=").Append(pk.Trim());
             sb.Append(";notice=").Append(g.hud.NoticeShown.Replace(';', ',').Replace('=', ':').Replace('|', '/'))
               .Append(";banner=").Append(g.hud.BannerShown.Replace(';', ',').Replace('=', ':').Replace('|', '/').Replace('\n', ' '));
@@ -462,6 +467,20 @@ namespace MedievalKnight
                     run.UiReturn();
                     yield return null;
                     Reply(id, "st=" + run.State);
+                    break;
+
+                case "hold":                                          // seconds: hold the real F key
+                    Keys(Key.F);
+                    yield return W(P(a[0]));
+                    Keys();
+                    yield return null;
+                    Reply(id, "lastact=" + k.LastAction);
+                    break;
+
+                case "die":
+                    autoHeal = false;
+                    k.TakeDamage(99999f, k.transform.position + Vector3.right, "mptest");
+                    Reply(id, "dead=" + k.Dead);
                     break;
 
                 case "autoheal":
@@ -700,6 +719,97 @@ namespace MedievalKnight
                 yield return Sum();
                 Ck(Eq("st") && S("H", "st") == "Prepare" && Eq("n") && S("H", "n") == "1" && Eq("live") && S("H", "live") == "0",
                     "everybody is back at his own base with PREPARE open, one knight each, no run open");
+            }
+
+            // ------------------------------------------------ 6. a second run with four: A falls and B revives him, then A falls for good
+            {
+                // everybody gets a weapon and READY (C now too)
+                foreach (string r in new[] { A, B, C })
+                {
+                    yield return Cmd(r, "carryclear");
+                    yield return Cmd(r, "give", "w", Weapons.Iron.ToString(), "0");
+                    yield return Cmd(r, "give", "f", Foods.Apple.ToString());
+                    yield return Cmd(r, "ready", "1");
+                }
+                yield return W(0.5f);
+                yield return Cmd("H", "carryclear");
+                yield return Cmd("H", "give", "w", Weapons.Iron.ToString(), "0");
+                yield return Cmd("H", "give", "f", Foods.Apple.ToString());
+                yield return Cmd("H", "enter", "0");
+                yield return W(2.4f);
+                yield return Sum();
+                Ck(Eq("live") && S("H", "live") == "1" && Eq("n") && S("H", "n") == "4" && S(C, "st") == "World", "the second run has all four players in the world (" + C + " too)");
+                g.packsOff = true;
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                Vector3 camp = new Vector3(30f, 0f, -120f);
+                yield return Cmd(A, "tp", F2(camp.x), F2(camp.z));
+                yield return Cmd(B, "tp", F2(camp.x + 2f), F2(camp.z));
+                yield return Cmd(C, "tp", F2(camp.x - 2f), F2(camp.z + 2f));
+                yield return Cmd("H", "tp", F2(camp.x), F2(camp.z + 4f));
+                yield return W(0.4f);
+                yield return Cmd(A, "die");
+                yield return W(0.9f);
+                yield return Sum();
+                Ck(S(A, "dead") == "1" && S(A, "fallen") == "0" && S("H", "dead" + pidA) == "1" && S(B, "dead" + pidA) == "1" && S(C, "dead" + pidA) == "1" && S("H", "fall" + pidA) == "0",
+                    A + " is down (not fallen) and all four screens show him down");
+                Check(A + "'s own screen: YOU ARE DOWN with the countdown (" + S(A, "downsub") + "), the others show DOWN over his head (" + S(B, "overhead") + ")",
+                    S(A, "downui") == "1" && S(A, "downsub").Contains("Help is needed") && S(B, "overhead") == "1" && S("H", "overhead") == "1");
+                Check("the roster says Down on the host and on C (" + S("H", "stat") + ")", S("H", "stat").Contains(pidA + ":1") && S(C, "stat").Contains(pidA + ":1"));
+                Shot("a_down");
+                // B stands next to him and holds F (the real key) for 2.4 s
+                yield return Cmd(B, "tp", F2(camp.x + 1.5f), F2(camp.z));
+                int hold = Send(B, "hold", "2.6");
+                yield return W(0.9f);
+                yield return Sum();
+                Check("while B holds F: B sees 'Hold F: Revive " + "Alice" + "' (" + S(B, "revprompt") + ") and A sees who is reviving him (" + S(A, "revby") + ")",
+                    S(B, "revprompt").Contains("Revive") && S(A, "revby").Contains("Bob"));
+                yield return Wait(hold, B, 8f);
+                yield return W(0.6f);
+                yield return Sum();
+                Ck(S(A, "dead") == "0" && S("H", "dead" + pidA) == "0" && S(B, "dead" + pidA) == "0" && S(C, "dead" + pidA) == "0", A + " is back on his feet on every screen after B held F for 2 s");
+                float hpFrac = N(A, "hp") / N(A, "mhp");
+                Check(A + " came back with about 30% health (" + S(A, "hp") + " / " + S(A, "mhp") + ") and the shield glow (" + S(A, "protect") + ")", hpFrac > 0.25f && hpFrac < 0.4f && S(A, "protect") == "1");
+                Check("holding F did not start a Ground Slam for B (last action '" + S(B, "lastact") + "')", S(B, "lastact") != "Ground Slam");
+                yield return Cmd("all", "shot", "a_revived");
+
+                // not revived in time: fallen for good (6 s in the test), the others see FELL, A watches
+                yield return Cmd(A, "autoheal", "1");
+                yield return W(3.5f);                                  // (the shield of the revive)
+                yield return Cmd(A, "tp", F2(camp.x - 6f), F2(camp.z + 8f));
+                yield return Cmd(A, "die");
+                yield return W(1.0f);
+                yield return Sum();
+                Check(A + " is down again (" + S(A, "downleft") + " s left)", S(A, "dead") == "1" && S(A, "fallen") == "0" && N(A, "downleft") > 0f);
+                yield return W(Game.TestDownSeconds + 1.6f);
+                yield return Sum();
+                Ck(S(A, "fallen") == "1" && S("H", "fall" + pidA) == "1" && S(B, "fall" + pidA) == "1" && S(C, "fall" + pidA) == "1", A + " fell for good: fallen on every screen");
+                Check("the roster says Fallen (" + S("H", "stat") + ") and A watches a friend (" + S(A, "spec") + ")", S("H", "stat").Contains(pidA + ":2") && S(A, "spec").Contains("SPECTATING"));
+                Shot("a_fallen");
+                // revive does not work any more
+                yield return Cmd(B, "tp", F2(camp.x - 6f), F2(camp.z + 7f));
+                yield return Cmd(B, "hold", "2.6");
+                yield return W(0.5f);
+                yield return Sum();
+                Check("a fallen player can not be revived any more", S(A, "dead") == "1" && S(A, "fallen") == "1");
+
+                // the team kills the boss with A fallen: A's things are still safe and come home
+                yield return Sum();
+                int carryAfell = (int)N(A, "carry"), stashAbefore = (int)N(A, "stash");
+                Minotaur m2 = g.minotaur;
+                if (m2 != null) m2.TakeHit(999999f, 1f, m2.transform.position + Vector3.back * 2f, false, 0f, 0f, "mptest", g.knight);
+                yield return W(1.5f);
+                yield return Cmd("all", "settle");
+                Vector3 pp2 = g.run.portal != null ? g.run.portal.transform.position : Vector3.zero;
+                yield return Cmd(C, "tp", F2(pp2.x + 0.5f), F2(pp2.z));
+                yield return W(5.5f);
+                yield return Sum();
+                Ck(S("H", "sum") == "1" && S(A, "sum") == "1" && S(B, "sum") == "1" && S(C, "sum") == "1", "the team went home together with A fallen: everybody has the summary");
+                Check("A's summary says he FELL but his " + carryAfell + " items came home (stash " + stashAbefore + " -> " + S(A, "stash") + ")",
+                    S(A, "sumbody").Contains("FELL") && N(A, "stash") == stashAbefore + carryAfell && S(A, "carry") == "0");
+                Check("no old world was made (the host still has 1: #A1B2) and the counter went 2 -> 1 once more (" + S("H", "wlist") + ")", S("H", "worlds") == "1" && S("H", "wlist").StartsWith("41394/1/"));
+                yield return Cmd("all", "shot", "second_victory");
+                foreach (string r in new[] { A, B, C, "H" }) yield return Cmd(r, "ret");
+                yield return W(0.6f);
             }
 
             // ------------------------------------------------ the extra join attempts were turned away

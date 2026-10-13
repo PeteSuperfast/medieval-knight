@@ -268,7 +268,156 @@ namespace MedievalKnight
 
         // ---------------------------------------------------------------- falling, items (later steps)
 
-        public void OnLocalDown() { }
+        // ---------------------------------------------------------------- falling, reviving, watching
+
+        public const float ReviveSeconds = 2f, ReviveReach = 3f, ReviveReachHost = 3.5f;
+
+        public Knight ReviveCandidate { get; private set; }          // a downed friend within reach: F revives him instead of the Ground Slam
+        public Knight SpectateTarget { get; private set; }           // the local knight has fallen for good: the camera follows this one
+        int holdTarget = -1;                                         // pid being revived by the local knight (-1 none)
+        float holdT, holdHurt, interruptedAt = -10f;
+
+        public float ReviveProgress { get { return holdTarget >= 0 ? Mathf.Clamp01(holdT / ReviveSeconds) : 0f; } }
+        public bool ReviveInterrupted { get { return Time.unscaledTime - interruptedAt < 0.6f; } }
+
+        // The local knight hit 0 health: down, a friend can still bring him back for Game.TestDownSeconds.
+        public void OnLocalDown()
+        {
+            StopHold(false);
+            g.hud.Notice("You are down - a friend can revive you (F)", new Color(1f, 0.45f, 0.4f));
+            Debug.Log("TEAM local knight is down");
+        }
+
+        // The time ran out: he stays on the ground for good and watches the team.
+        public void OnLocalFallen()
+        {
+            g.hud.Notice("You fell. Waiting for the team...", new Color(0.7f, 0.67f, 0.63f));
+            Debug.Log("TEAM local knight has fallen");
+        }
+
+        public void OnLocalRevived()
+        {
+            g.hud.Banner("You are back on your feet", new Color(0.435f, 0.82f, 0.435f), 2.5f);
+            SpectateTarget = null;
+        }
+
+        // Every frame while in the world, on every machine: who can I revive, am I holding F, who do I watch.
+        public void TickLocal()
+        {
+            Knight me = g.knight;
+            if (me == null) return;
+            Knight best = null;
+            float bd = ReviveReach * ReviveReach;
+            if (!me.Dead)
+                foreach (Knight k in g.players)
+                {
+                    if (k == me || !k.Down) continue;
+                    Vector3 d = k.Pos - me.Pos; d.y = 0f;
+                    float m = d.sqrMagnitude;
+                    if (m <= bd) { bd = m; best = k; }
+                }
+            ReviveCandidate = best;
+            bool holding = best != null && InputX.Held(KeyCode.F) && !me.IsAttacking && !g.PanelOpen && Time.unscaledTime >= g.inputBlockUntil;
+            if (holding)
+            {
+                if (holdTarget != best.pid)
+                {
+                    StopHold(true);
+                    holdTarget = best.pid;
+                    holdT = 0f;
+                    holdHurt = me.LastHurtTime;
+                    SendRevive(best.pid, 1);
+                }
+                if (me.LastHurtTime > holdHurt)                        // hit while reviving: starts over
+                {
+                    holdT = 0f;
+                    holdHurt = me.LastHurtTime;
+                    interruptedAt = Time.unscaledTime;
+                }
+                holdT += Time.unscaledDeltaTime;
+                me.RevTarget = best.pid;
+                if (holdT >= ReviveSeconds)
+                {
+                    int t = best.pid;
+                    StopHold(false);
+                    SendRevive(t, 2);
+                }
+            }
+            else if (holdTarget >= 0) StopHold(true);
+
+            // watching: a fallen knight follows a friend who is still on his feet (Q / E or the arrows switch)
+            if (me.Fallen)
+            {
+                var alive = new List<Knight>();
+                foreach (Knight k in g.players) if (k != me && !k.Dead) alive.Add(k);
+                if (alive.Count == 0) { SpectateTarget = null; return; }
+                int idx = alive.IndexOf(SpectateTarget);
+                if (idx < 0) idx = 0;
+                else if (InputX.Down(KeyCode.Q) || InputX.Down(KeyCode.LeftArrow)) idx = (idx + alive.Count - 1) % alive.Count;
+                else if (InputX.Down(KeyCode.E) || InputX.Down(KeyCode.RightArrow)) idx = (idx + 1) % alive.Count;
+                SpectateTarget = alive[idx];
+            }
+            else SpectateTarget = null;
+        }
+
+        void StopHold(bool tell)
+        {
+            if (holdTarget >= 0 && tell) SendRevive(holdTarget, 0);
+            holdTarget = -1;
+            holdT = 0f;
+            if (g.knight != null) g.knight.RevTarget = 255;
+        }
+
+        // phase 0 let go / 1 holding / 2 done (2 s)
+        void SendRevive(int target, int phase)
+        {
+            if (Net.IsHost) HostRevive(Net.LocalPid, target, phase);
+            else Net.ToServer(TeamNet.Revive(target, phase));
+        }
+
+        // host: a reviver's message (or his own). Checked loosely (friends only): both in the run, the target really is
+        // down, the reviver is on his feet and near. Then it goes on to the target, whose machine stands him up.
+        public void HostRevive(int reviver, int target, int phase)
+        {
+            if (!Net.IsHost || !runLive || phase < 0 || phase > 2) return;
+            Member mr = Find(reviver), mt = Find(target);
+            Knight kr = g.PlayerByPid(reviver), kt = g.PlayerByPid(target);
+            if (mr == null || mt == null || kr == null || kt == null || !mr.inRun || !mt.inRun || reviver == target) return;
+            if (phase != 0)
+            {
+                Vector3 d = kt.Pos - kr.Pos; d.y = 0f;
+                if (kr.Dead || !kt.Down || d.magnitude > ReviveReachHost) return;
+            }
+            if (target == Net.LocalPid) OnReviveRelay(reviver, target, phase);
+            else Net.ToPid(target, TeamNet.ReviveRelay(reviver, target, phase));
+            if (phase == 2) g.WorldBanner(kr.playerName + " revived " + kt.playerName, new Color(0.435f, 0.82f, 0.435f));
+        }
+
+        // The target's machine: "X is reviving you" (0 / 1) or "stand up" (2).
+        public void OnReviveRelay(int reviver, int target, int phase)
+        {
+            if (target != Net.LocalPid || g.knight == null) return;
+            if (phase == 2) g.knight.Revive();
+        }
+
+        // host, every frame: what each player's knight says about him (down / fallen / on his feet) is the roster's status
+        void TickStatus()
+        {
+            foreach (Member m in roster)
+            {
+                if (!m.inRun || m.status == Stat.Left) continue;
+                Knight k = g.PlayerByPid(m.pid);
+                if (k == null) continue;
+                Stat s = k.Fallen ? Stat.Fallen : k.Dead ? Stat.Down : Stat.Alive;
+                m.downLeft = k.DownLeft;
+                if (s == m.status) continue;
+                Color red = new Color(1f, 0.45f, 0.4f);
+                if (s == Stat.Down) g.WorldBanner(m.name + " is down", red);
+                else if (s == Stat.Fallen) g.WorldBanner(m.name + " has fallen", red);
+                m.status = s;
+                dirty = true;
+            }
+        }
 
         // ---------------------------------------------------------------- the portal, going home together
 
@@ -382,6 +531,7 @@ namespace MedievalKnight
                     Knight k = g.PlayerByPid(m.pid);
                     if (k != null && m.inRun && m.status != Stat.Left) m.lastPos = k.Pos;
                 }
+                if (runLive) TickStatus();
                 if (dirty && Time.unscaledTime >= nextTeamSend)
                 {
                     dirty = false;

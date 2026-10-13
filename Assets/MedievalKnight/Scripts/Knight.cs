@@ -414,6 +414,16 @@ namespace MedievalKnight
             Simulate(ReadInput(canInput), canInput, dt);
         }
 
+        // Online loop: a friend lies within reach, so F revives him instead of leaping (Ground Slam).
+        bool ReviveInstead
+        {
+            get
+            {
+                Game g = Game.I;
+                return g.Coop && g.run != null && g.run.team != null && g.run.team.ReviveCandidate != null;
+            }
+        }
+
         // The only place where the knight looks at the keyboard and mouse (or at the self-test's overrides).
         KnightInput ReadInput(bool canInput)
         {
@@ -427,7 +437,7 @@ namespace MedievalKnight
             if (InputX.Down(KeyCode.Q)) inp.request = SkillRequest;
             else if (InputX.Down(KeyCode.E)) inp.request = SkillRequest + 1;
             else if (InputX.Down(KeyCode.R)) inp.request = SkillRequest + 2;
-            else if (InputX.Down(KeyCode.F)) inp.request = SkillRequest + 3;
+            else if (InputX.Down(KeyCode.F) && !ReviveInstead) inp.request = SkillRequest + 3;
             else if (InputX.MouseDown(0) || InputX.Down(KeyCode.J)) inp.request = ComboRequest;
             return inp;
         }
@@ -600,6 +610,34 @@ namespace MedievalKnight
         public bool Fallen { get; private set; }
         public float DownLeft { get; private set; }
         public bool Down { get { return Dead && !Fallen; } }
+        public float LastHurtTime { get; private set; }                  // when he last took a blow (an interrupted revive starts over)
+        bool standRequested;                                             // somebody finished reviving him (the loop online)
+
+        // The loop online: a friend held F next to him for 2 s. Only works while he is down (not fallen for good).
+        public void Revive()
+        {
+            if (remote || !Dead || Fallen) return;
+            standRequested = true;
+        }
+
+        // Back on his feet with 30% health and a 3 s shield, where he lay.
+        void StandUpRevived()
+        {
+            standRequested = false;
+            Dead = false;
+            Fallen = false;
+            DownLeft = 0f;
+            hp = MaxHp * 0.3f;
+            rigLean = 0f; rigHop = 0f;
+            swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
+            knockVel = Vector3.zero;
+            invulnUntil = 0f;
+            Protect(3f);
+            Sfx.I.Play(Snd.Ready);
+            Fx.I.Ring(Ground(0.06f), 0.4f, 3.5f, new Color(0.7f, 1f, 0.7f, 0.9f), 0.6f);
+            Fx.I.Burst(transform.position + Vector3.up * 1.0f, 18, new Color(0.7f, 1f, 0.75f), 2f, 6f, Vector3.up, 0.8f, 0.7f, 2f, 0.1f);
+            Game.I.OnKnightRevived(this);
+        }
 
         // The time stamp and facing that go out with this knight's state: his own for the local knight, the last
         // reported ones for a remote knight (the host passes other players' reports on unchanged).
@@ -617,6 +655,7 @@ namespace MedievalKnight
                 transform.position = p;
                 transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             }
+            if (Dead && !Fallen && DownLeft > 0f) DownLeft = Mathf.Max(0f, DownLeft - dt);
             Pose(dt, remoteSpeed > 1f && !Airborne && !Dead);
         }
 
@@ -647,8 +686,11 @@ namespace MedievalKnight
                 if (weapon != inventory.equipped) { inventory.equipped = weapon; RebuildSword(); }
             }
 
+            bool nowFallen = nowDead && (flags & NetFallen) != 0;
             if (nowDead && !wasDead) RemoteDown();
             else if (!nowDead && wasDead) RemoteRevive();
+            if (nowFallen && !Fallen) { Fallen = true; DownLeft = 0f; }
+            else if (!nowDead && Fallen) Fallen = false;
             netSynced = true;
         }
 
@@ -673,6 +715,8 @@ namespace MedievalKnight
             StopAllCoroutines();
             StopAct();
             Dead = true;
+            Fallen = false;
+            DownLeft = Game.TestDownSeconds;                            // counted here too (the loop online) so everybody can show it
             IsBlocking = false;
             StartCoroutine(FallRoutine());
         }
@@ -682,13 +726,15 @@ namespace MedievalKnight
             StopAllCoroutines();
             StopAct();
             Dead = false;
+            Fallen = false;
+            DownLeft = 0f;
             rigLean = 0f; rigHop = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             interp.Snap(netPos, transform.eulerAngles.y);
             transform.position = netPos;
             Sfx.I.Play(Snd.Ready, Game.I.RemoteVolume(netPos));
             Fx.I.Ring(new Vector3(netPos.x, 0.06f, netPos.z), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
-            if (Net.IsHost) Game.I.PushEnemiesFrom(spawnPoint);       // same courtesy the local knight gets
+            if (Net.IsHost && !Game.I.Loop) Game.I.PushEnemiesFrom(spawnPoint);       // same courtesy the local knight gets (not in the loop: he stands where he lay)
         }
 
         // Replays an attack / skill of the remote player for show. kind: 0..4 = sword attack, 10..13 = skill.
@@ -1169,6 +1215,7 @@ namespace MedievalKnight
             }
             if (Invulnerable) return;
             LastDamageSource = source;
+            LastHurtTime = Time.time;
             Vector3 toSrc = from - transform.position; toSrc.y = 0f;
             Vector3 srcDir = toSrc.sqrMagnitude > 0.0001f ? toSrc.normalized : transform.forward;
             Vector3 chestPos = transform.position + new Vector3(0f, 1.4f, 0f);
@@ -1230,9 +1277,22 @@ namespace MedievalKnight
             IsBlocking = false; Airborne = false;
             jumpY = 0f; dashMoveEnd = 0f; dashInvulnUntil = 0f;
             bool online = Net.Multiplayer;
+            bool coop = Game.I.Coop;
             reviveAt = Time.time + (online ? Game.ReviveDelayCoop : Game.ReviveDelaySingle);
+            if (coop) { Fallen = false; standRequested = false; DownLeft = Game.TestDownSeconds; }
             Game.I.OnKnightDown(this);                      // YOU DIED screen (the numbers shown are the ones from before the reset)
             yield return FallRoutine();
+            if (coop)
+            {
+                // the loop online: down for DownLeft seconds, a friend can revive him (F, 2 s); out of time = fallen for good
+                // (he stays on the ground, Dead stays true, and he watches the others)
+                while (DownLeft > 0f && !standRequested) { DownLeft -= Time.deltaTime; yield return null; }
+                if (standRequested) { StandUpRevived(); yield break; }
+                DownLeft = 0f;
+                Fallen = true;
+                Game.I.OnKnightFallen(this);
+                yield break;
+            }
             if (Game.I.Loop)                                // Phase 1 loop: dying ends the run, nobody stands up here
             {
                 Game.I.OnLoopDeath();

@@ -1140,6 +1140,17 @@ namespace MedievalKnight
             hud.ShowDeath(progress.level, k.inventory.OwnedCount, Weapons.All.Length, k.souls, k);
         }
 
+        // The loop online: the local knight ran out of time on the ground (fallen for good) / was brought back.
+        public void OnKnightFallen(Knight k)
+        {
+            if (k == knight && Coop && run.team != null) run.team.OnLocalFallen();
+        }
+
+        public void OnKnightRevived(Knight k)
+        {
+            if (k == knight && Coop && run.team != null) run.team.OnLocalRevived();
+        }
+
         // Phase 1 loop: the local knight fell. Called by Knight.DownRoutine once he is on the ground.
         public void OnLoopDeath()
         {
@@ -1414,6 +1425,10 @@ namespace MedievalKnight
             if (!InSession || knight == null) return;
             Net.LateTick();                                       // positions are final for this frame: send them
             Vector3 target = knight.transform.position; target.y = 0f;
+            if (Coop && run.team != null && run.team.SpectateTarget != null)       // fallen for good: watch a friend
+            {
+                target = run.team.SpectateTarget.transform.position; target.y = 0f;
+            }
             camFocus = Vector3.Lerp(camFocus, target, 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime));
 
             Vector3 offset = Vector3.zero;

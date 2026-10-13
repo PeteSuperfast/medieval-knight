@@ -665,6 +665,15 @@ namespace MedievalKnight
             }
         }
 
+        // One message to one player (the host).
+        internal static void ToPid(int pid, byte[] msg)
+        {
+            Conn c = IsHost ? ConnOf(pid) : null;
+            if (c == null) return;
+            BytesOut += msg.Length;
+            c.Send(msg);
+        }
+
         internal static Conn ConnOf(int pid)
         {
             for (int i = 0; i < conns.Count; i++) if (conns[i].ready && conns[i].pid == pid) return conns[i];

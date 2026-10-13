@@ -23,8 +23,13 @@ namespace MedievalKnight
         readonly Text[] rows = new Text[MaxRows];
         readonly Image[] swatches = new Image[MaxRows];
         Text waiting;
+        float revSince;                                               // when somebody started reviving the local knight
         Image homeFrame;                                              // X1: the countdown home
         Text homeText;
+        // K1: the local knight is down; S1: fallen for good, watching
+        Image vignette, revBarBg, revBar, holdBarBg, holdBar;
+        Text downTitle, downSub, revBy, revPrompt, specTitle, specHint, specKeys;
+        readonly Text[] overhead = new Text[MaxRows];                // "DOWN 42" over every downed knight
 
         public static TeamUi Create(Transform parent, RunLoop run)
         {
@@ -111,6 +116,50 @@ namespace MedievalKnight
             homeText.fontStyle = FontStyle.Bold;
             homeText.color = Sky;
             homeFrame.gameObject.SetActive(false);
+
+            // K1
+            vignette = Box("Vignette", root, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, new Color(0.55f, 0.02f, 0.02f, 0f));
+            vignette.rectTransform.anchorMin = Vector2.zero; vignette.rectTransform.anchorMax = Vector2.one;
+            vignette.rectTransform.offsetMin = vignette.rectTransform.offsetMax = Vector2.zero;
+            downTitle = Label("DownTitle", root, new Vector2(0.5f, 1f), new Vector2(0f, -80f), new Vector2(900f, 52f), 40, TextAnchor.MiddleCenter);
+            downTitle.fontStyle = FontStyle.Bold; downTitle.color = Red; downTitle.text = "YOU ARE DOWN";
+            downSub = Label("DownSub", root, new Vector2(0.5f, 1f), new Vector2(0f, -128f), new Vector2(700f, 30f), 22, TextAnchor.MiddleCenter);
+            revBy = Label("ReviveBy", root, new Vector2(0.5f, 1f), new Vector2(0f, -160f), new Vector2(700f, 28f), 22, TextAnchor.MiddleCenter);
+            revBy.fontStyle = FontStyle.Bold; revBy.color = Green;
+            revBarBg = Box("RevBarBg", root, new Vector2(0.5f, 1f), new Vector2(0f, -196f), new Vector2(224f, 18f), new Color(0f, 0f, 0f, 0.7f));
+            revBar = Box("RevBar", revBarBg.rectTransform, new Vector2(0f, 0.5f), new Vector2(2f, 0f), new Vector2(220f, 14f), Green);
+            revBar.rectTransform.pivot = new Vector2(0f, 0.5f);
+            // the reviver: "Hold F: Revive Bob" and the bar
+            revPrompt = Label("RevivePrompt", root, new Vector2(0.5f, 0f), new Vector2(0f, 190f), new Vector2(700f, 30f), 24, TextAnchor.MiddleCenter);
+            revPrompt.fontStyle = FontStyle.Bold; revPrompt.color = Green;
+            holdBarBg = Box("HoldBarBg", root, new Vector2(0.5f, 0f), new Vector2(0f, 164f), new Vector2(224f, 18f), new Color(0f, 0f, 0f, 0.7f));
+            holdBar = Box("HoldBar", holdBarBg.rectTransform, new Vector2(0f, 0.5f), new Vector2(2f, 0f), new Vector2(220f, 14f), Green);
+            holdBar.rectTransform.pivot = new Vector2(0f, 0.5f);
+            // S1
+            specTitle = Label("SpecTitle", root, new Vector2(0.5f, 1f), new Vector2(0f, -80f), new Vector2(900f, 40f), 30, TextAnchor.MiddleCenter);
+            specTitle.fontStyle = FontStyle.Bold;
+            specHint = Label("SpecHint", root, new Vector2(0.5f, 0f), new Vector2(0f, 210f), new Vector2(900f, 32f), 24, TextAnchor.MiddleCenter);
+            specHint.color = Gray; specHint.fontStyle = FontStyle.Bold; specHint.text = "You fell. Waiting for the team...";
+            specKeys = Label("SpecKeys", root, new Vector2(0.5f, 0f), new Vector2(0f, 184f), new Vector2(900f, 26f), 18, TextAnchor.MiddleCenter);
+            specKeys.color = Gray; specKeys.text = "[Q / E or Left / Right: switch]";
+            for (int i = 0; i < MaxRows; i++)
+            {
+                overhead[i] = Label("Overhead" + i, root, new Vector2(0f, 0f), Vector2.zero, new Vector2(260f, 28f), 22, TextAnchor.MiddleCenter);
+                overhead[i].rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                overhead[i].fontStyle = FontStyle.Bold;
+                overhead[i].gameObject.SetActive(false);
+            }
+            SetFallenUi(false, false, false);
+        }
+
+        // shows / hides the K1 (down) and S1 (fallen) texts and the reviver's prompt
+        void SetFallenUi(bool down, bool fallen, bool prompt)
+        {
+            if (downTitle.gameObject.activeSelf != down) { downTitle.gameObject.SetActive(down); downSub.gameObject.SetActive(down); }
+            if (vignette.gameObject.activeSelf != (down || fallen)) vignette.gameObject.SetActive(down || fallen);
+            if (specTitle.gameObject.activeSelf != fallen) { specTitle.gameObject.SetActive(fallen); specHint.gameObject.SetActive(fallen); specKeys.gameObject.SetActive(fallen); }
+            if (revPrompt.gameObject.activeSelf != prompt) { revPrompt.gameObject.SetActive(prompt); holdBarBg.gameObject.SetActive(prompt); }
+            if (!down && revBy.gameObject.activeSelf) { revBy.gameObject.SetActive(false); revBarBg.gameObject.SetActive(false); }
         }
 
         // ---------------------------------------------------------------- test read-outs
@@ -119,6 +168,12 @@ namespace MedievalKnight
         public string RowText(int i) { return rows[i].gameObject.activeSelf ? rows[i].text : ""; }
         public string WaitingText { get { return waiting.gameObject.activeSelf ? waiting.text : ""; } }
         public string HomeTextShown { get { return homeFrame.gameObject.activeSelf ? homeText.text : ""; } }
+        public bool DownShown { get { return downTitle.gameObject.activeSelf; } }
+        public string DownSubText { get { return downSub.text; } }
+        public string ReviveByText { get { return revBy.gameObject.activeSelf ? revBy.text : ""; } }
+        public string RevivePromptText { get { return revPrompt.gameObject.activeSelf ? revPrompt.text : ""; } }
+        public string SpectatingText { get { return specTitle.gameObject.activeSelf ? specTitle.text : ""; } }
+        public int OverheadShown { get { int n = 0; foreach (Text t in overhead) if (t.gameObject.activeSelf) n++; return n; } }
 
         // ---------------------------------------------------------------- drawing
 
@@ -193,6 +248,74 @@ namespace MedievalKnight
                 }
             for (int i = n; i < MaxRows; i++)
                 if (rows[i].gameObject.activeSelf) { rows[i].gameObject.SetActive(false); swatches[i].gameObject.SetActive(false); }
+            // K1 / S1: the local knight is down / fallen; the reviver's prompt; "DOWN 42" over every downed knight
+            Knight me = g.knight;
+            bool amDown = inWorld && me.Down;
+            bool amFallen = inWorld && me.Fallen;
+            bool prompt = inWorld && t.ReviveCandidate != null && !me.Dead;
+            SetFallenUi(amDown, amFallen, prompt);
+            if (amDown || amFallen)
+            {
+                float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f);
+                vignette.color = new Color(0.55f, 0.02f, 0.02f, amDown ? 0.14f + 0.12f * pulse : 0.1f);
+            }
+            if (amDown)
+            {
+                downSub.text = "Help is needed: " + Mathf.CeilToInt(me.DownLeft) + " s";
+                Knight by = null;
+                foreach (Knight k in g.players) if (k != me && k.RevTarget == Net.LocalPid && !k.Dead) by = k;
+                bool rv = by != null;
+                if (revBy.gameObject.activeSelf != rv) { revBy.gameObject.SetActive(rv); revBarBg.gameObject.SetActive(rv); }
+                if (rv)
+                {
+                    revBy.text = by.playerName + " is reviving you...";
+                    float f = Mathf.Clamp01((Time.unscaledTime - revSince) / TeamRun.ReviveSeconds);
+                    revBar.rectTransform.sizeDelta = new Vector2(220f * f, 14f);
+                }
+                else revSince = Time.unscaledTime;
+            }
+            else revSince = Time.unscaledTime;
+            if (amFallen)
+            {
+                Knight w = t.SpectateTarget;
+                specTitle.text = w != null ? "SPECTATING  " + w.playerName + "   (" + Mathf.CeilToInt(w.hp) + " / " + Mathf.CeilToInt(w.MaxHp) + ")" : "SPECTATING";
+                specTitle.color = w != null ? Knight.UiColor(w.pid) : Gray;
+            }
+            if (prompt)
+            {
+                Knight c = t.ReviveCandidate;
+                revPrompt.text = t.ReviveInterrupted ? "Interrupted!" : "Hold F: Revive " + c.playerName;
+                revPrompt.color = t.ReviveInterrupted ? Red : Green;
+                holdBar.rectTransform.sizeDelta = new Vector2(220f * t.ReviveProgress, 14f);
+            }
+            // over the head of every downed friend (clamped to the screen edge when he is off screen: "Bob  DOWN 42")
+            int oh = 0;
+            if (inWorld)
+                foreach (Knight k in g.players)
+                {
+                    if (k == me || !k.Down || oh >= MaxRows) continue;
+                    Vector3 sp = g.cam.WorldToScreenPoint(k.transform.position + new Vector3(0f, 3.2f, 0f));
+                    bool on = sp.z > 0f && sp.x > 40f && sp.x < Screen.width - 40f && sp.y > 90f && sp.y < Screen.height - 90f;
+                    Vector2 pos = new Vector2(sp.x, sp.y);
+                    if (!on)
+                    {
+                        Vector2 c = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                        Vector2 dir = pos - c;
+                        if (sp.z < 0f) dir = -dir;
+                        if (dir.sqrMagnitude < 1f) dir = Vector2.up;
+                        float sx = Mathf.Abs(dir.x) > 0.001f ? (Screen.width * 0.5f - 90f) / Mathf.Abs(dir.x) : float.MaxValue;
+                        float sy = Mathf.Abs(dir.y) > 0.001f ? (Screen.height * 0.5f - 110f) / Mathf.Abs(dir.y) : float.MaxValue;
+                        pos = c + dir * Mathf.Min(sx, sy);
+                    }
+                    Text tx = overhead[oh++];
+                    if (!tx.gameObject.activeSelf) tx.gameObject.SetActive(true);
+                    bool blink = Mathf.Repeat(Time.unscaledTime, 0.8f) < 0.5f;
+                    tx.text = (on ? "" : k.playerName + "  ") + "DOWN " + Mathf.CeilToInt(k.DownLeft);
+                    tx.color = blink ? Red : new Color(0.65f, 0.25f, 0.25f);
+                    tx.rectTransform.anchoredPosition = pos / Mathf.Max(0.01f, canvas.scaleFactor);
+                }
+            for (int i = oh; i < MaxRows; i++) if (overhead[i].gameObject.activeSelf) overhead[i].gameObject.SetActive(false);
+
             // X1: the countdown home (everybody goes together, the fallen too)
             bool home = inWorld && t.HomeStarted && !run.SummaryOpen;
             if (homeFrame.gameObject.activeSelf != home) homeFrame.gameObject.SetActive(home);
@@ -205,6 +328,7 @@ namespace MedievalKnight
             foreach (Image i in swatches) if (i.gameObject.activeSelf != on) i.gameObject.SetActive(on);
             if (waiting.gameObject.activeSelf != on) waiting.gameObject.SetActive(on);
             if (homeFrame.gameObject.activeSelf != on) homeFrame.gameObject.SetActive(on);
+            if (!on) { SetFallenUi(false, false, false); foreach (Text o in overhead) if (o.gameObject.activeSelf) o.gameObject.SetActive(false); }
         }
     }
 }
