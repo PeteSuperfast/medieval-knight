@@ -13,3 +13,4 @@
 - hook สำหรับเทสต์ใน `Game`: `dropOverride` (ดรอปดาบ), `foodOverride` (ดรอปอาหาร), `packsOff` (ปิดการเกิดแพ็คและการลบสไลม์ที่ไกล เพื่อให้เทสต์คุมชุดศัตรูเอง)
 - หลังแก้ ให้รัน `build.bat` แล้วลอง `Builds\MedievalKnight.exe -selftest selftest -screen-width 1280 -screen-height 720 -screen-fullscreen 0 -logFile player.log` ดู log บรรทัด `SELFTEST` (ต้องไม่มี `FAIL`, ใช้เวลา ~3 นาที) แล้วรัน `mptest.ps1` (ออนไลน์ชุด v1, ใส่ `-arena` ให้เอง) และ `mptest-loop.ps1` (loop ออนไลน์ 4 คน + เข้ากลางรอบ) — ดู `online-coop.md`
 
+- ท่าคอมโบ/ชาร์จ (phase 6): ท่าใหม่ = เพิ่ม `AttackDef` ต่อท้าย `Knight.Attacks` (ท่า index >= `ComboLen` ไม่เข้าวงคอมโบ; net kind = index + 25 ผ่าน `Knight.NetKind`) แล้วเลือกท่าใน `Knight.PickAttack`; เวลาหน่วง/ชาร์จ `SwingDelay` / `ChargeTime` / `TestHoldSeconds`; เทสต์ท่า/ชาร์จรันเดี่ยวด้วย `-selftest <โฟลเดอร์> -p6only` (~1 นาที); ออนไลน์ใช้ `k.attackHeldOverride` + คำสั่ง mptest `holdon` / `holdoff`

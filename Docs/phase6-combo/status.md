@@ -48,3 +48,9 @@
 ## Developer 2026-10-13: ขั้น 4 เสร็จ (ออนไลน์)
 - NetCharging (bit 32) ใน NetFlags, remote pose/glow, Act kind 30..36, Protocol 4; MpTest: holdon/holdoff, chg<pid>, เคส Vault Chop + Heavy + ยกเลิกชาร์จ + ล้มกลางชาร์จ
 - mptest.ps1 (-arena) FAIL=0: H70 A4 B2 C2 X1 V1
+
+## Developer 2026-10-13: ขั้น 5 เสร็จ (เอกสาร + รันครบ) — ปิด phase 6
+- selftest เต็ม 0 FAIL (382 PASS); mptest.ps1 H70 A4 B2 C2 X1 V1 FAIL=0; mptest-loop.ps1 H81 A5 B5 C2 X1 V1 D4 FAIL=0; -menutest failed checks=0
+- เอกสารอัปเดต: CLAUDE.md, controls, dev-guide, online-coop, files (ทุกไฟล์ <= 10KB)
+- สร้าง medieval-knight-win64.zip ในโฟลเดอร์เกม (ไม่ได้อัป Drive ตามสั่ง)
+- รอ: พีทลองเล่นว่ารู้สึกดีไหม

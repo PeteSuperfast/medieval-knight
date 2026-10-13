@@ -10,7 +10,7 @@
 
 ## วิธีเล่น
 - Host: Host Game > port > Start Hosting (firewall: allow) > บอก IP + port. Client: Join Game > IP + port > Connect (ต่อไม่ได้ / เต็ม / เวอร์ชันไม่ตรง = กลับหน้า Join พร้อมข้อความ). Host ปิด = client กลับเมนู "The host closed the game."
-- **ทุกคนต้องเวอร์ชันเดียวกัน** (`Net.Protocol` = **3**)
+- **ทุกคนต้องเวอร์ชันเดียวกัน** (`Net.Protocol` = **4**; phase 6: Act.kind/Hit.src 30..36 = `Attacks[5..11]`, NetFlags บิต 32 = ชาร์จ)
 
 ## สถาปัตยกรรม (host-authoritative)
 - `Net.Mode` Single / Host / Client; `Net.Authority` = ไม่ใช่ Client. Host จำลองโลกทั้งหมด; client จำลองเฉพาะอัศวินตัวเอง; ฉากสร้างเองทุกเครื่องจาก seed 11
