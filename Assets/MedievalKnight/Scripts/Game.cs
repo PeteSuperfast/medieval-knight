@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -10,7 +11,10 @@ namespace MedievalKnight
         public static Game I;
 
         public const float ArenaHalf = 190f;       // the fenced map is 380 x 380 m (see World.cs: MapLayout)
-        public const float CamPitch = 56f, CamDist = 16f, CamFov = 40f;
+        public const float CamPitchDefault = 56f, CamPitchMin = 40f, CamPitchMax = 70f, CamPitchStep = 3f, CamDist = 16f, CamFov = 40f;
+        public const string CamPitchKey = "mk_campitch";                 // PlayerPrefs (this machine only; not in any save)
+        public float camPitch = CamPitchDefault;                         // the angle drawn now (glides to camPitchTarget)
+        public float camPitchTarget = CamPitchDefault;
         public const float MinotaurRespawn = 20f;
         // co-op rules: enemy health per extra player, seconds a downed knight waits, protection while picking a level-up card
         public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 3f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
@@ -47,6 +51,9 @@ namespace MedievalKnight
         public RunLoop run;                                            // the base / world loop of this session (null = the v1 arena)
         public bool Loop { get { return InSession && run != null; } }                  // a loop session (any mode)
         public bool Coop { get { return Loop && Net.Multiplayer; } }                   // ... played online (host or client)
+        public bool MapOpen { get; private set; }                                     // phase 7: the M map is showing (never pauses the game)
+        MapUi mapUi;
+        public MapUi Map { get { return mapUi; } }
         public bool PanelOpen { get { return LevelStep != 0 || InventoryOpen || (Loop && run.SummaryOpen); } }
         // The panels freeze the game in single player only; online the world keeps running for everybody.
         public bool Paused { get { return PanelOpen && !Net.Multiplayer; } }
@@ -95,6 +102,7 @@ namespace MedievalKnight
         void Awake()
         {
             I = this;
+            camPitch = camPitchTarget = Mathf.Clamp(PlayerPrefs.GetFloat(CamPitchKey, CamPitchDefault), CamPitchMin, CamPitchMax);
             Args.Parse();
             QualitySettings.vSyncCount = 1;
             Application.runInBackground = true;        // the menu must keep running (a join in progress) without focus
@@ -111,6 +119,7 @@ namespace MedievalKnight
             hud = new GameObject("Hud").AddComponent<Hud>();
             hud.transform.SetParent(transform, false);
             hud.SetVisible(false);
+            mapUi = MapUi.Create(transform, this);
             menu = new GameObject("Menu").AddComponent<Menu>();
             menu.transform.SetParent(transform, false);
             camFocus = MenuFocus;
@@ -191,6 +200,8 @@ namespace MedievalKnight
             if (!InSession) { menu.Show(message); return; }
             if (run != null) { run.Shutdown(); run = null; }
             InSession = false;
+            MapOpen = false;
+            if (mapUi != null) mapUi.Show(false);
             foreach (Knight k in players) { k.gameObject.SetActive(false); Destroy(k.gameObject); }
             players.Clear();
             knight = null;
@@ -557,10 +568,36 @@ namespace MedievalKnight
 
         void PlaceCamera(Vector3 shake)
         {
-            Quaternion rot = Quaternion.Euler(CamPitch, 0f, 0f);
+            Quaternion rot = Quaternion.Euler(camPitch, 0f, 0f);
             cam.transform.rotation = rot;
             cam.transform.position = camFocus + Vector3.up * 1f + Vector3.forward * 0.6f - rot * Vector3.forward * CamDist * camZoom
                 + rot * new Vector3(shake.x, shake.y, 0f);
+        }
+
+        // M opens / closes the map. Only in the world (not at the loop base: PREPARE is there) and not over another panel; it never
+        // pauses anything, every mode (single player included). Another panel opening hides it until that one closes.
+        void UpdateMap()
+        {
+            bool canMap = InSession && knight != null && !(Loop && !run.InWorld);
+            if (!canMap) MapOpen = false;
+            else if (InputX.Down(KeyCode.M) && !PanelOpen) MapOpen = !MapOpen;
+            mapUi.Show(MapOpen && canMap && !PanelOpen && !knight.Dead);
+        }
+
+        // Mouse wheel = camera angle, 3 degrees a notch between 40 and 70 (rolling up = lower camera = sees further). Only while no
+        // panel / question is open (those use the keys); the value is remembered in PlayerPrefs.
+        void UpdateCameraScroll()
+        {
+            float sc = InputX.Scroll();
+            if (sc != 0f && !PanelOpen && !(Loop && run.ui.PromptShown))
+            {
+                camPitchTarget = Mathf.Clamp(camPitchTarget - CamPitchStep * Mathf.Sign(sc), CamPitchMin, CamPitchMax);
+                PlayerPrefs.SetFloat(CamPitchKey, camPitchTarget);
+                PlayerPrefs.Save();
+                hud.Notice("Camera " + Mathf.RoundToInt(camPitchTarget) + "°", Color.white);
+            }
+            camPitch = Mathf.Lerp(camPitch, camPitchTarget, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 20f));
+            if (Mathf.Abs(camPitch - camPitchTarget) < 0.01f) camPitch = camPitchTarget;
         }
 
         // World point under the mouse cursor on the ground plane: where the knight looks and leaps.
@@ -784,6 +821,12 @@ namespace MedievalKnight
         {
             Enemy e = Enemy.Find(enemyId);
             if (by == null || e == null || e.Dead) return false;
+            if (src == 37 || src == 38)                                                  // phase 7: the owner of this knight parried / clashed: the monster reacts
+            {
+                if (e.puppet || damage != 1f || (e.transform.position - by.Pos).magnitude > e.radius + 9f) return false;
+                e.Deflect(src == 37, by.Pos, by);
+                return true;
+            }
             if (float.IsNaN(damage) || float.IsInfinity(damage) || damage <= 0f || damage > MaxHitDamage) return false;
             Vector3 a = origin - by.Pos; a.y = 0f;
             Vector3 b = e.transform.position - origin; b.y = 0f;
@@ -802,7 +845,7 @@ namespace MedievalKnight
         {
             if (k == null) return;
             if (!k.remote) k.TakeDamage(damage, from, source, knockback, by, heavy);
-            else if (Net.IsHost) Net.SendKnightHit(k.pid, damage, from, source, knockback);
+            else if (Net.IsHost) Net.SendKnightHit(k.pid, damage, from, source, knockback, by, heavy);
         }
 
         // A knight parried / clashed with this enemy's blow (decided on his machine). Where the world is simulated the enemy
@@ -811,6 +854,23 @@ namespace MedievalKnight
         {
             if (by == null || by.Dead) return;
             if (Net.Authority) by.Deflect(parry, k.Pos, k);
+            else if (Net.IsClient) Net.SendDeflect(by, k.Pos, parry);
+        }
+
+        // Client: the host forwarded a monster's blow. The enemy is drawn 0.1 s in the past here (Net.EnemyDelay), so a blow that names
+        // its attacker is applied after the same delay: the player parries what he SEES, not what already happened on the host.
+        public void ApplyKnightHit(float damage, Vector3 from, string source, float knockback, Enemy by, bool heavy)
+        {
+            if (knight == null) return;
+            if (by == null) { knight.TakeDamage(damage, from, source, knockback, null, heavy); return; }
+            StartCoroutine(DelayedKnightHit(damage, from, source, knockback, by, heavy));
+        }
+
+        IEnumerator DelayedKnightHit(float damage, Vector3 from, string source, float knockback, Enemy by, bool heavy)
+        {
+            yield return new WaitForSecondsRealtime(Net.EnemyDelay);
+            if (knight == null || knight.Dead) yield break;
+            knight.TakeDamage(damage, from, source, knockback, by != null ? by : null, heavy);      // (by may have been destroyed meanwhile = a plain blow)
         }
 
         // Test hook: the enemy lands a blow on the knight right now (parry / clash / block are judged exactly as for a real one).
@@ -1327,6 +1387,7 @@ namespace MedievalKnight
                 // Esc closes the Tab window first; it does not count as the "Esc again" that leaves to the menu
                 if (loop && run.OnEscape()) { }                   // closed the "enter without food?" question
                 else if (InventoryOpen) SetInventory(false);
+                else if (MapOpen) MapOpen = false;                // closes the map first: not the "Esc again" of leaving (= a death in the world)
                 else
                 {
                     LeaveKey();
@@ -1335,11 +1396,13 @@ namespace MedievalKnight
             }
             if (InputX.Down(KeyCode.F1)) hud.ToggleControls();
             UpdateSigns();
-            if (InputX.Down(KeyCode.M))
+            if (InputX.Down(KeyCode.F2))                          // (was M before phase 7)
             {
                 Sfx.I.CycleVolume();
                 hud.Notice("Sound: " + Sfx.I.VolumeLabel, Color.white);
             }
+            UpdateCameraScroll();
+            UpdateMap();
 
             // The two panels pause the game in single player. Online they are just overlays: the world, the other
             // players and this knight's own movement keep running underneath.

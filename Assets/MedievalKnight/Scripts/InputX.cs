@@ -45,6 +45,7 @@ namespace MedievalKnight
                 case KeyCode.RightArrow: return Key.RightArrow;
                 case KeyCode.Escape: return Key.Escape;
                 case KeyCode.F1: return Key.F1;
+                case KeyCode.F2: return Key.F2;
                 case KeyCode.F5: return Key.F5;
                 case KeyCode.Space: return Key.Space;
                 case KeyCode.LeftShift: return Key.LeftShift;
@@ -123,6 +124,13 @@ namespace MedievalKnight
 
         public static bool HasMouse { get { return Mouse.current != null; } }
 
+        // Mouse wheel this frame: > 0 = rolled forward / up. Only the sign is meaningful (the size per notch differs between machines).
+        public static float Scroll()
+        {
+            var m = Mouse.current;
+            return m != null ? m.scroll.ReadValue().y : 0f;
+        }
+
         public static Vector2 MousePos
         {
             get
@@ -137,6 +145,7 @@ namespace MedievalKnight
         public static bool MouseDown(int button) { return Input.GetMouseButtonDown(button); }
         public static bool MouseHeld(int button) { return Input.GetMouseButton(button); }
         public static bool HasMouse { get { return true; } }
+        public static float Scroll() { return Input.mouseScrollDelta.y; }
         public static Vector2 MousePos { get { return Input.mousePosition; } }
         public static string Typed() { return Input.inputString; }
 #endif

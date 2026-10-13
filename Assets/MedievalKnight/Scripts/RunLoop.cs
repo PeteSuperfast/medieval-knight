@@ -485,6 +485,13 @@ namespace MedievalKnight
 
         // Walking into a pile (1.5 m) opens the loot window for it; closing it arms that pile again only after 4 m of distance.
         // Markers: a label over every pile that is on screen and one arrow to the nearest pile when that one is off screen.
+        // Phase 7 (the M map): where this world's piles lie and how many items each holds (nothing while the run is ending).
+        public void PileMarks(List<Vector3> pos, List<int> count)
+        {
+            if (dying) return;
+            foreach (PileView v in views) { pos.Add(v.pos); count.Add(v.data.items.Count); }
+        }
+
         readonly List<Vector3> markPos = new List<Vector3>();
         readonly List<int> markCount = new List<int>();
 

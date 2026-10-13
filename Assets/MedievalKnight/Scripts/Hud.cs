@@ -254,7 +254,7 @@ namespace MedievalKnight
                 + "1 / 2 / 3 or Click    Level-up card, then stat point\n"
                 + "Tab  Inventory + stats (1 - 5 / Click equips)\n"
                 + "Walk over a dropped sword to take it\n"
-                + "M  Sound volume / mute\n"
+                + "M  Map   F2  Sound   Scroll  Camera\n"
                 + "H  Test hit   F5  Restart (online: host)   Esc  Menu";
             controlsV1 = controlsText.text;
 
@@ -1094,7 +1094,7 @@ namespace MedievalKnight
                 + "Tab    Carry window  (at the base: PREPARE)\n"
                 + "Level-up cards: 1 / 2 / 3 or Click\n"
                 + "Walk over a drop to take it   -   Right Click in Tab drops\n"
-                + "M  Sound   Esc Esc  Menu (in the world: counts as a death)";
+                + "M  Map   F2  Sound   Scroll  Camera   Esc Esc  Menu (= death)";
         }
 
         public string SoulShown { get { return soulText.text; } }

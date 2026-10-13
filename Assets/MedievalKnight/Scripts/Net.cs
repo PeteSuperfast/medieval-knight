@@ -273,7 +273,7 @@ namespace MedievalKnight
     // Net.Poll (start of Game.Update) and Net.LateTick (Game.LateUpdate).
     public static class Net
     {
-        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 4;     // 4 (phase 6): Act kinds 30..36 (combo / heavy attacks), Hit.src 30..36, NetFlags bit 32 = charging; 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
+        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 5;     // 5 (phase 7): KnightHit ends with attackerNetId + flags (bit 1 = heavy), Hit.src 37 = parry / 38 = clash, EnemyHit flags 8 heavy / 16 parry / 32 clash; 4 (phase 6): Act kinds 30..36 (combo / heavy attacks), Hit.src 30..36, NetFlags bit 32 = charging; 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
         public const int Magic = 0x4D4B4E54;                                 // "MKNT"
         public const float SnapshotRate = 15f, StateRate = 20f;              // messages per second
         public const float ConnectTimeout = 6f, HandshakeTimeout = 6f, SilenceTimeout = 10f;
@@ -932,7 +932,8 @@ namespace MedievalKnight
                     Vector3 from = r.Vec();
                     float knock = r.F32();
                     string source = r.Str();
-                    g.knight.TakeDamage(damage, from, source, knock);
+                    int attacker = r.U16(), hflags = r.U8();                  // protocol 5
+                    g.ApplyKnightHit(damage, from, source, knock, attacker != 0 ? Enemy.Find(attacker) : null, (hflags & 1) != 0);
                     break;
                 }
 
@@ -1018,17 +1019,24 @@ namespace MedievalKnight
                 .U8(byPid).F32(e.hp).F32(e.armor).Done(), null);
         }
 
+        // Client: my shield / swing turned this enemy's blow away (parry = Hit src 37, clash = 38). The host makes it fly back / stunned.
+        public static void SendDeflect(Enemy e, Vector3 origin, bool parry)
+        {
+            SendHit(e, 1f, 0f, false, 0f, 0f, origin, parry ? 37 : 38);
+        }
+
         // Host: a parry (EnemyHit flag 16) or clash (32) happened to this enemy. No damage: everyone shows the fx and sees the stun.
         public static void BroadcastDeflect(Enemy e, bool parry, Vector3 away, int byPid)
         {
             BroadcastEnemyHit(e, 0f, 0f, 0f, false, parry, false, away, byPid, false, parry ? 16 : 32);
         }
 
-        public static void SendKnightHit(int pid, float damage, Vector3 from, string source, float knockback)
+        public static void SendKnightHit(int pid, float damage, Vector3 from, string source, float knockback, Enemy by = null, bool heavy = false)
         {
             Conn c = IsHost ? ConnOf(pid) : null;
             if (c == null) return;
-            byte[] m = new NetW(Msg.KnightHit).F32(damage).Vec(from).F32(knockback).Str(source).Done();
+            byte[] m = new NetW(Msg.KnightHit).F32(damage).Vec(from).F32(knockback).Str(source)
+                .U16(by != null ? by.netId : 0).U8(heavy ? 1 : 0).Done();      // protocol 5: who struck, so the owner can parry / clash it
             if (pid >= 0 && pid < MaxPlayers) KnightHitsSent[pid]++;
             BytesOut += m.Length;
             c.Send(m);

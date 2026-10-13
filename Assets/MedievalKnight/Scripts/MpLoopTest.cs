@@ -329,6 +329,7 @@ namespace MedievalKnight
             }
             string pk = "";
             foreach (Pickup q in Pickup.All) if (!q.hidden) pk += q.weaponId + "@" + F1(q.transform.position.x) + "," + F1(q.transform.position.z) + " ";
+            if (run != null && g.Map != null) { g.Map.Probe(); sb.Append(";mapportal=").Append(g.Map.PortalMarker ? 1 : 0).Append(";mappiles=").Append(g.Map.PileMarkers); }   // phase 7: the M map's markers (hidden panel)
             if (run != null) sb.Append(";portal=").Append(run.portal != null ? 1 : 0).Append(";boss=").Append(run.BossDown ? 1 : 0)
                 .Append(";home=").Append(t != null && t.HomeStarted ? F1(t.HomeLeft) : "-").Append(";hometext=").Append(run.teamUi != null ? run.teamUi.HomeTextShown.Replace(';', ',').Replace('=', ':').Replace('\n', '~') : "");
             if (run != null && run.teamUi != null)
@@ -766,6 +767,7 @@ namespace MedievalKnight
                 yield return Cmd("all", "settle");
                 yield return Sum();
                 Ck(S("H", "portal") == "1" && S(A, "portal") == "1" && S(B, "portal") == "1" && S(C, "portal") == "0", "the portal opened at the Minotaur's place for the three who play (not for " + C + " who waits)");
+                Ck(S("H", "mapportal") == "1" && S(A, "mapportal") == "1" && S(B, "mapportal") == "1" && S(C, "mapportal") == "0", "the map's portal marker shows up on every screen where the portal exists (and not where it does not)");
                 Vector3 pp = g.run.portal != null ? g.run.portal.transform.position : Vector3.zero;
                 yield return Cmd(B, "tp", F2(pp.x + 0.5f), F2(pp.z));
                 yield return W(2.0f);

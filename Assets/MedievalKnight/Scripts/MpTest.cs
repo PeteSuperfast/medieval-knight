@@ -35,6 +35,7 @@ namespace MedievalKnight
         readonly HashSet<string> minoStates = new HashSet<string>();
         Minotaur.S lastMinoState;
         float minoStateSince;
+        int probeId;
 
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -307,12 +308,19 @@ namespace MedievalKnight
                   .Append(";an").Append(p.pid).Append('=').Append(p.LastAction)
                   .Append(";blk").Append(p.pid).Append('=').Append(p.IsBlocking ? 1 : 0)
                   .Append(";chg").Append(p.pid).Append('=').Append(p.ShowsCharge ? 1 : 0)
-                  .Append(";hp").Append(p.pid).Append('=').Append(F1(p.hp));
+                  .Append(";hp").Append(p.pid).Append('=').Append(F1(p.hp))
+                  .Append(";par").Append(p.pid).Append('=').Append(p.ParryCount)
+                  .Append(";cla").Append(p.pid).Append('=').Append(p.ClashCount)
+                  .Append(";hb").Append(p.pid).Append('=').Append(p.HeavyBlockCount);
             }
             Dummy d = g.dummy;
             sb.Append(";dummy=").Append(d != null ? F1(d.hp + d.armor) : "none")
               .Append(";dhits=").Append(d != null ? d.hits : -1)
               .Append(";dtot=").Append(d != null ? F1(d.totalDamage) : "none");
+            if (g.Map != null) { g.Map.Probe(); sb.Append(";mapfr=").Append(g.Map.FriendMarkers).Append(";mapen=").Append(g.Map.EnemyMarkers); }      // phase 7: the M map's markers (hidden panel)
+            int sldef = 0, slst = 0;                                  // phase 7: parries / clashes the slimes here have seen, slimes stunned right now
+            foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) { sldef += e.DeflectCount; if (e.Stunned) slst++; }
+            sb.Append(";sldef=").Append(sldef).Append(";slst=").Append(slst).Append(";dnum=").Append(d != null ? d.lastNumberKind : -1);
             int en = 0;
             foreach (Enemy e in Enemy.All) if (!e.Dead && !(e is Dummy)) en++;
             Minotaur m = g.minotaur;
@@ -341,6 +349,17 @@ namespace MedievalKnight
               .Append(";notice=").Append(g.hud.NoticeShown.Replace(';', ',').Replace('=', ':').Replace('|', '/'))
               .Append(";mstates=").Append(mstates);
             return sb.ToString();
+        }
+
+        // Host: the first live slime lands a blow on the player, from 2.5 m north of him (after being moved there).
+        bool StrikeOn(Knight victim, bool heavy)
+        {
+            Slime sl = null;
+            foreach (Enemy e in Enemy.All) { Slime s2 = e as Slime; if (s2 != null && !s2.Dead) { sl = s2; break; } }
+            if (victim == null || sl == null) return false;
+            sl.Warp(victim.Pos + new Vector3(0f, 0f, 2.5f));
+            g.DebugStrike(sl, victim, heavy);
+            return true;
         }
 
         IEnumerator Exec(string id, string name, string[] a)
@@ -386,6 +405,49 @@ namespace MedievalKnight
                     yield return null;
                     Reply(id, "ok");
                     break;
+
+                case "strike":                                        // pid heavy: (host) a slime lands a blow on that player, standing 2.5 m north of him
+                {
+                    Reply(id, "ok=" + StrikeOn(g.PlayerByPid(int.Parse(a[0])), a[1] == "1"));
+                    break;
+                }
+
+                case "probe":                                         // heavy: shield up through the mouse, then ask the host to strike me; the shield stays up 0.6 s
+                {
+                    yield return WaitIdle(2f);
+                    yield return W(0.8f);                             // out of the 0.5 s no-parry gap of the last press
+                    InputSystem.QueueStateEvent(Mouse.current, new MouseState().WithButton(MouseButton.Right, true));
+                    yield return null; yield return null;
+                    Net.SendTest("c|pr" + (++probeId) + "|H|strike|" + Net.LocalPid + "|" + a[0]);
+                    Reply(id, "ok");
+                    yield return W(0.6f);
+                    InputSystem.QueueStateEvent(Mouse.current, new MouseState());
+                    break;
+                }
+
+                case "clashprobe":                                    // start a light swing, then ask the host to strike me while it is in its strike window
+                {
+                    yield return WaitIdle(2f);
+                    yield return W(0.5f);
+                    k.DebugAttack(0);
+                    Net.SendTest("c|pr" + (++probeId) + "|H|strike|" + Net.LocalPid + "|0");
+                    Reply(id, "ok");
+                    yield return W(0.4f);
+                    break;
+                }
+
+                case "hostparry":                                     // (host) my own parry of a slime, to be seen by the clients
+                {
+                    yield return WaitIdle(2f);
+                    yield return W(0.8f);
+                    InputSystem.QueueStateEvent(Mouse.current, new MouseState().WithButton(MouseButton.Right, true));
+                    yield return null; yield return null;
+                    StrikeOn(k, false);
+                    Reply(id, "par=" + k.ParryCount);
+                    yield return W(0.6f);
+                    InputSystem.QueueStateEvent(Mouse.current, new MouseState());
+                    break;
+                }
 
                 case "holdon":                                        // phase 6: the left button goes down and stays (a charge)
                     k.attackHeldOverride = true;
@@ -753,6 +815,7 @@ namespace MedievalKnight
             Ck(Eq("names"), "every process has the same player list");
             Ck(Eq("tags") && S("H", "tags") == (n + 1).ToString(), "every process shows a name tag over each of the " + (n + 1) + " knights");
             Ck(Eq("rows") && S("H", "rows") == Mathf.Min(3, n).ToString(), "every process lists the other players in its party list");
+            Ck(Eq("mapfr") && S("H", "mapfr") == n.ToString() && S("H", "mapen") == "0", "the M map has one friend marker for each of the " + n + " other players on every screen and never an enemy");
             Ck(Eq("en") && N("H", "en") >= 3, "every client has the host's enemies");
             Ck(Eq("minohp") && Eq("dummy") && S("H", "mino") == "alive", "every client has the Minotaur and the dummy with the host's health");
 
@@ -912,6 +975,82 @@ namespace MedievalKnight
                 yield return W(0.4f);
                 yield return Sum();
                 Ck(Eq("ac" + pidA) && N("H", "ac" + pidA) == acX, "nothing swung when the button came up after the dropped charge");
+            }
+
+            // ------------------------------------------------ 3c. phase 7: parry / clash / heavy blows across the network, damage number colours
+            {
+                yield return Cmd("all", "settle");
+                EnsureSlimes(3);
+                ParkSlimes();                                       // every slime in the far corner: nothing real may hit the players here (a real hit in the window would be parried too)
+                yield return Tp(A, 60f, 0f, 60f, 5f);
+                yield return Tp(B, 70f, 10f, 70f, 15f);
+                yield return Tp("H", 50f, 10f, 50f, 15f);
+                yield return W(0.5f);
+                yield return Sum();
+                float par0 = N(A, "par" + pidA), cla0 = N(A, "cla" + pidA), hb0 = N(A, "hb" + pidA), def0 = N("H", "sldef");
+
+                // a) A raises the shield and a slime hits him from the front 0.1 s later: parried, and everybody sees the slime fly back / stunned
+                yield return Cmd(A, "probe", "0");
+                yield return W(0.3f);
+                yield return Sum();
+                Ck(N(A, "par" + pidA) == par0 + 1 && Eq("sldef") && N("H", "sldef") == def0 + 1 && N("H", "slst") >= 1,
+                    A + " parried a slime's blow over the network (owner counted it, the slime reacted on the host, every screen saw it, the slime is stunned)");
+                par0 = N(A, "par" + pidA); def0 = N("H", "sldef");
+
+                // b) the same with a heavy blow: a normal block, nothing deflected
+                yield return W(1.0f);
+                yield return Cmd(A, "probe", "1");
+                yield return W(0.4f);
+                yield return Sum();
+                note += "par=" + S(A, "par" + pidA) + "(" + par0 + ") hb=" + S(A, "hb" + pidA) + "(" + hb0 + ") sldef=" + S("H", "sldef") + "(" + def0 + ") ";
+                Ck(N(A, "par" + pidA) == par0 && N(A, "hb" + pidA) == hb0 + 1 && Eq("sldef") && N("H", "sldef") == def0,
+                    "a heavy blow on " + A + "'s raised shield is only blocked: no parry, no deflect on any screen");
+
+                // c) A swings and the slime strikes inside his swing: a clash
+                yield return W(1.0f);
+                yield return Cmd(A, "clashprobe");
+                yield return W(0.6f);
+                yield return Sum();
+                note += "cla=" + S(A, "cla" + pidA) + "(" + cla0 + ") par=" + S(A, "par" + pidA) + "(" + par0 + ") sldef=" + S("H", "sldef") + "(" + def0 + ") ";
+                Ck(N(A, "cla" + pidA) == cla0 + 1 && Eq("sldef") && N("H", "sldef") == def0 + 1 && N(A, "par" + pidA) == par0,
+                    A + " clashed with a slime (swing meets blow): counted by the owner, seen on every screen");
+                def0 = N("H", "sldef");
+
+                // d) the host parries by himself: the clients see it
+                yield return W(1.0f);
+                yield return Cmd("H", "hostparry");
+                yield return W(0.3f);
+                yield return Sum();
+                Ck(N("H", "par0") == 1 && Eq("sldef") && N("H", "sldef") == def0 + 1, "the host's own parry is seen by every client");
+                ParkSlimes();
+                yield return W(0.3f);
+
+                // e) a Heavy Strike on the dummy: every screen shows the same number colour (heavy, then crit + heavy)
+                {
+                    float tw = RT;
+                    while (g.dummy != null && g.dummy.Dead && RT - tw < 6f) yield return null;
+                    Dummy dm = g.dummy;
+                    Vector3 dpos = dm.transform.position;
+                    yield return Tp(A, dpos.x - (dm.radius + 1.3f), dpos.z, dpos.x, dpos.z);
+                    yield return Cmd(A, "holdon");
+                    yield return W(1.5f);
+                    yield return Cmd(A, "holdoff");
+                    yield return W(0.4f);
+                    yield return Sum();
+                    Ck(Eq("dnum") && S("H", "dnum") == "2", "a Heavy Strike's damage number is the heavy kind (2) on every screen");
+                    tw = RT;
+                    while (g.dummy != null && g.dummy.Dead && RT - tw < 6f) yield return null;
+                    yield return W(0.8f);
+                    yield return Cmd(A, "crit", "2");
+                    yield return Cmd(A, "holdon");
+                    yield return W(1.5f);
+                    yield return Cmd(A, "holdoff");
+                    yield return W(0.4f);
+                    yield return Cmd(A, "crit", "1");
+                    yield return Sum();
+                    Ck(Eq("dnum") && S("H", "dnum") == "4", "a critical Heavy Strike's number is the crit + heavy kind (4) on every screen");
+                    yield return Tp(A, -3f, -8f, -3f, 0f);
+                }
             }
 
             // ------------------------------------------------ 4. a client kills a slime: EXP for everybody, a sword drops, another client takes it

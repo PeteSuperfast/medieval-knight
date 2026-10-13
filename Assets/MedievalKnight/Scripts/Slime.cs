@@ -8,6 +8,7 @@ namespace MedievalKnight
     {
         public int kind;
         public float damage;
+        public bool Frozen;                        // test hook (SelfTest): no AI, no hop
 
         static readonly Color[] Colors =
         {
@@ -192,6 +193,7 @@ namespace MedievalKnight
                 return;
             }
             if (puppet) { PuppetPose(dt); return; }
+            if (Frozen) { rig.localScale = Vector3.one * size; return; }           // test hook: stands still, harmless (it only takes knock-back / stun)
 
             Vector3 target = Vector3.one;
             float y = 0f;

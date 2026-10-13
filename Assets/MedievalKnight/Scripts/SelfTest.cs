@@ -196,6 +196,7 @@ namespace MedievalKnight
             if (Mouse.current == null) InputSystem.AddDevice<Mouse>();
             Directory.CreateDirectory(dir);
             g = Game.I; k = g.knight;
+            g.camPitch = g.camPitchTarget = Game.CamPitchDefault;       // (a saved camera angle of this PC must not change the screenshots / aiming below; it is never written here)
             Dummy d = g.dummy;
             Random.InitState(12345);
             Knight.TestHoldSeconds = 0.4f;                              // a click may be up to 0.4 s here (a busy PC can need that for three frames)
@@ -309,19 +310,25 @@ namespace MedievalKnight
                 Check("exactly one AudioListener in the scene", listeners == 1);
                 Check("the 'ready' voice line played at game start", Snds(Snd.Ready) == 1 && Snds(Snd.Swing) == 0 && Snds(Snd.Grunt) == 0);
 
-                // M cycles the master volume: 100% > 60% > 30% > muted > 100%
+                // M is the map now (phase 7): it must not touch the volume (pressed twice: if it opens the map the second press closes it)
+                float volBefore = AudioListener.volume;
+                yield return Tap(Key.M);
+                yield return Tap(Key.M);
+                Check("M no longer changes the sound volume", Mathf.Abs(AudioListener.volume - volBefore) < 0.001f && !g.MapOpen);
+
+                // F2 cycles the master volume: 100% > 60% > 30% > muted > 100%
                 string steps = Sfx.I.VolumeLabel;
                 bool volOk = Mathf.Abs(AudioListener.volume - 1f) < 0.001f;
                 float[] want = { 0.6f, 0.3f, 0f, 1f };
                 for (int i = 0; i < 4; i++)
                 {
-                    yield return Tap(Key.M);
+                    yield return Tap(Key.F2);
                     steps += " > " + Sfx.I.VolumeLabel;
                     volOk &= Mathf.Abs(AudioListener.volume - want[i]) < 0.001f;
                     if (i == 2) { yield return W(0.15f); Shot("sound_muted_notice"); yield return null; volOk &= g.hud.NoticeShown == "Sound: MUTED"; }
                 }
-                Log("volume key M: " + steps);
-                Check("M cycles the master volume 100% > 60% > 30% > muted > 100%", volOk);
+                Log("volume key F2: " + steps);
+                Check("F2 cycles the master volume 100% > 60% > 30% > muted > 100%", volOk);
 
                 // the grunt has a minimum gap, so back-to-back heavy attacks cannot stack voices
                 bool g1 = Sfx.I.Grunt(true), g2 = Sfx.I.Grunt(true);
@@ -732,6 +739,7 @@ namespace MedievalKnight
             yield return Phase6Clicks(d);
             yield return Phase6Charge(d);
             yield return Phase7(d);
+            k.moveOverride = null;
             k.transform.position = new Vector3(2f, 0f, -5f);
             k.aimOverride = d.transform.position;
 
@@ -1708,6 +1716,143 @@ namespace MedievalKnight
             }
 
             yield return Phase7Clash(d);
+            yield return Phase7Camera();
+            yield return Phase7Map();
+            k.moveOverride = null;
+            ShieldDown();
+        }
+
+        // The M map (single player arena): opens without pausing, closes with M and with Esc (not a leave), draws the ground from MapLayout.
+        IEnumerator Phase7Map()
+        {
+            k.transform.position = new Vector3(2f, 0f, -5f);
+            k.aimOverride = new Vector3(2f, 0f, 20f);
+            g.SnapCamera();
+            yield return W(0.4f);
+            yield return Tap(Key.M);
+            yield return W(0.3f);
+            bool open = g.MapOpen && g.Map.Shown && Time.timeScale == 1f;
+            Vector3 p0 = k.transform.position;
+            k.moveOverride = new Vector2(1f, 0f);
+            yield return W(0.5f);
+            k.moveOverride = Vector2.zero;
+            float walked = (k.transform.position - p0).magnitude;
+            Shot("map");
+            Log("map: open=" + open + ", the knight walked " + F(walked) + " m while it was open, markers: you=" + g.Map.YouMarker + " friends=" + g.Map.FriendMarkers + " piles=" + g.Map.PileMarkers + " portal=" + g.Map.PortalMarker + " enemies=" + g.Map.EnemyMarkers);
+            Check("M opens the map without pausing the game (time x1) and the knight keeps walking (" + F(walked) + " m)", open && walked > 0.5f);
+            Check("the map shows the knight, no friends (alone), no piles, no portal, never an enemy", g.Map.YouMarker && g.Map.FriendMarkers == 0 && g.Map.PileMarkers == 0 && !g.Map.PortalMarker && g.Map.EnemyMarkers == 0);
+
+            Texture2D tex = g.Map.MapTexture;
+            Vector3[] pts = { new Vector3(0f, 0f, -150f), new Vector3(0f, 0f, 150f), new Vector3(-150f, 0f, -150f), new Vector3(-150f, 0f, 150f), new Vector3(30f, 0f, 20f), new Vector3(150f, 0f, -80f), new Vector3(150f, 0f, 120f) };
+            bool texOk = tex != null && tex.width == 190;
+            string zs = "";
+            foreach (Vector3 w in pts)
+            {
+                int px = Mathf.FloorToInt((w.x + MapLayout.Half) / (2f * MapLayout.Half) * tex.width), py = Mathf.FloorToInt((w.z + MapLayout.Half) / (2f * MapLayout.Half) * tex.height);
+                Vector2 c = MapUi.TexelToWorld(px, py);
+                Zone z = MapLayout.ZoneAt(c.x, c.y);
+                zs += z + " ";
+                Color a = tex.GetPixel(px, py), b = MapUi.ZoneColor(z);
+                texOk &= Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b) < 0.02f;
+            }
+            Log("map ground samples: " + zs);
+            Check("the map picture is the ground of MapLayout.ZoneAt (7 sample points, 190 x 190 texels of 2 m)", texOk);
+
+            yield return Tap(Key.Escape);
+            yield return W(0.2f);
+            Check("Esc closes the map first: still in the game, no 'press Esc again' question", !g.MapOpen && !g.Map.Shown && g.InSession && !g.hud.NoticeShown.Contains("Esc again"));
+            yield return Tap(Key.M);
+            yield return W(0.2f);
+            bool again = g.MapOpen;
+            yield return Tap(Key.M);
+            yield return W(0.2f);
+            Check("M opens and M closes it", again && !g.MapOpen && !g.Map.Shown);
+            yield return Tap(Key.Tab);
+            yield return Tap(Key.M);
+            yield return W(0.2f);
+            bool overPanel = !g.MapOpen;
+            yield return Tap(Key.Tab);
+            Check("M does nothing while the Tab window is open", overPanel && !g.InventoryOpen);
+            k.aimOverride = new Vector3(2f, 0f, 20f);
+        }
+
+        // One notch of the mouse wheel: a state event with a scroll value, seen by exactly one frame.
+        IEnumerator Scroll(float y)
+        {
+            Vector2 at = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            InputSystem.QueueStateEvent(Mouse.current, new MouseState { position = at, scroll = new Vector2(0f, y) });
+            yield return null;
+            InputSystem.QueueStateEvent(Mouse.current, new MouseState { position = at });
+            yield return null;
+        }
+
+        // Camera angle by the mouse wheel: steps, limits, panels, aiming at every angle, the remembered value.
+        IEnumerator Phase7Camera()
+        {
+            bool hadKey = PlayerPrefs.HasKey(Game.CamPitchKey);
+            float oldPref = PlayerPrefs.GetFloat(Game.CamPitchKey, Game.CamPitchDefault);
+            PlayerPrefs.DeleteKey(Game.CamPitchKey);
+            g.camPitch = g.camPitchTarget = Game.CamPitchDefault;
+            k.moveOverride = Vector2.zero;
+            k.transform.position = new Vector3(2f, 0f, -5f);
+            g.SnapCamera();
+            yield return W(0.4f);
+            Check("camera starts at the default angle (" + Game.CamPitchDefault + ")", Mathf.Abs(g.camPitch - 56f) < 0.01f);
+
+            yield return Scroll(120f);
+            yield return W(0.4f);
+            Log("camera after one notch up: target " + g.camPitchTarget + ", drawn " + F(g.camPitch) + ", notice '" + g.hud.NoticeShown + "', saved " + PlayerPrefs.GetFloat(Game.CamPitchKey, -1f));
+            Check("one notch of the wheel (rolled up) lowers the camera 3 degrees: 56 -> 53, drawn, announced and remembered",
+                Mathf.Abs(g.camPitchTarget - 53f) < 0.01f && Mathf.Abs(g.camPitch - 53f) < 0.2f && g.hud.NoticeShown.StartsWith("Camera 53") && Mathf.Abs(PlayerPrefs.GetFloat(Game.CamPitchKey, -1f) - 53f) < 0.01f);
+
+            yield return Scroll(-120f);
+            yield return W(0.3f);
+            Check("one notch the other way raises it again (53 -> 56)", Mathf.Abs(g.camPitchTarget - 56f) < 0.01f);
+
+            for (int i = 0; i < 12; i++) yield return Scroll(120f);
+            yield return W(0.4f);
+            bool low = Mathf.Abs(g.camPitchTarget - 40f) < 0.01f && Mathf.Abs(g.camPitch - 40f) < 0.2f;
+            for (int i = 0; i < 16; i++) yield return Scroll(-120f);
+            yield return W(0.4f);
+            bool high = Mathf.Abs(g.camPitchTarget - 70f) < 0.01f && Mathf.Abs(g.camPitch - 70f) < 0.2f;
+            Check("the camera stops at 40 degrees (many notches up) and at 70 degrees (many notches down)", low && high);
+
+            // aiming stays exact at the extremes: the cursor on the knight's screen position aims at his feet
+            string aimInfo = "";
+            bool aimOk = true;
+            foreach (float pitch in new[] { 40f, 70f })
+            {
+                g.camPitch = g.camPitchTarget = pitch;
+                g.SnapCamera();
+                yield return W(0.3f);
+                Vector3 sp = g.cam.WorldToScreenPoint(k.transform.position);
+                InputSystem.QueueStateEvent(Mouse.current, new MouseState { position = new Vector2(sp.x, sp.y) });
+                yield return null; yield return null;
+                float err = (g.AimPoint() - k.transform.position).magnitude;
+                aimInfo += pitch + " deg: " + F(err) + " m  ";
+                aimOk &= err < 0.6f;
+            }
+            Log("aim error with the cursor on the knight: " + aimInfo);
+            Check("the cursor still aims exactly (< 0.6 m off) at 40 and at 70 degrees", aimOk);
+            SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false);
+
+            // an open panel (Tab) takes no wheel
+            g.camPitch = g.camPitchTarget = 56f;
+            yield return Tap(Key.Tab);
+            bool opened = g.InventoryOpen;
+            yield return Scroll(120f);
+            yield return W(0.2f);
+            bool kept = Mathf.Abs(g.camPitchTarget - 56f) < 0.01f;
+            yield return Tap(Key.Tab);
+            Check("the wheel does nothing while the Tab window is open", opened && kept && !g.InventoryOpen);
+
+            // restore this machine's own setting
+            if (hadKey) PlayerPrefs.SetFloat(Game.CamPitchKey, oldPref); else PlayerPrefs.DeleteKey(Game.CamPitchKey);
+            PlayerPrefs.Save();
+            g.camPitch = g.camPitchTarget = oldPref;
+            g.camPitch = g.camPitchTarget = Game.CamPitchDefault;      // (the tests below were made for 56)
+            g.SnapCamera();
+            yield return W(0.3f);
         }
 
         static void ShieldUp() { SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, true); }
@@ -1717,6 +1862,7 @@ namespace MedievalKnight
         Slime P7Slime(int kind, Vector3 dirFromKnight)
         {
             Slime s = Slime.Spawn(kind, k.transform.position + dirFromKnight.normalized * 2.5f, g.transform);
+            s.Frozen = true;                                         // a real hop in the middle of a case would be parried / blocked too
             return s;
         }
 
@@ -1725,7 +1871,7 @@ namespace MedievalKnight
         {
             g.packsOff = true;
             k.moveOverride = null;
-            Vector3 home = new Vector3(2f, 0f, -5f);
+            Vector3 home = new Vector3(80f, 0f, 40f);                  // far from the slimes parked in the south-west corner (they chase from 30 m)
             Vector3 north = new Vector3(0f, 0f, 1f);
             Heal(); d.ResetAll();
             ShieldDown();
@@ -2504,6 +2650,9 @@ namespace MedievalKnight
         {
             yield return StartLoopSession();
             RunLoop run = g.run;
+            yield return Tap(Key.M);
+            yield return W(0.2f);
+            Check("map: M does nothing at the base (outside a world)", !g.MapOpen && !g.Map.Shown);
             Loadout d = run.data;
             d.carry.foods[0] = Item.Food(Foods.Apple);
             var w = new OldWorld { seed = 0xF00D, left = 3, fellUnix = 1760000000L };
@@ -2530,6 +2679,14 @@ namespace MedievalKnight
             Check("piles: with two piles on screen both have a LOOT label (LOOT x3 and LOOT x2) and no window is open",
                 run.ui.LootLabelsShown >= 2 && !run.LootOpen);
             Shot("piles_labels");
+            yield return Tap(Key.M);
+            yield return W(0.3f);
+            Check("map: in the world M opens it; it marks the " + run.PileObjects + " piles (" + g.Map.PileMarkers + " markers), no portal yet (the boss lives), no enemy markers, the run goes on",
+                g.MapOpen && g.Map.Shown && g.Map.PileMarkers == run.PileObjects && run.PileObjects == 3 && !g.Map.PortalMarker && g.Map.EnemyMarkers == 0 && Time.timeScale == 1f);
+            Shot("map_piles");
+            yield return Tap(Key.Escape);
+            yield return W(0.2f);
+            Check("map: Esc closes it and does not count as leaving the world (still in the run, no question asked)", !g.MapOpen && run.InWorld && !run.Dying && !g.hud.NoticeShown.Contains("Esc again"));
             // the second pile: its window shows its 2 items only
             int idxB = run.PileItemsAt(0) == 2 ? 0 : run.PileItemsAt(1) == 2 ? 1 : 2;
             k.transform.position = run.PilePosAt(idxB) + new Vector3(1.0f, 0f, 0f);
