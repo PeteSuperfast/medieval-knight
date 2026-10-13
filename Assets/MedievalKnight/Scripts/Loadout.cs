@@ -199,6 +199,15 @@ namespace MedievalKnight
         public readonly List<ResultLine> lost = new List<ResultLine>();       // death / abandoned
         public readonly List<ResultLine> safe = new List<ResultLine>();       // death: was in the stash, not taken along
         public int stashWeapons, stashFoods;                                  // stash usage after the run
+        // phase 2 (old worlds)
+        public WorldNote worldNote;                                           // what happened to the world this run was played in
+        public int worldSeed;                                                 // that world (Created / Added / Recovered / StillInPile)
+        public int pileCount;                                                 // items in its pile after the run
+        public int worldLeft;                                                 // returns it has left after the run
+        public bool inOldWorld;                                               // the run was played in an old world
+        public readonly List<ResultLine> overflow = new List<ResultLine>();   // did not fit in the pile (MaxPile): gone
+        public readonly List<CrumbLine> crumbs = new List<CrumbLine>();       // victory: every old world's counter
+        public string WorldCode { get { return OldWorld.CodeOf(worldSeed); } }
     }
 
     public class Loadout
@@ -213,6 +222,43 @@ namespace MedievalKnight
         public bool inRun;                     // a run is open (set when entering the world, cleared when it ends)
         public bool introShown;                // the "everything you carry is lost" line was shown once
         bool[] ownedAtStart;                   // weapon ids known when the run began (to mark NEW)
+
+        // ---- phase 2: old worlds
+        public readonly List<OldWorld> worlds = new List<OldWorld>();
+        public int runWorld;                   // the old world the open run is played in (0 = a new world)
+        public float runX, runZ;               // where the knight last was in the open run (autosaved)
+        public bool runPosValid;
+        public readonly List<CrumbNote> unseen = new List<CrumbNote>();   // crumbled worlds the player has not been told about at the base
+        public string trimNote = "";           // set by Sanitize when a damaged / edited save lost worlds or loot
+
+        public OldWorld Find(int seed)
+        {
+            if (seed == 0) return null;
+            foreach (OldWorld w in worlds) if (w.seed == seed) return w;
+            return null;
+        }
+
+        // Fewest returns left first, then the most recent fall.
+        public List<OldWorld> Sorted()
+        {
+            var list = new List<OldWorld>(worlds);
+            list.Sort((a, b) => a.left != b.left ? a.left.CompareTo(b.left) : b.fellUnix.CompareTo(a.fellUnix));
+            return list;
+        }
+
+        int NewSeed(long now)
+        {
+            var rng = new System.Random(unchecked((int)(now * 31 + worlds.Count * 7919 + 17)));
+            for (int tries = 0; tries < 2000; tries++)
+            {
+                int s = rng.Next(1, int.MaxValue);
+                if ((s & 0xFFFF) == 0) continue;
+                bool clash = false;
+                foreach (OldWorld w in worlds) if ((w.seed & 0xFFFF) == (s & 0xFFFF)) clash = true;
+                if (!clash) return s;
+            }
+            return worlds.Count + 1;
+        }
 
         // A brand-new save: the stash holds one Iron Sword and nothing else.
         public static Loadout NewGame()
@@ -299,11 +345,39 @@ namespace MedievalKnight
         }
 
         // Entering the world: the run is open from here on.
-        public void BeginRun()
+        public void BeginRun(int oldWorldSeed = 0)
         {
             EnsureHeld();
             ownedAtStart = OwnedIds();
             inRun = true;
+            runWorld = Find(oldWorldSeed) != null ? oldWorldSeed : 0;
+            runPosValid = false;
+        }
+
+        // Items taken from a pile go into the carry by the normal rules (merge +N, own group, Supplies); a full carry
+        // leaves the item in the pile. Returns false when it did not fit.
+        public bool TakeFromPile(OldWorld w, int index)
+        {
+            if (w == null || index < 0 || index >= w.pile.Count) return false;
+            Item it = w.pile[index];
+            if (!carry.CanAdd(it)) return false;
+            carry.Add(it);
+            w.pile.RemoveAt(index);
+            EnsureHeld();
+            return true;
+        }
+
+        // Everything that fits, in pile order. Returns how many items were taken.
+        public int TakeAll(OldWorld w)
+        {
+            if (w == null) return 0;
+            int n = 0;
+            for (int i = 0; i < w.pile.Count;)
+            {
+                if (TakeFromPile(w, i)) n++;
+                else i++;
+            }
+            return n;
         }
 
         // Every weapon the player owns anywhere? If not, a free Iron Sword goes into the stash. Returns true when it did.
@@ -328,17 +402,90 @@ namespace MedievalKnight
                 else r.brought.Add(Line(it, isNew));
             }
             carry.Clear();
+            SurviveWorlds(r);
             Finish(r);
             return r;
         }
 
-        // Died (or left the game mid-run): everything carried is gone.
+        // The old worlds after a successful return: the world played in is closed when its pile is empty, every other
+        // counter (and this one) goes down by one; at 0 the world and its pile are gone for good.
+        void SurviveWorlds(RunResult r)
+        {
+            OldWorld cur = Find(runWorld);
+            if (cur != null)
+            {
+                r.inOldWorld = true;
+                r.worldSeed = cur.seed;
+                if (cur.pile.Count == 0)
+                {
+                    worlds.Remove(cur);                                   // everything recovered: closed, not a crumble
+                    r.worldNote = WorldNote.Recovered;
+                }
+            }
+            foreach (OldWorld w in new List<OldWorld>(worlds))
+            {
+                var line = new CrumbLine { seed = w.seed, before = w.left, after = w.left - 1, itemsLost = w.pile.Count };
+                w.left--;
+                if (w.left <= 0)
+                {
+                    line.crumbled = true;
+                    line.after = 0;
+                    worlds.Remove(w);
+                    unseen.Add(new CrumbNote { seed = w.seed, items = w.pile.Count });
+                }
+                else if (cur != null && w == cur)
+                {
+                    r.worldNote = WorldNote.StillInPile;
+                    r.pileCount = w.pile.Count;
+                    r.worldLeft = w.left;
+                }
+                r.crumbs.Add(line);
+            }
+            r.crumbs.Sort((a, b) => a.after != b.after ? a.after.CompareTo(b.after) : a.seed.CompareTo(b.seed));
+        }
+
+        public static long NowUnix() { return System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(); }
+
+        // Died (or left the game mid-run) with no known place: everything carried lies at the town gate.
         public RunResult Die(bool abandoned)
         {
+            return Die(abandoned, MapLayout.TownSpawn.x, MapLayout.TownSpawn.z, NowUnix());
+        }
+
+        // Died / left the game at (x, z): everything carried is gone from the knight and lies in one pile there - in the
+        // old world he was playing in (the pile moves to this spot, the counter is not reset) or in a new old world.
+        public RunResult Die(bool abandoned, float x, float z, long nowUnix)
+        {
             var r = new RunResult { victory = false, abandoned = abandoned };
-            foreach (Item it in carry.All()) r.lost.Add(Line(it, false));
+            List<Item> items = carry.All();
+            foreach (Item it in items) r.lost.Add(Line(it, false));
             carry.Clear();
             foreach (Item it in stash.All()) r.safe.Add(Line(it, false));
+
+            OldWorld w = Find(runWorld);
+            if (w != null)
+            {
+                r.inOldWorld = true;
+                w.x = x; w.z = z;
+                if (items.Count > 0) r.worldNote = WorldNote.Added;
+            }
+            else if (items.Count > 0)
+            {
+                w = new OldWorld { seed = NewSeed(nowUnix), fellUnix = nowUnix, left = OldWorld.StartLeft, x = x, z = z };
+                worlds.Add(w);
+                r.worldNote = WorldNote.Created;
+            }
+            if (w != null)
+            {
+                foreach (Item it in items)
+                {
+                    if (w.pile.Count < OldWorld.MaxPile) w.pile.Add(it);
+                    else r.overflow.Add(Line(it, false));
+                }
+                r.worldSeed = w.seed;
+                r.pileCount = w.pile.Count;
+                r.worldLeft = w.left;
+            }
             Finish(r);
             return r;
         }
@@ -354,6 +501,8 @@ namespace MedievalKnight
             r.stashWeapons = stash.Count(Section.Weapons) + CountWeaponsInSupplies(stash);
             r.stashFoods = stash.Count(Section.Foods);
             inRun = false;
+            runWorld = 0;
+            runPosValid = false;
             ownedAtStart = null;
             heldSlot = 0;
         }
@@ -370,18 +519,65 @@ namespace MedievalKnight
         {
             stash.Normalize();
             carry.Normalize();
-            // a weapon that is both in the stash and in the carry becomes one stack in the stash... it cannot happen
-            // through the game, but a hand-edited file could do it: keep the carried one, merge into it
-            foreach (Item it in new List<Item>(carry.All()))
+            // a weapon that is both in the stash and in the carry: keep the carried one. It cannot happen through the
+            // game, but a hand-edited file could do it. Only with no run open: during a run the carry may hold a
+            // pick-up of a weapon that is also at home (the game allows it) and the stash copy must stay.
+            if (!inRun)
             {
-                if (!it.IsWeapon) continue;
-                for (int i = 0; i < stash.weapons.Length; i++)
-                    if (stash.weapons[i].IsWeapon && stash.weapons[i].id == it.id) stash.weapons[i] = Item.None;
-                for (int i = 0; i < stash.supplies.Length; i++)
-                    if (stash.supplies[i].IsWeapon && stash.supplies[i].id == it.id) stash.supplies[i] = Item.None;
+                foreach (Item it in new List<Item>(carry.All()))
+                {
+                    if (!it.IsWeapon) continue;
+                    for (int i = 0; i < stash.weapons.Length; i++)
+                        if (stash.weapons[i].IsWeapon && stash.weapons[i].id == it.id) stash.weapons[i] = Item.None;
+                    for (int i = 0; i < stash.supplies.Length; i++)
+                        if (stash.supplies[i].IsWeapon && stash.supplies[i].id == it.id) stash.supplies[i] = Item.None;
+                }
             }
+            SanitizeWorlds();
             EnsureHeld();
             EnsureIron();
+        }
+
+        // Old worlds from a file: ids unique, counters 1..3, piles of valid items (at most MaxPile), at most MaxWorlds.
+        void SanitizeWorlds()
+        {
+            trimNote = "";
+            var seen = new HashSet<int>();
+            var keep = new List<OldWorld>();
+            bool trimmedPile = false;
+            foreach (OldWorld w in worlds)
+            {
+                if (w == null || w.seed == 0 || !seen.Add(w.seed)) continue;
+                if (w.left <= 0) continue;                               // already expired
+                if (w.left > OldWorld.StartLeft) w.left = OldWorld.StartLeft;
+                float lim = Game.ArenaHalf - 4f;
+                if (float.IsNaN(w.x) || float.IsNaN(w.z) || float.IsInfinity(w.x) || float.IsInfinity(w.z)) { w.x = MapLayout.TownSpawn.x; w.z = MapLayout.TownSpawn.z; }
+                w.x = System.Math.Max(-lim, System.Math.Min(lim, w.x));
+                w.z = System.Math.Max(-lim, System.Math.Min(lim, w.z));
+                var items = new List<Item>();
+                foreach (Item it in w.pile)
+                {
+                    if (it.IsNone || !it.Valid) continue;
+                    if (items.Count >= OldWorld.MaxPile) { trimmedPile = true; continue; }
+                    items.Add(it);
+                }
+                w.pile.Clear();
+                w.pile.AddRange(items);
+                keep.Add(w);
+            }
+            worlds.Clear();
+            for (int i = 0; i < keep.Count; i++)
+            {
+                if (i < OldWorld.MaxWorlds) worlds.Add(keep[i]);
+                else
+                {
+                    unseen.Add(new CrumbNote { seed = keep[i].seed, items = keep[i].pile.Count });
+                    trimNote = "Too many old worlds: the extra ones crumbled.";
+                }
+            }
+            if (trimmedPile && trimNote.Length == 0) trimNote = "An old world held too many items: the extra ones are gone.";
+            if (runWorld != 0 && Find(runWorld) == null) runWorld = 0;
+            if (float.IsNaN(runX) || float.IsNaN(runZ) || float.IsInfinity(runX) || float.IsInfinity(runZ)) runPosValid = false;
         }
     }
 }

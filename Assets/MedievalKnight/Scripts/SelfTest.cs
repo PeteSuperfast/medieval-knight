@@ -1578,6 +1578,9 @@ namespace MedievalKnight
             Log("---- loop: data rules");
             LoopData();
             yield return null;
+            Log("---- old world: data rules");
+            OldWorldData();
+            yield return null;
             Log("---- loop: save file");
             LoopSaveTests();
             yield return null;
@@ -2351,6 +2354,160 @@ namespace MedievalKnight
 
             Loadout e = new Loadout();
             Check("loop data: EnsureIron on an empty loadout adds one Iron Sword once", e.EnsureIron() && !e.EnsureIron() && e.stash.Total == 1);
+        }
+
+        // Phase 2: old worlds (pure data).
+        void OldWorldData()
+        {
+            // a run that ends in death creates an old world holding everything that was carried
+            Loadout l = Loadout.NewGame();
+            l.stash.Add(Item.Weapon(Weapons.Rapier, 2));
+            l.MoveToCarry(Section.Weapons, 0);                                      // Iron
+            l.carry.Add(Item.Food(Foods.Apple));
+            l.carry.Add(Item.Food(Foods.Apple));
+            l.BeginRun();
+            RunResult r = l.Die(false, 12.5f, -40f, 1000);
+            OldWorld w = l.worlds.Count == 1 ? l.worlds[0] : null;
+            Check("old world: dying in a new world creates one old world: 3 returns left, the pile holds all 3 carried items where he fell, seed not 0",
+                w != null && w.left == 3 && w.pile.Count == 3 && w.seed != 0 && Mathf.Abs(w.x - 12.5f) < 0.01f && Mathf.Abs(w.z + 40f) < 0.01f
+                && r.worldNote == WorldNote.Created && r.worldSeed == w.seed && r.pileCount == 3 && l.carry.Total == 0 && !l.inRun && l.runWorld == 0
+                && w.fellUnix == 1000 && w.Code.Length == 5 && w.Code[0] == '#');
+            Check("old world: what stayed at home is still in the stash and the run did not touch another old world",
+                l.stash.HasWeaponId(Weapons.Rapier) && r.safe.Count >= 1 && !l.stash.HasWeaponId(Weapons.Iron) == !r.ironRestored);
+
+            // dying with an empty carry in a new world creates nothing
+            Loadout e = Loadout.NewGame();
+            e.BeginRun();
+            RunResult re = e.Die(false, 0f, 0f, 5);
+            Check("old world: dying with nothing carried creates no old world", e.worlds.Count == 0 && re.worldNote == WorldNote.None);
+
+            // two weapons of one kind lie as two items (they merge only when they are taken back)
+            Loadout m = Loadout.NewGame();
+            m.carry.weapons[0] = Item.Weapon(Weapons.Iron, 1);
+            m.carry.supplies[0] = Item.Weapon(Weapons.Fang, 0);
+            m.carry.foods[0] = Item.Food(Foods.Meat);
+            m.BeginRun();
+            m.Die(false, 1f, 1f, 50);
+            OldWorld mw = m.worlds[0];
+            int ironInPile = 0;
+            foreach (Item it in mw.pile) if (it.IsWeapon && it.id == Weapons.Iron && it.plus == 1) ironInPile++;
+            Check("old world: items keep their +N in the pile (Iron +1, Fang, Roast Meat)", mw.pile.Count == 3 && ironInPile == 1);
+
+            // entering the old world, dying again: same world, same counter, the pile moves to the new spot and grows
+            mw.left = 2;
+            m.carry.weapons[0] = Item.Weapon(Weapons.Dao, 0);
+            m.carry.foods[0] = Item.Food(Foods.Apple);
+            m.BeginRun(mw.seed);
+            RunResult r2 = m.Die(false, -30f, 20f, 99999);
+            Check("old world: dying again in the old world adds to the same pile (3 + 2 items), keeps the counter (2) and moves the pile",
+                m.worlds.Count == 1 && mw.pile.Count == 5 && mw.left == 2 && Mathf.Abs(mw.x + 30f) < 0.01f && Mathf.Abs(mw.z - 20f) < 0.01f
+                && r2.worldNote == WorldNote.Added && r2.inOldWorld && mw.fellUnix == 50 && r2.pileCount == 5);
+
+            // taking things back: merge +N, the pack limit, Take all
+            Loadout t = Loadout.NewGame();
+            OldWorld tw = new OldWorld { seed = 0x1234, left = 3 };
+            tw.pile.Add(Item.Weapon(Weapons.Iron, 0));
+            tw.pile.Add(Item.Weapon(Weapons.Iron, 0));
+            tw.pile.Add(Item.Weapon(Weapons.Rapier, 3));
+            tw.pile.Add(Item.Weapon(Weapons.Fang, 0));
+            tw.pile.Add(Item.Weapon(Weapons.Dao, 0));
+            tw.pile.Add(Item.Weapon(Weapons.Boss, 0));
+            for (int i = 0; i < 4; i++) tw.pile.Add(Item.Food(Foods.Apple));
+            t.worlds.Add(tw);
+            t.carry.weapons[0] = Item.Weapon(Weapons.Greatsword, 0);
+            bool a = t.TakeFromPile(tw, 0) && t.carry.weapons[1].id == Weapons.Iron;            // free Weapons slot
+            bool b = t.TakeFromPile(tw, 0) && t.carry.weapons[1].plus == 1;                   // the other Iron merges: +1
+            int n = t.TakeAll(tw);                                                            // Rapier, Fang, Dao, Boss, 4 Apples: the 4th Apple does not fit
+            Check("old world: taking from the pile follows the pack rules (second Iron merges to +1, Take all stops when the pack is full and leaves the rest)",
+                a && b && n == 7 && tw.pile.Count == 1 && t.carry.Count(Section.Weapons) == 2 && t.carry.Count(Section.Supplies) == 4 && t.carry.Count(Section.Foods) == 3);
+            int before = tw.pile.Count;
+            Item left = before > 0 ? tw.pile[0] : Item.None;
+            Check("old world: a full pack refuses the item and the pile does not change", before == 1 && !t.carry.CanAdd(left) && !t.TakeFromPile(tw, 0) && tw.pile.Count == before);
+
+            // the pile limit
+            Loadout big = Loadout.NewGame();
+            OldWorld bw = new OldWorld { seed = 777, left = 3 };
+            for (int i = 0; i < OldWorld.MaxPile; i++) bw.pile.Add(Item.Food(Foods.Apple));
+            big.worlds.Add(bw);
+            big.carry.foods[0] = Item.Food(Foods.Meat);
+            big.carry.foods[1] = Item.Food(Foods.Meat);
+            big.BeginRun(777);
+            RunResult rb = big.Die(false, 0f, 0f, 1);
+            Check("old world: a pile holds at most " + OldWorld.MaxPile + " items, the rest is reported as overflow",
+                bw.pile.Count == OldWorld.MaxPile && rb.overflow.Count == 2);
+
+            // survive: counters of every old world go down; the world played in is closed when its pile is empty
+            Loadout s = Loadout.NewGame();
+            OldWorld w1 = new OldWorld { seed = 0x1111, left = 3 }; w1.pile.Add(Item.Weapon(Weapons.Fang));
+            OldWorld w2 = new OldWorld { seed = 0x2222, left = 1 }; w2.pile.Add(Item.Food(Foods.Apple)); w2.pile.Add(Item.Food(Foods.Meat));
+            OldWorld w3 = new OldWorld { seed = 0x3333, left = 2 };
+            s.worlds.Add(w1); s.worlds.Add(w2); s.worlds.Add(w3);
+            s.AutoPack();
+            s.BeginRun(0x1111);                                                               // played in w1 (pile not empty)
+            RunResult rs = s.Survive();
+            Check("old world: a successful return counts every old world down (3->2, 2->1), the one at 1 crumbles with its pile and is reported",
+                rs.victory && w1.left == 2 && w3.left == 1 && s.Find(0x2222) == null && s.worlds.Count == 2
+                && s.unseen.Count == 1 && s.unseen[0].seed == 0x2222 && s.unseen[0].items == 2 && rs.crumbs.Count == 3
+                && rs.worldNote == WorldNote.StillInPile && rs.worldLeft == 2 && rs.pileCount == 1);
+            s.AutoPack();
+            s.BeginRun(0x3333);                                                               // w3 has an empty pile: closes
+            RunResult rs2 = s.Survive();
+            Check("old world: returning from an old world whose pile is empty closes it (not a crumble, nothing in unseen) and still counts the others down",
+                s.Find(0x3333) == null && rs2.worldNote == WorldNote.Recovered && s.unseen.Count == 1 && w1.left == 1 && s.worlds.Count == 1);
+            s.AutoPack();
+            s.BeginRun();
+            s.Survive();
+            Check("old world: the third return from any world crumbles the first one and everything in it is gone for good",
+                s.worlds.Count == 0 && s.unseen.Count == 2 && s.unseen[1].seed == 0x1111 && s.unseen[1].items == 1);
+
+            // abandoned = a death in the world he was in
+            Loadout ab = Loadout.NewGame();
+            ab.AutoPack();
+            ab.BeginRun();
+            ab.runX = 40f; ab.runZ = 15f; ab.runPosValid = true;
+            RunResult rab = ab.Die(true, ab.runX, ab.runZ, 10);
+            Check("old world: an abandoned run puts the carried items in a pile at the last saved spot", rab.abandoned && ab.worlds.Count == 1 && Mathf.Abs(ab.worlds[0].x - 40f) < 0.01f);
+
+            // many worlds: every code differs
+            Loadout many = Loadout.NewGame();
+            var codes = new HashSet<string>();
+            for (int i = 0; i < 30; i++)
+            {
+                many.carry.foods[0] = Item.Food(Foods.Apple);
+                many.BeginRun();
+                many.Die(false, 0f, 0f, 1000);                                                // the same clock second on purpose
+            }
+            foreach (OldWorld mwld in many.worlds) codes.Add(mwld.Code);
+            Check("old world: 30 deaths in new worlds make 30 old worlds with 30 different codes", many.worlds.Count == 30 && codes.Count == 30);
+
+            // Sanitize
+            Loadout sz = new Loadout();
+            sz.stash.weapons[0] = Item.Weapon(Weapons.Fang);
+            sz.carry.weapons[0] = Item.Weapon(Weapons.Fang);
+            sz.inRun = true;
+            sz.Sanitize();
+            Check("old world: during a run a weapon in both stash and carry is left alone (the stash copy is safe)", sz.stash.HasWeaponId(Weapons.Fang) && sz.carry.HasWeaponId(Weapons.Fang));
+            sz.inRun = false;
+            sz.Sanitize();
+            Check("old world: with no run open the duplicate is removed from the stash (carry wins)", !sz.stash.HasWeaponId(Weapons.Fang) && sz.carry.HasWeaponId(Weapons.Fang));
+            var junk = new Loadout();
+            junk.worlds.Add(new OldWorld { seed = 5, left = 9 });
+            junk.worlds.Add(new OldWorld { seed = 5, left = 2 });
+            junk.worlds.Add(new OldWorld { seed = 0, left = 2 });
+            junk.worlds.Add(new OldWorld { seed = 6, left = 0 });
+            var fat = new OldWorld { seed = 7, left = 1, x = float.NaN, z = 5000f };
+            for (int i = 0; i < 60; i++) fat.pile.Add(Item.Food(Foods.Apple));
+            fat.pile.Add(new Item { kind = ItemKind.Weapon, id = 999 });
+            junk.worlds.Add(fat);
+            junk.runWorld = 12345;
+            junk.Sanitize();
+            Check("old world: Sanitize repairs a damaged list (left 9 -> 3, duplicate / zero seed / expired dropped, pile cut to 48, position clamped, unknown runWorld cleared)",
+                junk.worlds.Count == 2 && junk.Find(5).left == 3 && junk.Find(7).pile.Count == OldWorld.MaxPile && junk.runWorld == 0
+                && !float.IsNaN(junk.Find(7).x) && Mathf.Abs(junk.Find(7).z) < Game.ArenaHalf && junk.trimNote.Length > 0);
+            var hundred = new Loadout();
+            for (int i = 1; i <= 105; i++) hundred.worlds.Add(new OldWorld { seed = i, left = 3 });
+            hundred.Sanitize();
+            Check("old world: more than " + OldWorld.MaxWorlds + " worlds in a file: the extra ones are dropped and reported", hundred.worlds.Count == OldWorld.MaxWorlds && hundred.unseen.Count == 6 && hundred.trimNote.Length > 0);
         }
 #endif
     }
