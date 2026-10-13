@@ -74,6 +74,17 @@ namespace MedievalKnight
         Text objective2, badge;
         Image badgeFrame;
         string badgeShown = "";
+        // phase 2: the loot window (L) and the marker of the pile
+        const int LootCols = 6, LootRows = 4;
+        GameObject lootRoot;
+        readonly List<Cell> lootPileCells = new List<Cell>();
+        readonly Cell[][] lootPackGrid = new Cell[3][];
+        readonly List<Cell> lootPackCells = new List<Cell>();
+        Text lootTitle, lootPileHead, lootInfo, lootWarn;
+        Btn lootTakeAllBtn;
+        int lootCursor, lootScroll;
+        float lootWarnUntil;
+        Text lootLabel, lootArrow, lootDist;
         // always on top: the fade, the objective line, the carried-weapons strip
         // the carry window (Tab in the world)
         GameObject carryRoot;
@@ -171,6 +182,7 @@ namespace MedievalKnight
 
             BuildPrepare();
             BuildWorlds();
+            BuildLoot();
             BuildCarry();
             BuildSummary();
             BuildOverlays();
@@ -184,8 +196,9 @@ namespace MedievalKnight
             objective2 = Label("Objective2", root, new Vector2(0.5f, 1f), new Vector2(0f, -100f), new Vector2(900, 26), 19, TextAnchor.MiddleCenter);
             objective2.fontStyle = FontStyle.Bold;
             objective2.color = LootGold;
-            badgeFrame = Box("BadgeFrame", root, new Vector2(1f, 1f), new Vector2(-24f, -24f), new Vector2(250f, 70f), OldFrame);
-            badgeFrame.rectTransform.pivot = new Vector2(1f, 1f);
+            // under the health / level box (the controls panel of the HUD sits in the top right corner)
+            badgeFrame = Box("BadgeFrame", root, new Vector2(0f, 1f), new Vector2(16f, -206f), new Vector2(250f, 70f), OldFrame);
+            badgeFrame.rectTransform.pivot = new Vector2(0f, 1f);
             Box("Bg", badgeFrame.rectTransform, Mid, Vector2.zero, new Vector2(244f, 64f), new Color(0.03f, 0.03f, 0.06f, 0.7f));
             badge = Label("Badge", badgeFrame.rectTransform, Mid, Vector2.zero, new Vector2(240f, 64f), 16, TextAnchor.MiddleCenter);
             badgeFrame.gameObject.SetActive(false);
@@ -198,6 +211,15 @@ namespace MedievalKnight
             portalLabel.fontStyle = FontStyle.Bold;
             portalLabel.color = new Color(0.435f, 0.784f, 1f);
             portalLabel.gameObject.SetActive(false);
+            lootLabel = Label("LootLabel", root, new Vector2(0f, 0f), Vector2.zero, new Vector2(300, 28), 22, TextAnchor.MiddleCenter, "YOUR LOOT");
+            lootLabel.rectTransform.pivot = Mid; lootLabel.fontStyle = FontStyle.Bold; lootLabel.color = LootGold;
+            lootLabel.gameObject.SetActive(false);
+            lootArrow = Label("LootArrow", root, new Vector2(0f, 0f), Vector2.zero, new Vector2(60, 60), 54, TextAnchor.MiddleCenter, ">");
+            lootArrow.rectTransform.pivot = Mid; lootArrow.fontStyle = FontStyle.Bold; lootArrow.color = LootGold;
+            lootArrow.gameObject.SetActive(false);
+            lootDist = Label("LootDist", root, new Vector2(0f, 0f), Vector2.zero, new Vector2(200, 26), 18, TextAnchor.MiddleCenter, "Loot");
+            lootDist.rectTransform.pivot = Mid; lootDist.fontStyle = FontStyle.Bold; lootDist.color = LootGold;
+            lootDist.gameObject.SetActive(false);
             fade = Box("Fade", root, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0f, 0f));
             fade.rectTransform.anchorMin = Vector2.zero; fade.rectTransform.anchorMax = Vector2.one;
             fade.rectTransform.offsetMin = fade.rectTransform.offsetMax = Vector2.zero;
@@ -279,7 +301,8 @@ namespace MedievalKnight
 
         void Update()
         {
-            bool panel = (prepareRoot != null && prepareRoot.activeSelf) || (carryRoot != null && carryRoot.activeSelf) || (summaryRoot != null && summaryRoot.activeSelf);
+            bool panel = (prepareRoot != null && prepareRoot.activeSelf) || (carryRoot != null && carryRoot.activeSelf) || (summaryRoot != null && summaryRoot.activeSelf)
+                || (lootRoot != null && lootRoot.activeSelf);
             if (objective2.gameObject.activeSelf == panel) objective2.gameObject.SetActive(!panel);
             if (badgeShown.Length > 0 && badgeFrame.gameObject.activeSelf == panel) badgeFrame.gameObject.SetActive(!panel);
             if (objective.gameObject.activeSelf == panel) objective.gameObject.SetActive(!panel);
@@ -543,6 +566,7 @@ namespace MedievalKnight
         {
             if (prepareRoot != null) prepareRoot.SetActive(false);
             if (worldsRoot != null) worldsRoot.SetActive(false);
+            if (lootRoot != null) lootRoot.SetActive(false);
             if (carryRoot != null) carryRoot.SetActive(false);
             if (summaryRoot != null) summaryRoot.SetActive(false);
         }
@@ -859,6 +883,224 @@ namespace MedievalKnight
             if (Time.unscaledTime >= warnUntil) ShowDefaultWarn(d);
             worldsWarn.text = warn.text; worldsWarn.color = warn.color;
             RefreshWorlds(d);
+        }
+
+        // ---------------------------------------------------------------- the pile in the world: label over it / arrow at the screen edge
+
+        public bool LootLabelShown { get { return lootLabel.gameObject.activeSelf; } }
+        public bool LootArrowShown { get { return lootArrow.gameObject.activeSelf; } }
+        public string LootLabelText { get { return lootLabel.text; } }
+        public string LootArrowText { get { return lootDist.text; } }
+
+        // "YOUR LOOT x5" over the pile when it is on screen, otherwise a gold arrow at the edge with "Loot 142 m".
+        public void SetLootMarker(Camera cam, Vector3 world, float distance, int count, bool show)
+        {
+            if (!show || cam == null)
+            {
+                if (lootLabel.gameObject.activeSelf) lootLabel.gameObject.SetActive(false);
+                if (lootArrow.gameObject.activeSelf) { lootArrow.gameObject.SetActive(false); lootDist.gameObject.SetActive(false); }
+                return;
+            }
+            Vector3 sp = cam.WorldToScreenPoint(world);
+            float w = Screen.width, h = Screen.height, mx = 70f, mTop = 130f, mBottom = 150f;   // the skill bar is at the bottom, the objective lines at the top
+            bool on = sp.z > 0f && sp.x > mx * 0.6f && sp.x < w - mx * 0.6f && sp.y > mBottom * 0.6f && sp.y < h - mTop * 0.6f;
+            float scale = Mathf.Max(0.01f, canvas.scaleFactor);
+            if (lootLabel.gameObject.activeSelf != on) lootLabel.gameObject.SetActive(on);
+            if (lootArrow.gameObject.activeSelf == on) { lootArrow.gameObject.SetActive(!on); lootDist.gameObject.SetActive(!on); }
+            if (on)
+            {
+                lootLabel.text = "YOUR LOOT  x" + count;
+                lootLabel.rectTransform.anchoredPosition = new Vector2(sp.x, sp.y) / scale;
+                return;
+            }
+            Vector2 c = new Vector2(w * 0.5f, h * 0.5f);
+            Vector2 dir = new Vector2(sp.x, sp.y) - c;
+            if (sp.z < 0f) dir = -dir;
+            if (dir.sqrMagnitude < 1f) dir = Vector2.up;
+            dir.Normalize();
+            float tx = Mathf.Abs(dir.x) > 0.0001f ? (w * 0.5f - mx) / Mathf.Abs(dir.x) : float.MaxValue;
+            float ty = Mathf.Abs(dir.y) > 0.0001f ? ((dir.y > 0f ? h - mTop - h * 0.5f : h * 0.5f - mBottom)) / Mathf.Abs(dir.y) : float.MaxValue;
+            Vector2 pos = c + dir * Mathf.Min(tx, ty);
+            lootArrow.rectTransform.anchoredPosition = pos / scale;
+            lootArrow.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
+            lootDist.rectTransform.anchoredPosition = (pos + new Vector2(0f, dir.y > 0f ? -34f : 34f)) / scale;
+            lootDist.text = "Loot " + Mathf.RoundToInt(distance) + " m";
+        }
+
+        // ---------------------------------------------------------------- loot window (L): the pile on the left, the pack on the right
+
+        void BuildLoot()
+        {
+            RectTransform lr = Rect("Loot", root, Mid, Vector2.zero, Vector2.zero);
+            lr.anchorMin = Vector2.zero; lr.anchorMax = Vector2.one; lr.offsetMin = lr.offsetMax = Vector2.zero;
+            lootRoot = lr.gameObject;
+            Image dim = Box("Dim", lr, Mid, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0.03f, 0.6f));
+            dim.rectTransform.anchorMin = Vector2.zero; dim.rectTransform.anchorMax = Vector2.one;
+            dim.rectTransform.offsetMin = dim.rectTransform.offsetMax = Vector2.zero;
+            Image frame = Box("Frame", lr, Mid, Vector2.zero, new Vector2(886, 526), OldFrame);
+            RectTransform p = Box("Bg", frame.transform, Mid, Vector2.zero, new Vector2(880, 520), PanelBg).rectTransform;
+
+            lootTitle = Label("Title", p, TL, Vector2.zero, new Vector2(520, 40), 30, TextAnchor.MiddleLeft, "YOUR LOOT");
+            lootTitle.fontStyle = FontStyle.Bold; lootTitle.color = LootGold;
+            lootTitle.rectTransform.pivot = TL; lootTitle.rectTransform.anchoredPosition = new Vector2(20, -10);
+            lootTakeAllBtn = MakeButton("TakeAll", p, new Vector2(1f, 1f), new Vector2(-20f, -12f), new Vector2(210, 42), "Take all  [Q]", 19);
+            lootTakeAllBtn.rt.pivot = new Vector2(1f, 1f);
+            lootPileHead = Label("PileHead", p, TL, Vector2.zero, new Vector2(460, 24), 18, TextAnchor.MiddleLeft, "PILE");
+            lootPileHead.fontStyle = FontStyle.Bold; lootPileHead.rectTransform.pivot = TL; lootPileHead.rectTransform.anchoredPosition = new Vector2(20, -62);
+            for (int i = 0; i < LootCols * LootRows; i++)
+                MakeCell(p, 4, Section.Supplies, i, new Vector2(20 + (i % LootCols) * 76f, -(90f + (i / LootCols) * 76f)), 68f, lootPileCells);
+            Box("Divider", p, TL, new Vector2(500, -60), new Vector2(2, 330), FrameCol).rectTransform.pivot = TL;
+
+            Text packHead = Label("PackHead", p, TL, Vector2.zero, new Vector2(300, 24), 18, TextAnchor.MiddleLeft, "YOUR PACK");
+            packHead.fontStyle = FontStyle.Bold; packHead.rectTransform.pivot = TL; packHead.rectTransform.anchoredPosition = new Vector2(520, -62);
+            string[] names = { "Weapons", "Food", "Supplies" };
+            float[] ly = { 90f, 190f, 290f };
+            for (int s = 0; s < 3; s++)
+            {
+                Text l = Label(names[s] + "Label", p, TL, Vector2.zero, new Vector2(300, 20), 14, TextAnchor.MiddleLeft, names[s]);
+                l.color = Gray; l.rectTransform.pivot = TL; l.rectTransform.anchoredPosition = new Vector2(520, -ly[s]);
+                lootPackGrid[s] = new Cell[Loadout.CarryCaps[s]];
+                for (int i = 0; i < Loadout.CarryCaps[s]; i++)
+                    lootPackGrid[s][i] = MakeCell(p, 5, (Section)s, i, new Vector2(520 + i * 76f, -(ly[s] + 20f)), 68f, lootPackCells);
+            }
+            lootInfo = Label("Info", p, TL, Vector2.zero, new Vector2(840, 44), 15, TextAnchor.UpperLeft);
+            lootInfo.rectTransform.pivot = TL; lootInfo.rectTransform.anchoredPosition = new Vector2(20, -402);
+            lootInfo.horizontalOverflow = HorizontalWrapMode.Wrap;
+            lootWarn = Label("Warn", p, TL, Vector2.zero, new Vector2(840, 28), 17, TextAnchor.MiddleLeft);
+            lootWarn.rectTransform.pivot = TL; lootWarn.rectTransform.anchoredPosition = new Vector2(20, -454);
+            lootWarn.fontStyle = FontStyle.Bold;
+            Text foot = Label("Foot", p, TL, Vector2.zero, new Vector2(840, 20), 12, TextAnchor.MiddleLeft,
+                "Click / Enter: take   -   Q: take all   -   Right click a pack item: drop it   -   Arrows / WASD: move   -   Tab / Esc: close");
+            foot.color = Gray; foot.rectTransform.pivot = TL; foot.rectTransform.anchoredPosition = new Vector2(20, -490);
+            lootRoot.SetActive(false);
+        }
+
+        public bool LootVisible { get { return lootRoot != null && lootRoot.activeSelf; } }
+        public RectTransform LootPileCellRect(int i) { return lootPileCells[i].rt; }
+        public RectTransform LootTakeAllRect { get { return lootTakeAllBtn.rt; } }
+        public RectTransform LootPackCellRect(Section sec, int i) { return lootPackGrid[(int)sec][i].rt; }
+        public string LootWarnText { get { return lootWarn.text; } }
+        public string LootTitleText { get { return lootTitle.text; } }
+        public string LootPileHeadText { get { return lootPileHead.text; } }
+
+        public void ShowLoot(Loadout d, OldWorld w)
+        {
+            lootRoot.SetActive(true);
+            lootCursor = 0;
+            lootScroll = 0;
+            lootWarnUntil = 0f;
+            RefreshLoot(d, w);
+        }
+
+        public void SetLootWarn(string text, Color color, float seconds, Section? shake)
+        {
+            lootWarn.text = text;
+            lootWarn.color = color;
+            lootWarnUntil = Time.unscaledTime + seconds;
+            if (shake.HasValue) foreach (Cell c in lootPackGrid[(int)shake.Value]) c.shakeUntil = Time.unscaledTime + 0.4f;
+        }
+
+        static string ItemInfo(Item it)
+        {
+            if (it.IsNone) return "<color=#9aa0b0>Point at an item to see what it does.</color>";
+            if (it.IsWeapon)
+            {
+                WeaponDef w = Weapons.All[it.id];
+                return "<b><color=#" + ColorUtility.ToHtmlStringRGB(w.uiColor) + ">" + it.Name + "</color></b>  <color=#9aa0b0>" + w.rarity + "</color>\n"
+                    + "DMG x" + (w.damage * (1f + Weapons.DamagePerPlus * it.plus)).ToString("0.00") + "  SPD x" + w.speed.ToString("0.00")
+                    + "  CRIT +" + (w.critChance * 100f).ToString("0") + "% / +" + w.critMult.ToString("0.0") + "x  REACH x" + w.reach.ToString("0.00");
+            }
+            FoodDef f = Foods.All[it.id];
+            return "<b>" + f.name + "</b>\nHeals " + Mathf.RoundToInt(f.healFrac * 100f) + "% of your max health.";
+        }
+
+        void RefreshLoot(Loadout d, OldWorld w)
+        {
+            int n = w != null ? w.pile.Count : 0;
+            lootCursor = Mathf.Clamp(lootCursor, 0, Mathf.Max(0, n - 1));
+            int rows = Mathf.Max(1, Mathf.CeilToInt(n / (float)LootCols));
+            int curRow = lootCursor / LootCols;
+            if (curRow < lootScroll) lootScroll = curRow;
+            if (curRow >= lootScroll + LootRows) lootScroll = curRow - LootRows + 1;
+            lootScroll = Mathf.Clamp(lootScroll, 0, Mathf.Max(0, rows - LootRows));
+            int cantTake = 0;
+            for (int i = 0; i < lootPileCells.Count; i++)
+            {
+                int idx = lootScroll * LootCols + i;
+                Cell c = lootPileCells[i];
+                bool has = idx < n;
+                FillCell(c, has ? w.pile[idx] : Item.None, false);
+                if (has && !d.carry.CanAdd(w.pile[idx])) { c.tag.text = "FULL"; c.tag.color = Red; }
+                else c.tag.color = Green;
+            }
+            if (w != null) foreach (Item it in w.pile) if (!d.carry.CanAdd(it)) cantTake++;
+            for (int s = 0; s < 3; s++)
+            {
+                Item[] arr = d.carry.Slots((Section)s);
+                for (int i = 0; i < arr.Length; i++) FillCell(lootPackGrid[s][i], arr[i], s == 0 && i == d.heldSlot && arr[i].IsWeapon);
+            }
+            lootTitle.text = "YOUR LOOT  " + (w != null ? w.Code : "");
+            lootPileHead.text = "PILE  " + n + (n > LootCols * LootRows ? "   (rows " + (lootScroll + 1) + "-" + Mathf.Min(rows, lootScroll + LootRows) + " of " + rows + ")" : "");
+            if (Time.unscaledTime >= lootWarnUntil)
+            {
+                if (n == 0) { lootWarn.text = "Everything recovered."; lootWarn.color = Green; }
+                else if (cantTake > 0) { lootWarn.text = "Pack full: " + cantTake + " left in the pile"; lootWarn.color = Yellow; }
+                else { lootWarn.text = ""; lootWarn.color = Yellow; }
+            }
+            bool can = n > 0 && cantTake < n;
+            lootTakeAllBtn.bg.color = can ? new Color(0.45f, 0.34f, 0.12f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
+            lootTakeAllBtn.frame.color = can ? Gold : Disabled;
+        }
+
+        // Called every frame while the loot window is open.
+        public void LootInput(Loadout d, OldWorld w)
+        {
+            if (w == null) return;
+            Vector2 m = InputX.MousePos;
+            bool has = InputX.HasMouse;
+            int hoverPile = -1;
+            Cell hoverPack = null;
+            if (has)
+            {
+                for (int i = 0; i < lootPileCells.Count; i++)
+                    if (lootScroll * LootCols + i < w.pile.Count && RectTransformUtility.RectangleContainsScreenPoint(lootPileCells[i].rt, m, null)) hoverPile = lootScroll * LootCols + i;
+                foreach (Cell c in lootPackCells)
+                    if (RectTransformUtility.RectangleContainsScreenPoint(c.rt, m, null)) hoverPack = c;
+            }
+            bool onAll = has && RectTransformUtility.RectangleContainsScreenPoint(lootTakeAllBtn.rt, m, null);
+            bool clickL = has && InputX.MouseDown(0), clickR = has && InputX.MouseDown(1);
+            bool key = InputX.Down(KeyCode.Return) || InputX.Down(KeyCode.KeypadEnter) || InputX.Down(KeyCode.Space);
+            int n = w.pile.Count;
+            if (n > 0)
+            {
+                if (InputX.Down(KeyCode.LeftArrow) || InputX.Down(KeyCode.A)) lootCursor = Mathf.Max(0, lootCursor - 1);
+                if (InputX.Down(KeyCode.RightArrow) || InputX.Down(KeyCode.D)) lootCursor = Mathf.Min(n - 1, lootCursor + 1);
+                if (InputX.Down(KeyCode.UpArrow) || InputX.Down(KeyCode.W)) lootCursor = Mathf.Max(0, lootCursor - LootCols);
+                if (InputX.Down(KeyCode.DownArrow) || InputX.Down(KeyCode.S)) lootCursor = Mathf.Min(n - 1, lootCursor + LootCols);
+            }
+            if (clickL && hoverPile >= 0) { lootCursor = hoverPile; run.UiTake(hoverPile); }
+            else if ((clickL && onAll) || InputX.Down(KeyCode.Q)) run.UiTakeAll();
+            else if (clickR && hoverPack != null) run.UiCarryDrop(hoverPack.sec, hoverPack.index);
+            else if (key && n > 0) run.UiTake(lootCursor);
+            if (!run.LootOpen) return;                                      // the last item was taken: the window closed
+            RefreshLoot(d, w);
+            Item shown = hoverPile >= 0 ? w.pile[hoverPile] : hoverPack != null ? d.carry.Slots(hoverPack.sec)[hoverPack.index]
+                : lootCursor < w.pile.Count ? w.pile[lootCursor] : Item.None;
+            lootInfo.text = ItemInfo(shown);
+            float now = Time.unscaledTime;
+            for (int i = 0; i < lootPileCells.Count; i++)
+            {
+                bool cur = lootScroll * LootCols + i == lootCursor && n > 0;
+                bool hov = lootScroll * LootCols + i == hoverPile;
+                lootPileCells[i].cursor.color = cur || hov ? new Color(1f, 1f, 1f, hov ? 0.3f : 0.5f) : new Color(1f, 1f, 1f, 0f);
+            }
+            foreach (Cell c in lootPackCells)
+            {
+                bool shaking = now < c.shakeUntil;
+                c.rt.anchoredPosition = shaking ? c.basePos + new Vector2(Mathf.Sin(now * 70f) * 3f, 0f) : c.basePos;
+                if (shaking) c.border.color = Red;
+                c.cursor.color = c == hoverPack ? new Color(1f, 1f, 1f, 0.3f) : new Color(1f, 1f, 1f, 0f);
+            }
         }
 
         // ---------------------------------------------------------------- carry window (Tab in the world)

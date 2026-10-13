@@ -1605,6 +1605,148 @@ namespace MedievalKnight
             yield return OldWorldRunTests();
             Log("---- old world: OLD WORLDS list, entering, difficulty");
             yield return OldWorldUiTests();
+            Log("---- old world: pile, loot window, recover, victory");
+            yield return OldWorldLootTests();
+        }
+
+        // From PREPARE: OLD WORLDS -> pick the row of "seed" -> ENTER OLD WORLD (answers the food question) -> in the world.
+        IEnumerator EnterOldWorldUi(int seed)
+        {
+            RunLoop run = g.run;
+            if (!run.PrepareOpen) { g.SetInventory(true); yield return W(0.2f); }
+            yield return Click(run.ui.OldWorldsRect.position);
+            yield return W(0.2f);
+            int idx = run.data.Sorted().FindIndex(w => w.seed == seed);
+            for (int i = 0; i < idx; i++) yield return Tap(Key.DownArrow);
+            yield return Click(run.ui.WorldsEnterRect.position);
+            yield return W(0.15f);
+            if (run.ui.PromptShown) yield return Tap(Key.Enter);
+            float t0 = Time.realtimeSinceStartup;
+            while (!run.InWorld && Time.realtimeSinceStartup - t0 < 4f) yield return null;
+            yield return W(0.8f);
+            k = g.knight;
+            g.packsOff = true;
+        }
+
+        // Phase 2, the pile: marker (arrow far, label near), touching it opens the loot window (pause), take one / Take all /
+        // pack full, closing arms it only after 4 m, the pile saved after each take, dying adds to the same world, taking
+        // everything closes the world at the next return.
+        IEnumerator OldWorldLootTests()
+        {
+            yield return StartLoopSession();
+            RunLoop run = g.run;
+            Loadout d = run.data;
+            d.carry.foods[0] = Item.Food(Foods.Apple);
+            var w = new OldWorld { seed = 0xC0DE, left = 2, fellUnix = 1760000000L, x = 0f, z = -120f };
+            w.pile.Add(Item.Weapon(Weapons.Fang, 2)); w.pile.Add(Item.Weapon(Weapons.Dao)); w.pile.Add(Item.Weapon(Weapons.Rapier));
+            w.pile.Add(Item.Weapon(Weapons.Boss)); w.pile.Add(Item.Weapon(Weapons.Greatsword));
+            w.pile.Add(Item.Food(Foods.Apple)); w.pile.Add(Item.Food(Foods.Apple)); w.pile.Add(Item.Food(Foods.Apple));
+            w.pile.Add(Item.Food(Foods.Meat)); w.pile.Add(Item.Weapon(Weapons.Iron));
+            d.worlds.Add(w);
+            yield return EnterOldWorldUi(0xC0DE);
+            Check("old world loot: the pile stands where the player fell (within 30 m of the saved spot, on free ground) and the gate is not where it is",
+                run.InWorld && run.pile != null && Vector3.Distance(run.pilePos, new Vector3(0f, 0f, -120f)) < 30f && Vector3.Distance(run.pilePos, MapLayout.TownSpawn) > 5f);
+            Check("old world loot: the HUD arrow for the Lair / Portal is not replaced and no loot window is open yet", !run.LootOpen && !g.InventoryOpen);
+            k.transform.position = new Vector3(70f, 0f, 60f); g.SnapCamera();
+            yield return W(0.4f);
+            Check("old world loot: far from the pile a gold arrow at the screen edge shows the distance (Loot N m), no label",
+                run.ui.LootArrowShown && run.ui.LootArrowText.StartsWith("Loot ") && run.ui.LootArrowText.EndsWith(" m") && !run.ui.LootLabelShown);
+            Shot("old_world_arrow");
+            k.transform.position = run.pilePos + new Vector3(0f, 0f, -6f); g.SnapCamera();
+            yield return W(0.4f);
+            Check("old world loot: near the pile the label YOUR LOOT x10 floats over it and the arrow is gone",
+                run.ui.LootLabelShown && run.ui.LootLabelText.Contains("x10") && !run.ui.LootArrowShown);
+            Shot("old_world_pile");
+            k.transform.position = run.pilePos + new Vector3(1.0f, 0f, 0f);
+            yield return W(0.5f);
+            Check("old world loot: touching the pile (1.5 m) opens the loot window by itself and the game pauses",
+                run.LootOpen && run.ui.LootVisible && Time.timeScale == 0f && run.ui.LootTitleText.Contains("#C0DE") && run.ui.LootPileHeadText.Contains("10"));
+            Shot("old_world_loot");
+            yield return Click(run.ui.LootPileCellRect(0).position);
+            yield return W(0.2f);
+            Check("old world loot: clicking an item takes it (Crimson Fang +2 into the free Weapons slot) and it leaves the pile",
+                d.carry.weapons[1].IsWeapon && d.carry.weapons[1].id == Weapons.Fang && d.carry.weapons[1].plus == 2 && w.pile.Count == 9 && g.lastNotice.Contains("Took Crimson Fang +2"));
+            Check("old world loot: each take is saved at once (the file holds the pile of 9)",
+                LoopSave.FromJson(File.ReadAllText(LoopSave.Path)).Find(0xC0DE).pile.Count == 9);
+            yield return Tap(Key.Q);
+            yield return W(0.2f);
+            Check("old world loot: Take all takes what fits (4 weapons into Supplies, 2 foods into Food, the second Iron merges to +1) and leaves 2 in the pile",
+                w.pile.Count == 2 && d.carry.Count(Section.Supplies) == 4 && d.carry.Count(Section.Foods) == 3 && d.carry.weapons[0].plus == 1
+                && w.pile[0].kind == ItemKind.Food && w.pile[1].kind == ItemKind.Food);
+            Check("old world loot: with a full pack the window says how many are left in the pile", run.ui.LootWarnText.Contains("Pack full: 2 left in the pile"));
+            int hints = run.PackFullHints;
+            yield return Click(run.ui.LootPileCellRect(0).position);
+            yield return W(0.2f);
+            Check("old world loot: taking one more with a full pack is refused (Pack full! Can't take Apple), the pile keeps both",
+                run.PackFullHints == hints + 1 && w.pile.Count == 2 && run.ui.LootWarnText.Contains("Pack full! Can't take Apple"));
+            yield return Tap(Key.Escape);
+            yield return W(0.3f);
+            Check("old world loot: Esc closes the window, time runs again, the pile (2 items) is still there", !run.LootOpen && !g.InventoryOpen && Time.timeScale > 0.5f && run.pile != null && run.InWorld);
+            yield return W(0.6f);
+            Check("old world loot: it does not open again while the knight stays next to the pile", !run.LootOpen && !g.InventoryOpen);
+            Check("old world loot: closing saved the pile (2 items) and the run is still open",
+                LoopSave.FromJson(File.ReadAllText(LoopSave.Path)).Find(0xC0DE).pile.Count == 2 && File.ReadAllText(LoopSave.Path).Contains("\"inRun\":true"));
+            k.transform.position = run.pilePos + new Vector3(6f, 0f, 0f);
+            yield return W(0.3f);
+            k.transform.position = run.pilePos + new Vector3(0.8f, 0f, 0f);
+            yield return W(0.5f);
+            Check("old world loot: after stepping 4+ m away and back it opens again", run.LootOpen && run.ui.LootVisible);
+            yield return Tap(Key.Tab);
+            yield return W(0.3f);
+            Check("old world loot: Tab closes it too", !run.LootOpen && !g.InventoryOpen && Time.timeScale > 0.5f);
+
+            // dying with things from the pile: they go back, the counter is not reset
+            int carried = d.carry.Total;
+            k.transform.position = run.pilePos + new Vector3(0f, 0f, -12f);
+            yield return W(0.2f);
+            Vector3 fellAt = k.Pos;
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(3.5f);
+            Check("old world loot: dying in the old world adds the carried items to the same pile (2 + " + carried + "), the counter stays 2, the pile moves to the new spot",
+                d.worlds.Count == 1 && w.pile.Count == 2 + carried && w.left == 2 && Mathf.Abs(w.x - fellAt.x) < 1f && Mathf.Abs(w.z - fellAt.z) < 1f);
+            Check("old world loot: YOU FELL says ADDED TO OLD WORLD #C0DE with the new pile size and that the counter is not reset",
+                run.ui.SummaryBody.Contains("ADDED TO OLD WORLD") && run.ui.SummaryBody.Contains("#C0DE") && run.ui.SummaryBody.Contains("The pile now holds " + (2 + carried) + " items")
+                && run.ui.SummaryBody.Contains("not reset"));
+            Shot("old_world_added");
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+
+            // --- a one-item pile: take it, the pile closes; the boss, the portal: VICTORY closes the world
+            yield return StartLoopSession();
+            run = g.run;
+            d = run.data;
+            d.carry.foods[0] = Item.Food(Foods.Apple);
+            var one = new OldWorld { seed = 0xD00D, left = 3, fellUnix = 1760000000L, x = 0f, z = -118f };
+            one.pile.Add(Item.Weapon(Weapons.Fang, 1));
+            d.worlds.Add(one);
+            var other = new OldWorld { seed = 0xE11E, left = 3, fellUnix = 1750000000L, x = 10f, z = -90f };
+            other.pile.Add(Item.Food(Foods.Meat));
+            d.worlds.Add(other);
+            yield return EnterOldWorldUi(0xD00D);
+            Check("old world loot: (setup) in #D00D with the objective line Recover your loot", run.InWorld && run.pile != null && run.ui.Objective2Text == "Recover your loot");
+            k.transform.position = run.pilePos + new Vector3(0.9f, 0f, 0f);
+            yield return W(0.5f);
+            yield return Tap(Key.Enter);                                            // Enter on the cursor item
+            yield return W(0.5f);
+            Check("old world loot: taking the last item closes the window, the pile is gone, the second objective line is gone, the notice says Everything recovered",
+                !run.LootOpen && !g.InventoryOpen && run.pile == null && one.pile.Count == 0 && run.ui.Objective2Text == "" && d.carry.weapons[1].IsWeapon && d.carry.weapons[1].id == Weapons.Fang
+                && g.hud.NoticeShown.Contains("Everything recovered"));
+            g.foodOverride = -1; g.dropOverride = -1;
+            KillMinotaur();
+            yield return W(1.2f);
+            yield return ClearLevelUps();
+            k.transform.position = run.portal.transform.position + new Vector3(0.5f, 0f, 0f);
+            yield return W(2.0f);
+            Check("old world loot: VICTORY from #D00D: all loot recovered, World closed; the other old world goes 3 -> 2",
+                run.SummaryOpen && run.result.victory && run.ui.SummaryBody.Contains("#D00D: all loot recovered. World closed.") && run.ui.SummaryBody.Contains("#E11E  3 -> 2 left")
+                && d.Find(0xD00D) == null && d.Find(0xE11E) != null && d.Find(0xE11E).left == 2 && d.unseen.Count == 0 && d.stash.HasWeaponId(Weapons.Fang));
+            Shot("old_world_recovered");
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.4f);
+            Check("old world loot: back at the base the list shows only #E11E (OLD WORLDS (1)), nothing about #D00D",
+                run.PrepareOpen && run.ui.OldWorldsText == "OLD WORLDS (1)" && run.ui.CrumbBarText == "");
+            g.LeaveToMenu();
+            yield return W(0.3f);
         }
 
         // Phase 2, the base: the OLD WORLDS button, the list, entering an old world (food question, fade, banner, badge, x1.5).

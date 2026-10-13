@@ -28,6 +28,12 @@ namespace MedievalKnight
         public bool CarryOpen { get { return State == LoopState.World && g.InventoryOpen; } }
         public bool Busy { get { return entering; } }               // fading into the world
         public bool WorldsOpen { get { return worldsOpen && PrepareOpen; } }
+        public bool LootOpen { get { return lootMode && State == LoopState.World && g.InventoryOpen; } }
+        public LootPile pile;                                       // the pile of the old world being played (null: none / all taken)
+        public Vector3 pilePos;                                     // where it stands (PilePoint of the saved spot)
+        OldWorld pileWorld;
+        bool lootMode;                                              // the inventory window is the loot window, not the Carry window
+        bool pileArmed = true;                                      // false from closing the window until the knight has stepped away
         public bool Dying { get { return dying; } }                 // fallen, the screen is dimming
         public RunResult result;                                    // the last finished run (summary screen, tests)
         bool dying;
@@ -90,6 +96,7 @@ namespace MedievalKnight
             if (entering && Time.unscaledTime >= enterAt) StartWorld();
             if (State == LoopState.World) TickPortal();
             if (State == LoopState.World) TickPosition();
+            if (State == LoopState.World) TickPile();
             if (dying)
             {
                 float t = Mathf.Clamp01((Time.unscaledTime - dieStart) / DimSeconds);
@@ -122,7 +129,12 @@ namespace MedievalKnight
         public void OnInventoryOpened()
         {
             askedNoFood = false;
-            if (State == LoopState.World) { ui.ShowCarry(data, g.knight); return; }
+            if (State == LoopState.World)
+            {
+                if (lootMode && pileWorld != null) ui.ShowLoot(data, pileWorld);
+                else { lootMode = false; ui.ShowCarry(data, g.knight); }
+                return;
+            }
             if (State == LoopState.Base) State = LoopState.Prepare;
             ui.ShowPrepare(data);
         }
@@ -132,6 +144,12 @@ namespace MedievalKnight
             ui.HideAll();
             askedNoFood = false;
             worldsOpen = false;
+            if (lootMode)
+            {
+                lootMode = false;
+                pileArmed = false;                                  // not again until he has stepped away from the pile
+                if (State == LoopState.World && data.inRun) Save();
+            }
             if (State == LoopState.Prepare)
             {
                 State = LoopState.Base;
@@ -144,7 +162,7 @@ namespace MedievalKnight
         public void InventoryInput()
         {
             if (State == LoopState.Prepare) { if (worldsOpen) ui.WorldsInput(data); else ui.PrepareInput(data); }
-            else if (State == LoopState.World) ui.CarryInput(data, g.knight);
+            else if (State == LoopState.World) { if (lootMode) ui.LootInput(data, pileWorld); else ui.CarryInput(data, g.knight); }
         }
 
         // A cell was clicked (or Enter on it): the item goes to the other side.
@@ -257,6 +275,13 @@ namespace MedievalKnight
                 ui.SetObjective2(ow.pile.Count > 0 ? "Recover your loot" : "");
             }
             else ui.SetObjective2("");
+            if (ow != null && ow.pile.Count > 0)
+            {
+                pileWorld = ow;
+                pilePos = PilePoint(ow.x, ow.z);
+                pile = LootPile.Create(g.transform, pilePos);
+                pileArmed = true;
+            }
             Sfx.I.Play(Snd.Ready);
             Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " pile " + ow.pile.Count : ""));
         }
@@ -306,6 +331,95 @@ namespace MedievalKnight
             if (State == LoopState.World || State == LoopState.Summary) return;
             g.knight.ResetForRun(MapLayout.BasePoint);
             g.knight.SetWeapon(data.Held.id, data.Held.plus);
+        }
+
+        // ---------------------------------------------------------------- old worlds: the pile and the loot window
+
+        // Walking into the pile (1.5 m) opens the loot window; closing it arms it again only after 4 m of distance.
+        void TickPile()
+        {
+            Knight k = g.knight;
+            bool show = pile != null && pileWorld != null && !dying && !k.Dead;
+            ui.SetLootMarker(g.cam, pilePos, show ? FlatDist(k.Pos, pilePos) : 0f, show ? pileWorld.pile.Count : 0, show && !g.PanelOpen);
+            if (!show || lootMode) return;
+            float d = FlatDist(k.Pos, pilePos);
+            if (!pileArmed && d > LootPile.RearmRadius) pileArmed = true;
+            if (!pileArmed || d > LootPile.TouchRadius) return;
+            if (g.PanelOpen || g.progress.pendingChoices > 0 || k.Airborne || entering) return;
+            lootMode = true;
+            g.SetInventory(true);
+            if (!g.InventoryOpen) lootMode = false;                 // refused (a level-up panel was about to open): try again
+            else pileArmed = false;
+        }
+
+        static float FlatDist(Vector3 a, Vector3 b) { a.y = 0f; b.y = 0f; return (a - b).magnitude; }
+
+        // Loot window: take one item (click / Enter). The pack rules decide; a full pack leaves it in the pile.
+        public void UiTake(int index)
+        {
+            if (!LootOpen || pileWorld == null || index < 0 || index >= pileWorld.pile.Count) return;
+            Item it = pileWorld.pile[index];
+            bool maxed = false;
+            if (it.IsWeapon)
+            {
+                foreach (Item c in data.carry.weapons) if (c.IsWeapon && c.id == it.id && c.plus >= Weapons.MaxPlus) maxed = true;
+                foreach (Item c in data.carry.supplies) if (c.IsWeapon && c.id == it.id && c.plus >= Weapons.MaxPlus) maxed = true;
+            }
+            bool merged = it.IsWeapon && data.carry.HasWeaponId(it.id);
+            if (!data.TakeFromPile(pileWorld, index))
+            {
+                PackFullHints++;
+                g.lastNotice = "Pack full! Can't take " + it.Name;
+                ui.SetLootWarn(g.lastNotice, LoopUi.Yellow, 1.8f, it.IsWeapon ? Section.Weapons : Section.Foods);
+                return;
+            }
+            Color col = it.IsWeapon ? Weapons.All[it.id].uiColor : Foods.All[it.id].color;
+            string text;
+            if (merged && maxed)
+            {
+                text = it.BaseName + " is already +" + Weapons.MaxPlus + "   -   duplicate turned into EXP";
+                g.GrantExp(Weapons.DuplicateExp, g.knight.Pos + Vector3.up * 2f);
+            }
+            else if (merged) text = it.BaseName + " refined (duplicate: +5% damage)";
+            else text = "Took " + it.Name;
+            g.lastNotice = text;
+            g.hud.Notice(text, col);
+            Fx.I.Burst(g.knight.Pos + Vector3.up, 10, col, 1.5f, 5f, Vector3.up, 0.9f, 0.5f, 5f, 0.1f);
+            SyncHeld();
+            AfterPileChange();
+        }
+
+        // Take all: everything that fits (in pile order).
+        public void UiTakeAll()
+        {
+            if (!LootOpen || pileWorld == null || pileWorld.pile.Count == 0) return;
+            int n = data.TakeAll(pileWorld);
+            if (n == 0)
+            {
+                PackFullHints++;
+                g.lastNotice = "Pack full! Nothing more fits";
+                ui.SetLootWarn(g.lastNotice, LoopUi.Yellow, 1.8f, Section.Weapons);
+                return;
+            }
+            g.lastNotice = "Took " + n + (n == 1 ? " item" : " items") + (pileWorld.pile.Count > 0 ? "   -   " + pileWorld.pile.Count + " left in the pile" : "");
+            g.hud.Notice(g.lastNotice, LoopUi.LootGold);
+            SyncHeld();
+            AfterPileChange();
+        }
+
+        // Every take is saved at once (no item can be taken twice by closing the game), the last one closes the pile.
+        void AfterPileChange()
+        {
+            Save();
+            if (pileWorld != null && pileWorld.pile.Count == 0)
+            {
+                g.hud.Notice("Everything recovered.", LoopUi.Green);
+                g.hud.Banner("Everything recovered.", LoopUi.Green, 2.5f);
+                ui.SetObjective2("");
+                if (pile != null) pile.Vanish();
+                pile = null;
+                g.SetInventory(false);                              // the window closes (OnInventoryClosed saves again)
+            }
         }
 
         // ---------------------------------------------------------------- old worlds: difficulty, autosaved position
@@ -518,8 +632,19 @@ namespace MedievalKnight
         }
         // ---------------------------------------------------------------- the world boss and the portal
 
+        void DropPile()
+        {
+            if (pile != null) Object.Destroy(pile.gameObject);
+            pile = null;
+            pileWorld = null;
+            lootMode = false;
+            pileArmed = true;
+            if (ui != null) ui.SetLootMarker(null, Vector3.zero, 0f, 0, false);
+        }
+
         void DropPortal()
         {
+            DropPile();
             if (portal != null) Object.Destroy(portal.gameObject);
             portal = null;
             BossDown = false;
