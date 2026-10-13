@@ -44,3 +44,13 @@
 - decisions ข้อ 6: คนหลุดเพราะเน็ตก็เสียของ (ชนะ = หายถาวร, wipe = เป็นกอง) **ต้องแจ้งพีท**
 - เสนอ (ไม่ได้ทำ): ปุ่ม "ยกเลิกนับกลับ" ไม่จำเป็น; เสียงเตือนตอนเพื่อนล้ม; ให้ host เห็น Worlds ของ client ที่เป็น SP (ตัดออกตาม requirement)
 - phase 3 (biome + เกรดอาวุธ) รอพีทสั่ง
+
+## ผลตรวจ director ด่าน 2 (developer phase 4)
+- ครบ 11 ขั้น (commit 07c035e..10c7dfc); git diff --stat 30 ไฟล์ ตรงรายการใน tech.md (ไม่มีไฟล์นอกแผน)
+- ผลเทสที่ developer รายงาน: build ผ่าน, selftest 342/0 (รอบแรกมี 2 FAIL คลิก UI คลาดเวลา รอบสองผ่าน), mptest v1 -arena FAIL=0, mptest-loop FAIL=0, -menutest 0
+- ข้อสังเกต: exe ที่ Builds\dev (เกมของพีทล็อก Builds\MedievalKnight.exe); ยังไม่ได้ลองเครือข่ายจริง; ยังไม่อัป Drive
+- เอกสารเกิน 10KB: requirement.md (11.9KB), design.md (10.4KB) — ยังไม่ตัด
+- ปูส้ม: ผ่าน -> โพสต์ให้พีท
+
+## รอใคร (ปัจจุบัน)
+- รอพีทลองเล่น/สั่งอัป Drive (ยังไม่อัป) และสั่งว่าจะไป phase 3 หรือเทส phase 2 ต่อ
