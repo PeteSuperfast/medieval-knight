@@ -33,3 +33,9 @@
 - ผ่าน: ไฟล์ที่เปลี่ยนตรง tech.md (+ Slime.cs/Minotaur.cs 1 บรรทัดต่อไฟล์ ตาม decisions ข้อ 9), 8 commit แยกตามขั้น, zip 38,679,847 B อยู่บน Drive, ไม่แตะ InputX/Net/Menu, ไม่มีของแถม
 - ข้อสังเกต: mptest ไม่ผ่านใน 2 รอบแรก (H FAIL 1 และ 2) ผ่านรอบที่ 3 — ยังไม่ได้เทียบกับ commit ก่อนหน้าเพื่อยืนยันว่าเป็น flake; ยังติดตามต่อ
 - design.md 13 KB เกินเพดาน 10 KB ของ vision (ยังไม่ได้ตัด)
+
+## แก้กติกาหมดอายุ (2026-10-13 11:19 UTC, พีทสั่ง)
+- ทำแล้ว: ตัวนับลดทุกครั้งที่กลับฐาน (รอด/ตาย/ABANDONED) — `Loadout.DecayWorlds` ใช้ร่วม; UI สรุปตาย/ABANDONED แสดง OLD WORLDS + CRUMBLED; ลบข้อความ "only fade"; selftest ปรับ/เพิ่มเคส (เขียนแล้ว); เอกสารอัปเดต (vision, requirement, loop.md, CLAUDE.md, decisions ข้อ 15)
+- build ผ่าน; **ไม่ได้รันเทส ตามคำสั่งพีท** (selftest/mptest/menutest) — เคส selftest ที่แก้/เพิ่มยังไม่ยืนยัน
+- zip ทำในโฟลเดอร์เกม ยังไม่อัปขึ้น Drive (พีทสั่ง "ยังไม่ต้องอัพ")
+- เหลือ: รัน selftest เต็ม + mptest + menutest ก่อนปล่อยจริง; อัป Drive เมื่อพีทสั่ง

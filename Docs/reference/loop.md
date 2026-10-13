@@ -10,9 +10,9 @@
 ## ไฟล์
 | ไฟล์ | หน้าที่ |
 | --- | --- |
-| `Loadout.cs` | `Item`, `ItemBag` (3 กลุ่ม), `Loadout` (stash 12/8/16, carry 2/3/4, `heldSlot`, `inRun`, **`worlds`**, `runWorld`, `runX/Z`, `unseen`), `RunResult`. `Survive()` / `Die(abandoned, x, z, now)` / `TakeFromPile` / `TakeAll` / `Sanitize()` |
+| `Loadout.cs` | `Item`, `ItemBag`, `Loadout` (stash 12/8/16, carry 2/3/4, `heldSlot`, `inRun`, **`worlds`**, `runWorld`, `runX/Z`, `unseen`), `RunResult`. `Survive()` / `Die(abandoned, x, z, now)` / `DecayWorlds` / `TakeFromPile` / `TakeAll` / `Sanitize()` |
 | `OldWorld.cs` | `OldWorld` (seed, fellUnix, left, x/z, pile), ค่าคงที่, `CrumbNote` / `CrumbLine` / `WorldNote` |
-| `LoopSave.cs` | JSON ไฟล์เดียว `persistentDataPath/medieval-knight-save.json` (`-save <ไฟล์>`), `.tmp` → `.bak` → จริง, ไฟล์เสีย → `.bak` / `.corrupt`. Version 1 (ฟิลด์โลกเก่าหาย = ว่าง) |
+| `LoopSave.cs` | JSON ไฟล์เดียว `persistentDataPath/medieval-knight-save.json` (`-save <ไฟล์>`), `.tmp` → `.bak` → จริง, ไฟล์เสีย → `.bak` / `.corrupt`. Version 1 |
 | `RunLoop.cs` | state `Base → Prepare → World → Summary`, เข้าโลก (fade 0.5 วิ), เก็บ / กิน / ทิ้ง, ตาย, บอส + portal, VICTORY / YOU FELL / ABANDONED, กอง + หน้าต่างเก็บของ |
 | `LoopUi.cs` | canvas ของตัวเอง: PREPARE, OLD WORLDS, Carry, LOOT, สรุป, fade, objective, ป้ายโลกเก่า |
 | `Portal.cs` / `LootPile.cs` | portal ฟ้า / กองของทอง (ลำแสง 12 ม.) |
@@ -26,8 +26,8 @@
 
 ## กติกา phase 2 โลกเก่า
 - **ตาย / ABANDONED**: ของที่พก**ทั้งหมด**รวมเป็นกองเดียว ณ จุดที่ตาย = `OldWorld` ใหม่ (รหัส `#XXXX` = 4 hex ต่ำของ seed, เหลือ 3 ครั้ง). พกว่าง = ไม่สร้าง. กองสูงสุด 48 ชิ้น (เกิน = หาย แจ้งใน G). Weapon ชนิดเดียวกันแยกชิ้นในกอง รวม +N ตอนเก็บ
-- **ตายในโลกเก่า**: ของรวมเข้ากองเดิม ย้ายไปจุดตายล่าสุด (ของที่ยังไม่เก็บตามไปด้วย) ตัวนับ**ไม่รีเซ็ต**
-- **รอด (VICTORY จากโลกไหนก็ได้)**: ตัวนับของทุกโลกเก่า −1 (รวมโลกที่เข้า); ถึง 0 = โลกและกองหายถาวร (`unseen` → แถบแดงที่ฐาน + บล็อก OLD WORLDS ใน G). โลกที่เข้าแล้วกองหมด = ปิดตอนจบรอบ (ไม่นับสลาย). กลับแบบตาย / ABANDONED ไม่ลดตัวนับ
+- **ตายในโลกเก่า**: ของรวมเข้ากองเดิม ย้ายไปจุดตายล่าสุด (ของที่ยังไม่เก็บตามไปด้วย)
+- **กลับฐานทุกแบบ (รอด / ตาย / ABANDONED, ตั้งแต่ 2026-10-13 11:19 UTC)**: `Loadout.DecayWorlds` ลดตัวนับของทุกโลกเก่าที่มีก่อนรอบนี้ −1 (รวมโลกที่เข้า/ตายข้างใน; โลกที่เพิ่งเกิดจากการตายนี้ไม่ลด เริ่ม 3); ถึง 0 = โลกและกองหายถาวร แม้เป็นโลกที่เพิ่งตาย (ของที่เพิ่งตกหายด้วย, `WorldNote.Crumbled`) (`unseen` → แถบแดงที่ฐาน + บล็อก OLD WORLDS ใน G). รอดแล้วโลกที่เข้ากองหมด = ปิดตอนจบรอบ (ไม่นับสลาย)
 - **ความยาก** (`Game.worldHpMul/DmgMul/PackMul`, ตั้งก่อน `SpawnActors`, รีเซ็ตเป็น 1 ที่ `UiReturn` / `Shutdown`): HP ×1.5, ดาเมจ ×1.25, ขนาดแพ็ค ×1.5 (ceil, ยังจำกัด 48 ตัว). **Armor ไม่คูณ** (`EnemyArmorScale`). บอสเกิดใหม่ทุกรอบ
 - **กอง**: วางที่ `PilePoint` (จุดตายที่ย้ายไปพื้นว่างใกล้สุด ไม่ใช้ Random). เดินชน 1.5 ม. = เปิดหน้าต่างเก็บของ (เกมหยุด); ปิดแล้วต้องออกห่าง 4 ม. ก่อนจะเปิดอีก. เก็บทีละชิ้น / Take all ตามกฎช่องพก (เต็ม = ของคงในกอง). เก็บแล้วเซฟทันที. เก็บหมด = กองหายพร้อมแจ้ง `Everything recovered.`
 - **เซฟตำแหน่ง** กลางโลก: ทุก ~10 วิถ้าเดินเกิน 5 ม. + ตอนปิดเกม (`Shutdown`) → ABANDONED รู้จุด (ไม่มี = ประตูเมือง `TownSpawn`). ผ่อนกฎ phase 1 "ปิดเกมไม่แตะเซฟ" เฉพาะการเขียนตำแหน่ง (`inRun` ยัง true)
@@ -47,8 +47,8 @@
 
 ## ทดสอบ
 - selftest เต็ม (~6 นาที): เคส loop อยู่ท้าย `SelfTest.cs` (`LoopTests`: ข้อมูล / **old world data** / เซฟ / **old world save** / ตัวคูณ / ฐาน / PREPARE / เข้าโลก / เก็บ-กิน-ทิ้ง / ตาย / บอส-portal / **old world run, ui, loot**) ใช้ไฟล์เซฟของเทสต์เอง (`<โฟลเดอร์ selftest>\save_loop.json`)
-- เฉพาะเคส loop (~3 นาที): ต่อท้าย `-looponly`. ใช้ path เต็มของโฟลเดอร์ selftest ถ้าอยากได้ภาพ (path สัมพัทธ์ถูกตีความจากโฟลเดอร์ `_Data`)
-- scripted ไม่มี `-save`: `LoopSave.Disabled` = เซฟในหน่วยความจำ. `StartLoopSession` ต้อง `LeaveToMenu` ก่อนล้างไฟล์ (ออกกลางรอบเขียนตำแหน่งลงเซฟ)
+- เฉพาะเคส loop (~3 นาที): ต่อท้าย `-looponly`; ใช้ path เต็มของโฟลเดอร์ selftest ถ้าอยากได้ภาพ
+- scripted ไม่มี `-save`: เซฟในหน่วยความจำ; `StartLoopSession` ต้อง `LeaveToMenu` ก่อนล้างไฟล์
 - `-menutest` ต้อง Esc ปิด PREPARE ก่อนเดิน; เช็ค host `Enemy.All.Count >= 2`
 
 ## ข้อควรระวังเมื่อต่อยอด (phase 3+)

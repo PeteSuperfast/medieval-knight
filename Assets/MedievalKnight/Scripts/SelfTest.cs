@@ -1695,18 +1695,19 @@ namespace MedievalKnight
             yield return W(0.3f);
             Check("old world loot: Tab closes it too", !run.LootOpen && !g.InventoryOpen && Time.timeScale > 0.5f);
 
-            // dying with things from the pile: they go back, the counter is not reset
+            // dying with things from the pile: they go back, and the way home counts the counter down (2 -> 1)
             int carried = d.carry.Total;
             k.transform.position = run.pilePos + new Vector3(0f, 0f, -12f);
             yield return W(0.2f);
             Vector3 fellAt = k.Pos;
             k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
             yield return W(3.5f);
-            Check("old world loot: dying in the old world adds the carried items to the same pile (2 + " + carried + "), the counter stays 2, the pile moves to the new spot",
-                d.worlds.Count == 1 && w.pile.Count == 2 + carried && w.left == 2 && Mathf.Abs(w.x - fellAt.x) < 1f && Mathf.Abs(w.z - fellAt.z) < 1f);
-            Check("old world loot: YOU FELL says ADDED TO OLD WORLD #C0DE with the new pile size and that the counter is not reset",
+            Check("old world loot: dying in the old world adds the carried items to the same pile (2 + " + carried + "), the counter goes 2 -> 1, the pile moves to the new spot",
+                d.worlds.Count == 1 && w.pile.Count == 2 + carried && w.left == 1 && Mathf.Abs(w.x - fellAt.x) < 1f && Mathf.Abs(w.z - fellAt.z) < 1f);
+            Check("old world loot: YOU FELL says ADDED TO OLD WORLD #C0DE with the new pile size, 1 return left, the OLD WORLDS block (2 -> 1) and no 'only fade' text",
                 run.ui.SummaryBody.Contains("ADDED TO OLD WORLD") && run.ui.SummaryBody.Contains("#C0DE") && run.ui.SummaryBody.Contains("The pile now holds " + (2 + carried) + " items")
-                && run.ui.SummaryBody.Contains("not reset"));
+                && run.ui.SummaryBody.Contains("1 return left") && run.ui.SummaryBody.Contains("OLD WORLDS") && run.ui.SummaryBody.Contains("#C0DE  2 -> 1 left")
+                && !run.ui.SummaryBody.Contains("only fade when you return alive"));
             Shot("old_world_added");
             yield return Click(run.ui.ReturnRect.position);
             yield return W(0.4f);
@@ -1844,12 +1845,15 @@ namespace MedievalKnight
             // leaving to the base resets the multipliers
             k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
             yield return W(3.0f);
+            Check("old world ui: dying in #B71C (1 return left) crumbles it with the pile (6 + what was carried = 7) and #A3F2 goes 3 -> 2; the summary says so",
+                run.SummaryOpen && run.ui.SummaryBody.Contains("#B71C CRUMBLED") && run.ui.SummaryBody.Contains("#B71C  1 -> 0  CRUMBLED, 7 items lost forever")
+                && run.ui.SummaryBody.Contains("#A3F2  3 -> 2 left") && !run.ui.SummaryBody.Contains("only fade when you return alive"));
             yield return Click(run.ui.ReturnRect.position);
             yield return W(0.4f);
             Check("old world ui: after the fall and RETURN TO BASE the multipliers are back to 1 and the badge is gone",
                 g.worldHpMul == 1f && g.worldDmgMul == 1f && g.worldPackMul == 1f && run.ui.BadgeText == "" && run.ui.Objective2Text == "");
-            Check("old world ui: dying in #B71C added to the same world (still 2 worlds, #B71C pile = 6 + what was carried, counter 1)",
-                d.worlds.Count == 2 && d.Find(0xB71C) != null && d.Find(0xB71C).left == 1 && d.Find(0xB71C).pile.Count == 7);
+            Check("old world ui: the data kept only #A3F2 (counter 2); #B71C and its pile are gone for good",
+                d.worlds.Count == 1 && d.Find(0xB71C) == null && d.Find(0xA3F2) != null && d.Find(0xA3F2).left == 2);
             g.LeaveToMenu();
             yield return W(0.3f);
         }
@@ -1878,7 +1882,8 @@ namespace MedievalKnight
                 && run.result.worldNote == WorldNote.Created && !d0.inRun && d0.runWorld == 0);
             Check("old world run: YOU FELL says OLD WORLD CREATED with its code and the item count",
                 run.SummaryOpen && run.ui.SummaryBody.Contains("OLD WORLD CREATED") && w != null && run.ui.SummaryBody.Contains(w.Code)
-                && run.ui.SummaryBody.Contains("2 items lie where you fell") && run.ui.SummaryBody.Contains("Old worlds only fade when you return alive"));
+                && run.ui.SummaryBody.Contains("2 items lie where you fell") && run.ui.SummaryBody.Contains("Crumbles after 3 returns")
+                && !run.ui.SummaryBody.Contains("only fade when you return alive"));
             Shot("old_world_created");
             string saved = File.ReadAllText(LoopSave.Path);
             Check("old world run: the save file holds the old world (and the run is closed)", saved.Contains("\"ow\":[{\"seed\":") && saved.Contains("\"inRun\":false"));
@@ -2826,15 +2831,16 @@ namespace MedievalKnight
             foreach (Item it in mw.pile) if (it.IsWeapon && it.id == Weapons.Iron && it.plus == 1) ironInPile++;
             Check("old world: items keep their +N in the pile (Iron +1, Fang, Roast Meat)", mw.pile.Count == 3 && ironInPile == 1);
 
-            // entering the old world, dying again: same world, same counter, the pile moves to the new spot and grows
+            // entering the old world, dying again: same world, the counter goes down by one, the pile moves and grows
             mw.left = 2;
             m.carry.weapons[0] = Item.Weapon(Weapons.Dao, 0);
             m.carry.foods[0] = Item.Food(Foods.Apple);
             m.BeginRun(mw.seed);
             RunResult r2 = m.Die(false, -30f, 20f, 99999);
-            Check("old world: dying again in the old world adds to the same pile (3 + 2 items), keeps the counter (2) and moves the pile",
-                m.worlds.Count == 1 && mw.pile.Count == 5 && mw.left == 2 && Mathf.Abs(mw.x + 30f) < 0.01f && Mathf.Abs(mw.z - 20f) < 0.01f
-                && r2.worldNote == WorldNote.Added && r2.inOldWorld && mw.fellUnix == 50 && r2.pileCount == 5);
+            Check("old world: dying again in the old world adds to the same pile (3 + 2 items), counts the counter down 2 -> 1 and moves the pile",
+                m.worlds.Count == 1 && mw.pile.Count == 5 && mw.left == 1 && Mathf.Abs(mw.x + 30f) < 0.01f && Mathf.Abs(mw.z - 20f) < 0.01f
+                && r2.worldNote == WorldNote.Added && r2.inOldWorld && mw.fellUnix == 50 && r2.pileCount == 5 && r2.worldLeft == 1
+                && r2.crumbs.Count == 1 && r2.crumbs[0].before == 2 && r2.crumbs[0].after == 1);
 
             // taking things back: merge +N, the pack limit, Take all
             Loadout t = Loadout.NewGame();
@@ -2908,10 +2914,70 @@ namespace MedievalKnight
             {
                 many.carry.foods[0] = Item.Food(Foods.Apple);
                 many.BeginRun();
-                many.Die(false, 0f, 0f, 1000);                                                // the same clock second on purpose
+                RunResult rm = many.Die(false, 0f, 0f, 1000);                                 // the same clock second on purpose
+                codes.Add(OldWorld.CodeOf(rm.worldSeed));
             }
-            foreach (OldWorld mwld in many.worlds) codes.Add(mwld.Code);
-            Check("old world: 30 deaths in new worlds make 30 old worlds with 30 different codes", many.worlds.Count == 30 && codes.Count == 30);
+            Check("old world: 30 deaths in new worlds make 30 old worlds with 30 different codes; each death counts the earlier ones down, so only the last 3 are left (3, 2, 1)",
+                codes.Count == 30 && many.worlds.Count == 3 && many.unseen.Count == 27);
+
+            // the way back counts however it ends: dying in a new world counts the other worlds down, the new one starts at 3
+            Loadout nd = Loadout.NewGame();
+            var n1 = new OldWorld { seed = 0x5001, left = 3 }; n1.pile.Add(Item.Food(Foods.Apple));
+            var n2 = new OldWorld { seed = 0x5002, left = 2 }; n2.pile.Add(Item.Food(Foods.Meat));
+            nd.worlds.Add(n1); nd.worlds.Add(n2);
+            nd.carry.foods[0] = Item.Food(Foods.Apple);
+            nd.BeginRun();
+            RunResult rnd = nd.Die(false, 5f, 5f, 2000);
+            OldWorld made = nd.Find(rnd.worldSeed);
+            Check("old world: dying in a new world counts the other worlds down (3 -> 2, 2 -> 1); the world just made keeps 3 and is not in the counter list",
+                n1.left == 2 && n2.left == 1 && made != null && made != n1 && made != n2 && made.left == 3 && rnd.worldNote == WorldNote.Created && rnd.worldLeft == 3
+                && rnd.crumbs.Count == 2 && nd.worlds.Count == 3 && nd.unseen.Count == 0);
+
+            // dying in an old world with 2 left: 1 left, the pile is the old items + the new ones
+            Loadout dw = Loadout.NewGame();
+            var ow = new OldWorld { seed = 0x6001, left = 2 }; ow.pile.Add(Item.Weapon(Weapons.Fang));
+            var other = new OldWorld { seed = 0x6002, left = 3 };
+            dw.worlds.Add(ow); dw.worlds.Add(other);
+            dw.carry.foods[0] = Item.Food(Foods.Apple);
+            dw.BeginRun(0x6001);
+            RunResult rdw = dw.Die(false, 9f, 9f, 3000);
+            Check("old world: dying in an old world with 2 left makes it 1, the pile holds the old and the new items, the others count down too, nothing crumbles",
+                ow.left == 1 && ow.pile.Count == 2 && other.left == 2 && rdw.worldNote == WorldNote.Added && rdw.worldLeft == 1 && dw.worlds.Count == 2 && dw.unseen.Count == 0);
+
+            // dying in an old world with 1 left: it crumbles with the pile (the new items too) and lands in unseen
+            Loadout cw = Loadout.NewGame();
+            var last = new OldWorld { seed = 0x7001, left = 1 }; last.pile.Add(Item.Weapon(Weapons.Fang));
+            cw.worlds.Add(last);
+            cw.carry.foods[0] = Item.Food(Foods.Apple);
+            cw.BeginRun(0x7001);
+            RunResult rcw = cw.Die(false, 9f, 9f, 4000);
+            Check("old world: dying in an old world with 1 left crumbles it with its pile (old + just lost = 2 items) and reports it in unseen",
+                cw.Find(0x7001) == null && cw.worlds.Count == 0 && cw.unseen.Count == 1 && cw.unseen[0].seed == 0x7001 && cw.unseen[0].items == 2
+                && rcw.worldNote == WorldNote.Crumbled && rcw.crumbs.Count == 1 && rcw.crumbs[0].crumbled && rcw.crumbs[0].itemsLost == 2 && rcw.worldCount == 0);
+
+            // abandoned counts like any death; an empty carry still counts the worlds down
+            Loadout abd = Loadout.NewGame();
+            var gone1 = new OldWorld { seed = 0x8001, left = 1 }; gone1.pile.Add(Item.Food(Foods.Meat));
+            var keep1 = new OldWorld { seed = 0x8002, left = 3 };
+            abd.worlds.Add(gone1); abd.worlds.Add(keep1);
+            abd.carry.foods[0] = Item.Food(Foods.Apple);
+            abd.BeginRun();
+            RunResult rabd = abd.Die(true, 1f, 1f, 5000);
+            Check("old world: an abandoned run counts the worlds down like a death (1 -> crumbled, 3 -> 2) and creates its own world at 3",
+                rabd.abandoned && abd.Find(0x8001) == null && keep1.left == 2 && abd.unseen.Count == 1 && abd.worlds.Count == 2 && abd.Find(rabd.worldSeed).left == 3);
+            Loadout emp = Loadout.NewGame();
+            var e1 = new OldWorld { seed = 0x9001, left = 2 }; e1.pile.Add(Item.Food(Foods.Meat));
+            emp.worlds.Add(e1);
+            emp.BeginRun();
+            RunResult remp = emp.Die(false, 1f, 1f, 6000);
+            Check("old world: dying with nothing carried still counts the worlds down and makes no new world", e1.left == 1 && emp.worlds.Count == 1 && remp.worldNote == WorldNote.None);
+
+            // save / load keeps the counted-down worlds and the unseen note
+            Loadout back = LoopSave.FromJson(LoopSave.ToJson(cw));
+            Loadout back2 = LoopSave.FromJson(LoopSave.ToJson(dw));
+            Check("old world: save then load after a counted-down death keeps the counters, the piles and the unseen note",
+                back != null && back.worlds.Count == 0 && back.unseen.Count == 1 && back.unseen[0].seed == 0x7001 && back.unseen[0].items == 2
+                && back2 != null && back2.Find(0x6001) != null && back2.Find(0x6001).left == 1 && back2.Find(0x6001).pile.Count == 2 && back2.Find(0x6002).left == 2);
 
             // Sanitize
             Loadout sz = new Loadout();

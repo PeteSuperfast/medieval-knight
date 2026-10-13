@@ -408,8 +408,8 @@ namespace MedievalKnight
             return r;
         }
 
-        // The old worlds after a successful return: the world played in is closed when its pile is empty, every other
-        // counter (and this one) goes down by one; at 0 the world and its pile are gone for good.
+        // The old worlds after a successful return: the world played in is closed when its pile is empty, then every
+        // counter goes down (DecayWorlds).
         void SurviveWorlds(RunResult r)
         {
             OldWorld cur = Find(runWorld);
@@ -423,8 +423,24 @@ namespace MedievalKnight
                     r.worldNote = WorldNote.Recovered;
                 }
             }
+            DecayWorlds(r, null);
+            if (cur != null && worlds.Contains(cur))
+            {
+                r.worldNote = WorldNote.StillInPile;
+                r.pileCount = cur.pile.Count;
+                r.worldLeft = cur.left;
+            }
+        }
+
+        // Every way back to the base (alive, dead, abandoned) takes one off the counter of each old world that existed
+        // before this run (the world just made by this death, `skip`, is not touched). At 0 the world, its pile and
+        // whatever lay in it are gone for good (`unseen` tells the base). Fills r.crumbs. Returns the worlds that crumbled.
+        List<OldWorld> DecayWorlds(RunResult r, OldWorld skip)
+        {
+            var gone = new List<OldWorld>();
             foreach (OldWorld w in new List<OldWorld>(worlds))
             {
+                if (w == skip) continue;
                 var line = new CrumbLine { seed = w.seed, before = w.left, after = w.left - 1, itemsLost = w.pile.Count };
                 w.left--;
                 if (w.left <= 0)
@@ -433,16 +449,12 @@ namespace MedievalKnight
                     line.after = 0;
                     worlds.Remove(w);
                     unseen.Add(new CrumbNote { seed = w.seed, items = w.pile.Count });
-                }
-                else if (cur != null && w == cur)
-                {
-                    r.worldNote = WorldNote.StillInPile;
-                    r.pileCount = w.pile.Count;
-                    r.worldLeft = w.left;
+                    gone.Add(w);
                 }
                 r.crumbs.Add(line);
             }
             r.crumbs.Sort((a, b) => a.after != b.after ? a.after.CompareTo(b.after) : a.seed.CompareTo(b.seed));
+            return gone;
         }
 
         public static long NowUnix() { return System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(); }
@@ -454,7 +466,7 @@ namespace MedievalKnight
         }
 
         // Died / left the game at (x, z): everything carried is gone from the knight and lies in one pile there - in the
-        // old world he was playing in (the pile moves to this spot, the counter is not reset) or in a new old world.
+        // old world he was playing in (the pile moves to this spot) or in a new old world. Then the old counters go down.
         public RunResult Die(bool abandoned, float x, float z, long nowUnix)
         {
             var r = new RunResult { victory = false, abandoned = abandoned };
@@ -463,7 +475,7 @@ namespace MedievalKnight
             carry.Clear();
             foreach (Item it in stash.All()) r.safe.Add(Line(it, false));
 
-            OldWorld w = Find(runWorld);
+            OldWorld w = Find(runWorld), created = null;
             if (w != null)
             {
                 r.inOldWorld = true;
@@ -474,6 +486,7 @@ namespace MedievalKnight
             {
                 w = new OldWorld { seed = NewSeed(nowUnix), fellUnix = nowUnix, left = OldWorld.StartLeft, x = x, z = z };
                 worlds.Add(w);
+                created = w;
                 r.worldNote = WorldNote.Created;
             }
             if (w != null)
@@ -486,6 +499,13 @@ namespace MedievalKnight
                 r.worldSeed = w.seed;
                 r.pileCount = w.pile.Count;
                 r.worldLeft = w.left;
+            }
+            // the way back counts: every old world that existed before this death goes down by one (the new one does not)
+            List<OldWorld> gone = DecayWorlds(r, created);
+            if (w != null)
+            {
+                if (gone.Contains(w)) r.worldNote = WorldNote.Crumbled;     // died inside a world that crumbled: pile gone too
+                r.worldLeft = w.left < 0 ? 0 : w.left;
             }
             Finish(r);
             return r;

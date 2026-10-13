@@ -32,7 +32,7 @@ namespace MedievalKnight
     }
 
     // What the end of a run did to the world it was played in.
-    public enum WorldNote { None = 0, Created, Added, Recovered, StillInPile }
+    public enum WorldNote { None = 0, Created, Added, Recovered, StillInPile, Crumbled }
 
     // One line of the OLD WORLDS block of the summary: a counter that went down.
     public struct CrumbLine

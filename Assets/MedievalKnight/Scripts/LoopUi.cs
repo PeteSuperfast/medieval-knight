@@ -1306,17 +1306,20 @@ namespace MedievalKnight
                 {
                     sb.Append("<color=" + violet + "><b>ADDED TO OLD WORLD  " + r.WorldCode + "</b></color>\n");
                     sb.Append("The pile now holds " + r.pileCount + (r.pileCount == 1 ? " item" : " items") + ", " + r.worldLeft + (r.worldLeft == 1 ? " return" : " returns")
-                        + " left (the counter is not reset).\n");
+                        + " left.\n");
+                }
+                else if (r.worldNote == WorldNote.Crumbled)
+                {
+                    sb.Append("<color=" + Hex(Red) + "><b>" + r.WorldCode + " CRUMBLED</b></color>\n");
+                    sb.Append("<color=" + Hex(Red) + ">The world you fell in crumbled with this return. Everything in it is gone for good, including what you just lost.</color>\n");
                 }
                 else if (r.inOldWorld)
                     sb.Append("<color=" + violet + ">" + r.WorldCode + " is still there: " + r.pileCount + " in the pile, " + r.worldLeft + " returns left.</color>\n");
                 if (r.overflow.Count > 0)
                     sb.Append("<color=" + Hex(Red) + ">" + r.overflow.Count + " items did not fit in the pile (limit " + OldWorld.MaxPile + ") and are gone.</color>\n");
-                if (r.worldCount > 0) sb.Append("<color=" + Hex(Gray) + ">Old worlds only fade when you return alive.</color>\n");
                 sb.Append("\n");
-                return;
             }
-            if (r.worldNote == WorldNote.Recovered)
+            else if (r.worldNote == WorldNote.Recovered)
                 sb.Append("<color=" + Hex(Green) + ">" + r.WorldCode + ": all loot recovered. World closed.</color>\n");
             else if (r.worldNote == WorldNote.StillInPile)
                 sb.Append("<color=" + gold + ">" + r.WorldCode + ": " + r.pileCount + (r.pileCount == 1 ? " item" : " items") + " still in the pile</color>\n");
