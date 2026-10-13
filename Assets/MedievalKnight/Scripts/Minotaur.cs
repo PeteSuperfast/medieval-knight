@@ -43,7 +43,7 @@ namespace MedievalKnight
             expReward = ExpReward * Game.I.EnemyExpScale;      // scaled by the party level at the moment it appears
             soulReward = SoulReward;
             dmgScale = Game.I.EnemyDamageScale;
-            InitStats(BaseHp * Game.I.EnemyHpScale, BaseArmor * Game.I.EnemyHpScale);
+            InitStats(BaseHp * Game.I.EnemyHpScale, BaseArmor * Game.I.EnemyArmorScale);
             Build();
             tint = new Tint(rig);
             BuildBar(2.4f);

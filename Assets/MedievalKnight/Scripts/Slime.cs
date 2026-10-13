@@ -54,7 +54,7 @@ namespace MedievalKnight
             expReward = Exp[k] * Game.I.EnemyExpScale;           // scaled by the party level at the moment it appears
             soulReward = Souls[k];
             damage = BaseDamage[k] * Game.I.EnemyDamageScale;
-            InitStats(BaseHp[k] * Game.I.EnemyHpScale, BaseArmor[k] * Game.I.EnemyHpScale);
+            InitStats(BaseHp[k] * Game.I.EnemyHpScale, BaseArmor[k] * Game.I.EnemyArmorScale);
 
             rig = Prims.Node(transform, "Rig", Vector3.zero);
             Mesh dome = Prims.Lathe("slime", 9, 0f, 0f, 0.5f, 0f, 0.58f, 0.2f, 0.5f, 0.45f, 0.3f, 0.66f, 0f, 0.75f);

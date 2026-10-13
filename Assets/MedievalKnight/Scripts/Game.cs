@@ -63,8 +63,14 @@ namespace MedievalKnight
         }
 
         // Monsters get tougher as the party levels, so the upgrades keep mattering; each extra player adds health.
-        public float EnemyHpScale { get { return (1f + 0.45f * (PartyLevel - 1f)) * (1f + CoopHpPerPlayer * Mathf.Max(0, players.Count - 1)); } }
-        public float EnemyDamageScale { get { return 1f + 0.08f * (PartyLevel - 1f); } }
+        // Phase 2: an old world makes enemies tougher (RunLoop sets these before the world is built; 1 everywhere else,
+        // so Host / Join / -single / -selftest are untouched). Health x HpMul and damage x DmgMul; ARMOR is not multiplied
+        // (EnemyArmorScale), so "HP x1.5" is what the player really meets. PackMul = size of a slime pack.
+        public float worldHpMul = 1f, worldDmgMul = 1f, worldPackMul = 1f;
+        float LevelHpScale { get { return (1f + 0.45f * (PartyLevel - 1f)) * (1f + CoopHpPerPlayer * Mathf.Max(0, players.Count - 1)); } }
+        public float EnemyHpScale { get { return LevelHpScale * worldHpMul; } }
+        public float EnemyArmorScale { get { return LevelHpScale; } }
+        public float EnemyDamageScale { get { return (1f + 0.08f * (PartyLevel - 1f)) * worldDmgMul; } }
         // EXP per monster grows with the party level too (read when the monster appears), so level 25 is reachable
         public float EnemyExpScale { get { return 1f + 0.15f * (PartyLevel - 1f); } }
 
@@ -616,6 +622,7 @@ namespace MedievalKnight
             for (int i = 0; i < Enemy.All.Count; i++)
                 if (Enemy.All[i] is Slime && !Enemy.All[i].Dead) alive++;
             int count = Mathf.Min(Mathf.Min(4 + packs, 10) + 2 * helpers, 16);
+            if (worldPackMul > 1.001f) count = Mathf.CeilToInt(count * worldPackMul);      // old world: bigger packs (still capped below)
             count = Mathf.Min(count, MaxSlimes - alive);
             float tier = MapLayout.SpawnTier(MapLayout.ZoneAt(kp.x, kp.z));
             float blue = Mathf.Clamp((packs - 2) * 0.15f * tier, 0f, 0.7f), red = Mathf.Clamp((packs - 5) * 0.12f * tier, 0f, 0.5f);

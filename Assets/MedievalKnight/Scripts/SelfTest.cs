@@ -1587,6 +1587,8 @@ namespace MedievalKnight
             Log("---- old world: save file");
             OldWorldSaveTests();
             yield return null;
+            Log("---- old world: difficulty multipliers");
+            yield return OldWorldScaleTests();
             Log("---- loop: base");
             yield return LoopBaseTests();
             Log("---- loop: PREPARE");
@@ -2357,6 +2359,33 @@ namespace MedievalKnight
 
             Loadout e = new Loadout();
             Check("loop data: EnsureIron on an empty loadout adds one Iron Sword once", e.EnsureIron() && !e.EnsureIron() && e.stash.Total == 1);
+        }
+
+        // Phase 2: the old-world multipliers on Game (set directly here; RunLoop sets them when an old world is entered).
+        IEnumerator OldWorldScaleTests()
+        {
+            yield return StartLoopSession();
+            Check("old world scale: the multipliers are 1 in a new world / base (nothing leaks into the normal game)",
+                g.worldHpMul == 1f && g.worldDmgMul == 1f && g.worldPackMul == 1f && Mathf.Abs(g.EnemyHpScale - g.EnemyArmorScale) < 0.0001f);
+            Slime baseRed = Slime.Spawn(2, new Vector3(-15.5f, 0f, -15.5f), g.transform);
+            Minotaur baseMino = Minotaur.Spawn(MapLayout.Lair, g.transform);
+            float redHp = baseRed.maxHp, redArmor = baseRed.maxArmor, redDmg = baseRed.damage, minoHp = baseMino.maxHp, minoArmor = baseMino.maxArmor;
+            g.worldHpMul = OldWorld.HpMul; g.worldDmgMul = OldWorld.DmgMul; g.worldPackMul = OldWorld.PackMul;
+            Slime oldRed = Slime.Spawn(2, new Vector3(-14.5f, 0f, -15.5f), g.transform);
+            Slime oldGreen = Slime.Spawn(0, new Vector3(-13.5f, 0f, -15.5f), g.transform);
+            Minotaur oldMino = Minotaur.Spawn(MapLayout.Lair + new Vector3(8f, 0f, 0f), g.transform);
+            Check("old world scale: enemy health is x1.5 exactly (red slime " + F(redHp) + " -> " + F(oldRed.maxHp) + ", Minotaur " + F(minoHp) + " -> " + F(oldMino.maxHp) + ")",
+                redHp > 1f && Mathf.Abs(oldRed.maxHp - redHp * 1.5f) < 0.01f && Mathf.Abs(oldMino.maxHp - minoHp * 1.5f) < 0.01f);
+            Check("old world scale: armor is NOT multiplied (red slime armor " + F(redArmor) + " -> " + F(oldRed.maxArmor) + ", Minotaur " + F(minoArmor) + " -> " + F(oldMino.maxArmor) + ")",
+                redArmor > 1f && Mathf.Abs(oldRed.maxArmor - redArmor) < 0.01f && Mathf.Abs(oldMino.maxArmor - minoArmor) < 0.01f);
+            Check("old world scale: enemy damage is x1.25 (red slime " + F(redDmg) + " -> " + F(oldRed.damage) + ")",
+                redDmg > 0.1f && Mathf.Abs(oldRed.damage - redDmg * 1.25f) < 0.01f && oldGreen.damage > 0.1f);
+            g.worldHpMul = 1f; g.worldDmgMul = 1f; g.worldPackMul = 1f;
+            Check("old world scale: back to 1 the numbers are the v1 ones again", Mathf.Abs(g.EnemyHpScale - 1f) < 0.0001f && Mathf.Abs(g.EnemyDamageScale - 1f) < 0.0001f);
+            g.ClearWorld();
+            yield return W(0.2f);
+            g.LeaveToMenu();
+            yield return W(0.2f);
         }
 
         // Phase 2: old worlds in the save file (a file of its own inside the test folder).
