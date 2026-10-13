@@ -49,7 +49,8 @@ namespace MedievalKnight
         public bool block;          // right mouse button held: shield up
         public bool run;            // Left Shift held
         public bool dash;           // Space pressed this frame
-        public int request;        // -1 = nothing, Knight.ComboRequest = next sword attack, Knight.SkillRequest + n = skill n
+        public int request;        // -1 = nothing, Knight.SkillRequest + n = skill n (a click is decided from attackHeld, see UpdateHold)
+        public bool attackHeld;    // left mouse button / J held (read even while a panel is open, so a press that began there is not a click)
     }
 
     // A player: top-down movement, health / armor / stamina, shield block, the 5-step sword combo
@@ -63,7 +64,9 @@ namespace MedievalKnight
     {
         public const float BaseHp = 100f, HpPerLevel = 10f, BaseArmor = 60f, BaseStamina = 100f, StaminaRegen = 26f;
         public const float MinSwingSpeed = 0.4f, MaxSwingSpeed = 4f;
-        public const int ComboRequest = 100, SkillRequest = 200;
+        public const int ComboRequest = 100, HeavyRequest = 101, SkillRequest = 200;
+        public const float ChargeTime = 1f;                  // s from the press until the charge is full
+        public static float TestHoldSeconds = 0.15f;         // held longer than this = a charge, not a click (tests raise it: 3 frames can be slow)
         const float MoveSpeed = 6.2f;
         public const float RunMult = 1.5f;                  // Left Shift: 6.2 -> 9.3 m/s, costs nothing
         // Space: dash. Stamina is only used for this: one dash = 25 (one tick on the stamina bar).
@@ -194,6 +197,10 @@ namespace MedievalKnight
         public readonly float[] cd = new float[4], cdMax = new float[4];
         public bool IsAttacking { get; private set; }      // busy with a basic attack or a skill
         public bool IsBlocking { get; private set; }
+        public bool Charging { get; private set; }         // local: the left button is held past the click time and nothing else is going on
+        public float ChargeSeconds { get; private set; }   // seconds since the press while Charging (full at ChargeTime)
+        public bool ChargeFull { get { return Charging && chargeReady; } }
+        public bool ShowsCharge { get { return remote ? netCharging : Charging; } }      // the pose / glow of a charge (local or reported)
         public bool Dead { get; private set; }
         public bool Airborne { get; private set; }
         public bool Invulnerable { get { return invuln || Glowing || Dashing; } }
@@ -238,6 +245,7 @@ namespace MedievalKnight
         // self-test hooks: aim at a world point / walk in a direction without real input devices
         public Vector3? aimOverride;
         public Vector2? moveOverride;
+        public bool? attackHeldOverride;                    // the left button held (true) / up (false) without a device
 
         Transform rig, chest, legL, legR, swordPivot, swordNode, swordModel, armR, shieldNode;
         Tint tint;
@@ -253,6 +261,13 @@ namespace MedievalKnight
         float queuedTime;
         float nextSwingAt, dashStartTime = -10f;             // phase 6: no new swing before nextSwingAt; when the last dash began
         Vector2 lastMove;                                    // the walk input of this frame (picks the direction attack)
+        // charge (local knight): the button was pressed (holdPending), is held holdT seconds, and the charge runs once it passes TestHoldSeconds
+        bool leftWas, holdPending, holdNoCharge, chargeReady, netCharging;
+        float holdT, chargeFlashUntil;
+        Transform ring;                                      // the disc under his feet while charging (local knight only)
+        Renderer ringRenderer;
+        float netChargeSince;                                // remote: when his charge flag came up (for the glow)
+        Material ringGold, ringWhite;
 
         // remote knights only
         Vector3 netPos, slamTarget;
@@ -335,6 +350,15 @@ namespace MedievalKnight
             Prims.Box(shieldNode, "ArmL", new Vector3(0f, 0.05f, -0.16f), new Vector3(0.17f, 0.17f, 0.3f), darkSteel);
 
             tint = new Tint(rig);
+
+            if (!remote)                                           // the charge disc (phase 6): grows and turns pale when full
+            {
+                ringGold = Prims.Glow(new Color(0.96f, 0.76f, 0.35f));
+                ringWhite = Prims.Glow(new Color(0.85f, 0.8f, 0.69f));
+                ring = Prims.Part(transform, "ChargeRing", Prims.Cyl(28), new Vector3(0f, 0.05f, 0f), new Vector3(1f, 0.02f, 1f), ringGold, false);
+                ringRenderer = ring.GetComponent<Renderer>();
+                ring.gameObject.SetActive(false);
+            }
         }
 
         // ---------------------------------------------------------------- weapon slot / stat points
@@ -420,6 +444,7 @@ namespace MedievalKnight
         {
             IsAttacking = false; lockFacing = false; whirl = false; shieldPush = false; invuln = false;
             queued = -1; rigSpin = 0f;
+            CancelHold();
         }
 
         // Food: health only (not armor / stamina). Returns the health actually gained.
@@ -467,7 +492,7 @@ namespace MedievalKnight
         {
             float dt = Time.deltaTime;
             if (remote) { RemoteTick(dt); return; }
-            if (Game.I.Paused) return;
+            if (Game.I.Paused) { CancelHold(); leftWas = InputX.MouseHeld(0) || InputX.Held(KeyCode.J); return; }
 
             // --- resources ---
             if (!Dead)
@@ -500,6 +525,7 @@ namespace MedievalKnight
             var inp = new KnightInput { request = -1 };
             if (!Dead) inp.move = moveOverride.HasValue ? moveOverride.Value : InputX.Move();
             inp.aim = aimOverride.HasValue ? aimOverride.Value : Game.I.AimPoint();
+            inp.attackHeld = attackHeldOverride.HasValue ? attackHeldOverride.Value : InputX.MouseHeld(0) || InputX.Held(KeyCode.J);
             if (!canInput) return inp;
             inp.block = InputX.MouseHeld(1);
             inp.run = InputX.Held(KeyCode.LeftShift) || InputX.Held(KeyCode.RightShift);
@@ -508,7 +534,6 @@ namespace MedievalKnight
             else if (InputX.Down(KeyCode.E)) inp.request = SkillRequest + 1;
             else if (InputX.Down(KeyCode.R)) inp.request = SkillRequest + 2;
             else if (InputX.Down(KeyCode.F) && !ReviveInstead) inp.request = SkillRequest + 3;
-            else if (InputX.MouseDown(0) || InputX.Down(KeyCode.J)) inp.request = ComboRequest;
             return inp;
         }
 
@@ -519,13 +544,16 @@ namespace MedievalKnight
             lastMove = mv;
             aimPoint = inp.aim;
             bool dashMoving = Time.time < dashMoveEnd;
-            IsBlocking = canInput && !IsAttacking && inp.block && !dashMoving;      // the shield drops during a dash
+            // left button: a click is decided when it comes up (<= TestHoldSeconds), holding it charges the Heavy Strike
+            if (canInput && (inp.request >= 0 || (Charging && inp.block))) CancelHold();         // a skill or the shield drops the charge, no swing
+            int holdReq = UpdateHold(inp.attackHeld, canInput, inp.block);
+            IsBlocking = canInput && !IsAttacking && !Charging && inp.block && !dashMoving;      // the shield drops during a dash
 
             if (canInput && inp.dash) TryDash(inp);
             dashMoving = Time.time < dashMoveEnd;
             if (canInput)
             {
-                int req = inp.request;
+                int req = inp.request >= 0 ? inp.request : holdReq;
                 if (req >= 0)
                 {
                     // a buffered action: one click is kept while a swing runs or the 0.5 s delay between swings has not passed
@@ -550,9 +578,9 @@ namespace MedievalKnight
             }
 
             // --- movement on the XZ plane ---
-            float speedMul = whirl ? 0.7f : IsAttacking ? 0.2f : IsBlocking ? 0.4f : 1f;
+            float speedMul = whirl ? 0.7f : IsAttacking ? 0.2f : IsBlocking ? 0.4f : Charging ? 0.5f : 1f;
             if (lockFacing && IsAttacking && !whirl) speedMul = Airborne ? 0f : 0.15f;
-            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Airborne && !Dead && !dashMoving;
+            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Charging && !Airborne && !Dead && !dashMoving;
             if (running) speedMul *= RunMult;
             Running = running;
             Vector3 p = transform.position;
@@ -597,6 +625,7 @@ namespace MedievalKnight
             if (Dead || Airborne || Time.time < dashReadyAt) return;
             if (stamina < DashCost - 0.001f) { Deny("Dash"); return; }
             if (IsAttacking || queued >= 0) CancelAction();
+            CancelHold();                                                         // a dash drops a charge (no swing)
             stamina -= DashCost;
             lastSpendTime = Time.time;
             dashReadyAt = Time.time + DashCooldown;
@@ -612,6 +641,88 @@ namespace MedievalKnight
             ActionsSeen++;
             Net.SendAct(20, 1f, transform.position + dashDir * DashDistance);
             DashFx(dashDir);
+        }
+
+        // ---------------------------------------------------------------- click / charge (phase 6)
+
+        // Drops a charge or a pending press without any swing (right mouse, dash, skill, panel, fall). The button must come up
+        // before another press can start a new charge.
+        void CancelHold()
+        {
+            holdPending = false;
+            StopCharge();
+        }
+
+        void StopCharge()
+        {
+            Charging = false; chargeReady = false; ChargeSeconds = 0f;
+            if (ring != null && ring.gameObject.activeSelf) ring.gameObject.SetActive(false);
+        }
+
+        // One frame of the left button. Returns what it asks for: -1 nothing, ComboRequest = a click (the attack is
+        // picked when it starts), HeavyRequest = released on a full charge.
+        //   press .. release <= TestHoldSeconds = click; longer = charging (when nothing else is going on); full at ChargeTime
+        //   from the press; released early = the normal attack of that click; the shield held at the press = never a charge.
+        int UpdateHold(bool rawHeld, bool canInput, bool blockHeld)
+        {
+            bool press = rawHeld && !leftWas, release = !rawHeld && leftWas;
+            leftWas = rawHeld;
+            if (!canInput || Dead) { CancelHold(); return -1; }
+            if (press) { holdPending = true; holdT = 0f; holdNoCharge = blockHeld; }
+            if (!holdPending) return -1;
+            if (blockHeld) holdNoCharge = true;
+            if (rawHeld)
+            {
+                if (!press) holdT += Time.unscaledDeltaTime;
+                if (!Charging && !holdNoCharge && holdT >= TestHoldSeconds)
+                {
+                    if (!IsAttacking)                            // a swing in progress first: the charge starts when it ends
+                    {
+                        Charging = true; chargeReady = false;
+                        queued = -1;
+                    }
+                }
+                if (Charging)
+                {
+                    ChargeSeconds = holdT;
+                    if (!chargeReady && ChargeSeconds >= ChargeTime)
+                    {
+                        chargeReady = true;
+                        chargeFlashUntil = Time.time + 0.15f;
+                        Sfx.I.Play(Snd.Ready, 0.6f);
+                    }
+                }
+            }
+            ChargeVisual();
+            if (release)
+            {
+                holdPending = false;
+                bool full = Charging && chargeReady;
+                StopCharge();
+                return full ? HeavyRequest : ComboRequest;
+            }
+            return -1;
+        }
+
+        void ChargeVisual()
+        {
+            if (ring == null) return;
+            if (!Charging) { if (ring.gameObject.activeSelf) ring.gameObject.SetActive(false); return; }
+            if (!ring.gameObject.activeSelf) ring.gameObject.SetActive(true);
+            float p = Mathf.Clamp01(ChargeSeconds / ChargeTime);
+            float r = Mathf.Lerp(0.45f, 1.25f, p) * (Time.time < chargeFlashUntil ? 1.3f : 1f);
+            ring.localScale = new Vector3(r * 2f, 0.02f, r * 2f);
+            ringRenderer.sharedMaterial = chargeReady ? ringWhite : ringGold;
+        }
+
+        // Released on a full charge: the Heavy Strike counts as one click of the combo; the 0.5 s delay starts from here.
+        void StartHeavy()
+        {
+            if (Time.time - lastAttackEnd > 0.9f) comboIndex = 0;
+            int slot = comboIndex;
+            comboIndex = (slot + 1) % ComboLen;
+            nextSwingAt = Time.time + SwingDelay;
+            StartAttack(HeavyIndex, slot, 1);
         }
 
         void DashFx(Vector3 dir)
@@ -630,12 +741,14 @@ namespace MedievalKnight
             if (!IsAttacking && !Dead)
             {
                 float e = 1f - Mathf.Exp(-14f * dt);
-                swYaw = Mathf.Lerp(swYaw, IsBlocking ? 80f : RestYaw + (moving ? Mathf.Sin(walkPhase) * 6f : 0f), e);
-                swPitch = Mathf.Lerp(swPitch, IsBlocking ? -55f : RestPitch + Mathf.Sin(Time.time * 2.2f) * 2f, e);
-                swHand = Mathf.Lerp(swHand, RestHand, e);
+                bool charge = ShowsCharge && !IsBlocking;          // sword held up over the head with both hands, leaning back, a little lower
+                swYaw = Mathf.Lerp(swYaw, IsBlocking ? 80f : charge ? 0f : RestYaw + (moving ? Mathf.Sin(walkPhase) * 6f : 0f), e);
+                swPitch = Mathf.Lerp(swPitch, IsBlocking ? -55f : charge ? -125f : RestPitch + Mathf.Sin(Time.time * 2.2f) * 2f, e);
+                swHand = Mathf.Lerp(swHand, charge ? 0.5f : RestHand, e);
                 float bob = moving ? Mathf.Abs(Mathf.Sin(walkPhase)) * 0.07f : Mathf.Sin(Time.time * 2.2f) * 0.015f;
+                if (charge) bob = -0.06f;
                 rigHop = Mathf.Lerp(rigHop, bob, 1f - Mathf.Exp(-20f * dt));
-                rigLean = Mathf.Lerp(rigLean, moving ? 6f : 0f, 1f - Mathf.Exp(-12f * dt));
+                rigLean = Mathf.Lerp(rigLean, charge ? -14f : moving ? 6f : 0f, 1f - Mathf.Exp(-12f * dt));
                 rigSpin = 0f;
             }
             float swing = moving && !Dead ? Mathf.Sin(walkPhase) * 32f : 0f;
@@ -665,17 +778,24 @@ namespace MedievalKnight
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
             if (Glowing && !Dead) tint.Set(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
             else if (!remote && Dashing && !Dead) tint.Set(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
+            else if (hurtTint < 0.05f && ShowsCharge && !Dead)       // the blade glows while charging, brighter when full
+            {
+                float shown = remote ? Time.time - netChargeSince : ChargeSeconds;
+                bool full = remote ? shown >= ChargeTime : ChargeFull;
+                tint.Set(full ? new Color(1f, 0.93f, 0.7f) : new Color(1f, 0.78f, 0.35f),
+                    full ? 0.5f + 0.15f * Mathf.Sin(Time.time * 18f) : 0.12f + 0.3f * Mathf.Clamp01(shown / ChargeTime));
+            }
             else tint.Set(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
         }
 
         // ---------------------------------------------------------------- remote knight (another player)
 
         // State bits sent over the network.
-        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16;      // NetFallen: Dead + Fallen = really dead (the loop online)
+        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16, NetCharging = 32;      // NetFallen: Dead + Fallen = really dead (the loop online); NetCharging: holding a Heavy Strike charge (phase 6)
 
         public int NetFlags
         {
-            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0); }
+            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0) | (ShowsCharge ? NetCharging : 0); }
         }
 
         // The loop online: who this knight is reviving right now (pid), 255 = nobody. Travels with the state so the others see it.
@@ -745,6 +865,9 @@ namespace MedievalKnight
             IsBlocking = (flags & NetBlocking) != 0 && !nowDead;
             Airborne = (flags & NetAirborne) != 0;
             netGlow = (flags & NetGlow) != 0;
+            bool nowCharging = (flags & NetCharging) != 0 && !nowDead;
+            if (nowCharging && !netCharging) netChargeSince = Time.time;
+            netCharging = nowCharging;
 
             float before = hp + armor;
             hp = newHp; armor = newArmor; netMaxHp = newMaxHp; netMaxArmor = newMaxArmor;
@@ -781,6 +904,7 @@ namespace MedievalKnight
             if (act != null) StopCoroutine(act);
             act = null;
             IsAttacking = false; whirl = false; shieldPush = false; lockFacing = false;
+            netCharging = false;                              // an attack, a dash or a skill ends the charge he was holding
             rigSpin = 0f;
         }
 
@@ -869,6 +993,7 @@ namespace MedievalKnight
         void Request(int req)
         {
             if (req >= SkillRequest) TrySkill(req - SkillRequest);
+            else if (req == HeavyRequest) StartHeavy();
             else TryStartAttack(req);
         }
 

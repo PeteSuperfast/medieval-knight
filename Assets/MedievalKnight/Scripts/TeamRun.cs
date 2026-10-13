@@ -341,7 +341,7 @@ namespace MedievalKnight
                     if (m <= bd) { bd = m; best = k; }
                 }
             ReviveCandidate = best;
-            bool holding = best != null && InputX.Held(KeyCode.F) && !me.IsAttacking && !g.PanelOpen && Time.unscaledTime >= g.inputBlockUntil;
+            bool holding = best != null && InputX.Held(KeyCode.F) && !me.IsAttacking && !me.Charging && !g.PanelOpen && Time.unscaledTime >= g.inputBlockUntil;
             if (holding)
             {
                 if (holdTarget != best.pid)

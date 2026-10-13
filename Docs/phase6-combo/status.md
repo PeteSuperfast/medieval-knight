@@ -39,3 +39,8 @@
 - PickAttack (dash > ทิศ > เดิม), nextSwingAt + คิว 1 คลิก (หน้าต่าง 0.6 วิ), Sidestep/Jab/Retreat ก้าวเป็นเมตรรวม, SelfTest เคสใหม่ + โหมด `-p6only` (รันเฉพาะเคส phase 6 ~1 นาที)
 - build ผ่าน; selftest -p6only 0 FAIL (26 PASS)
 - เหลือ: ขั้น 3 (charge local) 4 (ออนไลน์) 5 (เอกสาร + รันครบ)
+
+## Developer 2026-10-13: ขั้น 3 เสร็จ (charge local)
+- คลิกตัดสินตอนปล่อย (TestHoldSeconds 0.15), ชาร์จเต็ม 1 วิ นับจากกด, Heavy Strike, เดินช้า 50%, วง+ดาบเรือง, ยกเลิกด้วยคลิกขวา/dash/สกิล/ล้ม, TeamRun ไม่ชุบขณะชาร์จ
+- selftest เต็ม 0 FAIL (382 PASS) รวมเคสชาร์จ/ล้มกลางชาร์จ/loop smoke; `-p6only` ใช้รันเฉพาะเคส phase 6
+- หมายเหตุ: บิต NetCharging ฝั่ง Knight ถูกใส่ใน build เดียวกัน; เคสเครือข่าย (MpTest) commit ในขั้น 4

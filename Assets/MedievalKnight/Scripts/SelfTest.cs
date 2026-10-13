@@ -198,6 +198,7 @@ namespace MedievalKnight
             g = Game.I; k = g.knight;
             Dummy d = g.dummy;
             Random.InitState(12345);
+            Knight.TestHoldSeconds = 0.4f;                              // a click may be up to 0.4 s here (a busy PC can need that for three frames)
             g.foodOverride = 0;                                         // no random food: the food test decides when some falls
             yield return W(1.3f);
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-looponly") >= 0)   // quick run of the Phase 1 cases only
@@ -216,6 +217,7 @@ namespace MedievalKnight
                 ParkSlimes();
                 yield return Phase6Moves(d);
                 yield return Phase6Clicks(d);
+                yield return Phase6Charge(d);
                 yield return W(0.5f);
                 Log("done (phase 6 cases only), screenshots=" + shot + ", failed checks=" + fails);
                 Application.Quit();
@@ -571,8 +573,9 @@ namespace MedievalKnight
                 yield return null; yield return null;
                 SetMouse(scr, true);
                 yield return null; yield return null; yield return null;
+                SetMouse(scr, false);                                  // phase 6: a click is decided when the button comes up
+                yield return null; yield return null;
                 bool atk2 = k.IsAttacking; string n2 = k.LastAction;
-                SetMouse(scr, false);
                 yield return WaitIdle(2f);
                 yield return W(0.1f);
                 Vector3 toD = d.transform.position - k.transform.position; toD.y = 0f;
@@ -703,7 +706,7 @@ namespace MedievalKnight
                 bool swinging = k.IsAttacking;
                 yield return Tap(Key.Space);
                 yield return null;
-                Check("a dash cancels a sword swing in progress", swinging && !k.IsAttacking && k.Dashing);
+                Check("a dash cancels a sword swing in progress", swinging && !k.IsAttacking && k.Dashing && !k.Charging);
                 yield return W(0.9f);
                 int actsB = k.ActionsSeen;
                 yield return Tap(Key.Space);
@@ -715,6 +718,7 @@ namespace MedievalKnight
             }
 
             yield return Phase6Clicks(d);
+            yield return Phase6Charge(d);
 
             // ------------------------------------------------ sword drop, pickup, inventory panel, the six swords
             {
@@ -1539,8 +1543,15 @@ namespace MedievalKnight
                 int owned0 = k.inventory.OwnedCount, equipped0 = k.inventory.equipped, ready0 = Snds(Snd.Ready);
                 int lvBefore = g.progress.level, souls0 = k.souls, kills0 = g.progress.kills;
                 float tDie = Time.realtimeSinceStartup;
+                Keys(Key.J);                                         // phase 6: he is charging when he falls
+                yield return WaitCharging(1.5f);
+                bool chargingBefore = k.Charging;
                 k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
                 bool dead = k.Dead;
+                bool chargeGone = !k.Charging;
+                yield return null;
+                Keys();                                              // the button comes up while he is down: nothing swings
+                int actsDown = k.ActionsSeen;
                 yield return W(0.7f);
                 Shot("knight_down");
                 bool overlay = g.hud.DeathVisible;
@@ -1556,6 +1567,8 @@ namespace MedievalKnight
                 Log("death: dead=" + dead + " -> revived=" + !k.Dead + " after " + F(downTime) + "s, hp " + F(k.hp) + "/" + F(k.MaxHp) + " at " + V(k.transform.position)
                     + ", level " + lvBefore + " -> " + g.progress.level + ", overlay \"" + lose.Replace("\n", " / ") + "\" \"" + keep + "\" \"" + count1 + "\" then \"" + count2 + "\"");
                 Check("knight dies and revives after about 3 seconds with full health", dead && !k.Dead && k.hp >= k.MaxHp - 0.01f && downTime > 2.5f && downTime < 4.2f);
+                Check("falling while charging clears the charge, and nothing swings when he stands up (was charging " + chargingBefore + ")",
+                    chargingBefore && chargeGone && !k.Charging && k.ActionsSeen == actsDown);
                 Check("dying sends the level, EXP, upgrades and stat points back to level 1",
                     lvBefore == Progress.MaxLevel && g.progress.level == 1 && g.progress.exp == 0f && g.progress.statPoints == 0 && g.progress.pendingChoices == 0
                     && g.progress.Points(Attr.Hp) + g.progress.Points(Attr.Block) + g.progress.Points(Attr.Stamina) == 0
@@ -1637,18 +1650,241 @@ namespace MedievalKnight
 
         }
 
+        bool holdSawCharging, holdSawFull;
+
+        // Holds J for that many real seconds, then lets go. Records whether the knight was charging / full during the hold.
+        IEnumerator HoldJ(float seconds)
+        {
+            holdSawCharging = holdSawFull = false;
+            Keys(Key.J);
+            float t0 = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup - t0 < seconds)
+            {
+                holdSawCharging |= k.Charging;
+                holdSawFull |= k.ChargeFull;
+                yield return null;
+            }
+            Keys();
+            yield return null; yield return null;
+        }
+
+        IEnumerator WaitCharging(float max)
+        {
+            float t0 = Time.realtimeSinceStartup;
+            while (!k.Charging && Time.realtimeSinceStartup - t0 < max) yield return null;
+        }
+
+        // Heavy Strike and the charge (local): click vs hold, damage, stun, no stamina, slow walk, cancels, combo position.
+        IEnumerator Phase6Charge(Dummy d)
+        {
+            float hold0 = Knight.TestHoldSeconds;
+            Knight.TestHoldSeconds = 0.4f;                         // a click is up to 0.4 s here: three frames can be slow on a busy PC
+            k.moveOverride = null;
+            Heal(); d.ResetAll();
+            StandNear(d, 1.3f);
+            yield return W(1.3f);
+            Vector3 mid = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f);
+
+            // a short press is a click
+            {
+                int a0 = k.ActionsSeen;
+                yield return HoldJ(0.1f);
+                Check("a press of 0.1 s is a click: Side Slash, no charge (got " + k.LastAction + ")", !holdSawCharging && !k.Charging && k.ActionsSeen == a0 + 1 && k.LastAction == "Side Slash");
+                yield return WaitIdle(1f);
+                yield return W(1.2f);
+            }
+
+            // held 0.7 s: charging but not full, released = the plain attack of that click; the combo goes on
+            {
+                int a0 = k.ActionsSeen;
+                yield return HoldJ(0.7f);
+                bool c1 = holdSawCharging && !holdSawFull && k.ActionsSeen == a0 + 1 && k.LastAction == "Side Slash";
+                yield return WaitIdle(1f);
+                yield return HoldJ(0.6f);
+                Check("held 0.7 s then released: charged but not full, and the normal attack of the click comes (" + k.LastAction + ")",
+                    c1 && holdSawCharging && !holdSawFull && k.ActionsSeen == a0 + 2 && k.LastAction == "Overhead Chop");
+                yield return WaitIdle(1f);
+                yield return W(1.2f);
+            }
+
+            // full charge: Heavy Strike, 40 damage, no stamina, and the ring is full (white) before the release
+            {
+                Heal();
+                int h0 = d.hits; float s0 = k.stamina; int a0 = k.ActionsSeen; int rd0 = Snds(Snd.Ready);
+                yield return HoldJ(1.4f);
+                bool full = holdSawFull;
+                yield return WaitIdle(2f);
+                Log("heavy: hits +" + (d.hits - h0) + ", damage " + F(d.lastDamage) + ", stamina " + F(s0) + " -> " + F(k.stamina) + ", ready sound +" + (Snds(Snd.Ready) - rd0));
+                Check("held 1.4 s then released: Heavy Strike hits the dummy once for 40, costs no stamina, the 'ready' sound played once",
+                    full && d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - 40f) < 0.01f && k.stamina >= s0 - 0.01f && k.LastAction == "Heavy Strike"
+                    && k.ActionsSeen == a0 + 1 && Snds(Snd.Ready) - rd0 == 1);
+                yield return W(1.2f);
+            }
+
+            // the monster stops for 0.5 s (a slime has no stun resistance)
+            {
+                Heal();
+                Slime sl = Slime.Spawn(0, k.transform.position + k.Forward * 2.4f + new Vector3(0f, 0f, 0f), g.transform);
+                sl.maxHp = sl.hp = 5000f;
+                yield return W(0.1f);
+                float h0 = sl.hp;
+                bool sawStun = false;
+                yield return HoldJ(1.3f);
+                float t0 = Time.realtimeSinceStartup;
+                while (Time.realtimeSinceStartup - t0 < 0.7f) { sawStun |= sl.Stunned; yield return null; }
+                Check("a Heavy Strike stuns the monster it hits (slime lost " + F(h0 - sl.hp) + " hp)", sawStun && h0 - sl.hp >= 30f);
+                Destroy(sl.gameObject);
+                yield return WaitIdle(1f);
+                yield return W(1.2f);
+            }
+
+            // walking while charging is half speed; a blow does not stop the charge
+            {
+                Heal();
+                k.moveOverride = new Vector2(-1f, 0f);                    // away from the dummy (he stands west of it)
+                Keys(Key.J);
+                yield return WaitCharging(1.5f);
+                yield return W(0.1f);
+                Vector3 p1 = k.transform.position; float t1 = Time.realtimeSinceStartup;
+                bool during = k.Charging;
+                yield return W(0.4f);
+                Vector3 p2 = k.transform.position; float t2 = Time.realtimeSinceStartup;
+                float speed = (p2 - p1).magnitude / (t2 - t1);
+                k.moveOverride = null;
+                k.TakeDamage(3f, k.transform.position + k.Forward * 2f, "selftest charge");
+                yield return null; yield return null;
+                bool still = k.Charging;
+                Keys();
+                Log("charge walk speed " + F(speed) + " m/s (walking is 6.2), still charging after a blow: " + still);
+                Check("walking while charging is about half speed (" + F(speed) + " m/s)", during && speed > 2.4f && speed < 4.0f);
+                Check("a blow taken while charging does not cancel it", still);
+                yield return WaitIdle(2f);
+                yield return W(1.2f);
+                StandNear(d, 1.3f);
+            }
+
+            // cancels: right mouse, dash, a skill: no swing, and a held button does not start a new charge
+            {
+                Heal();
+                int a0 = k.ActionsSeen;
+                Keys(Key.J);
+                yield return WaitCharging(1.5f);
+                SetMouse(mid, false, true);
+                yield return null; yield return null; yield return null;
+                bool dropped = !k.Charging;
+                yield return W(0.6f);
+                bool noRestart = !k.Charging;
+                Keys();
+                SetMouse(mid, false, false);
+                yield return W(0.3f);
+                Check("right mouse drops the charge, a held button does not restart it, and nothing swings", dropped && noRestart && k.ActionsSeen == a0 && !k.IsAttacking);
+                yield return W(1.0f);
+
+                Heal();
+                int b0 = k.ActionsSeen;
+                Keys(Key.J);
+                yield return WaitCharging(1.5f);
+                Keys(Key.J, Key.Space);
+                yield return null; yield return null; yield return null;
+                Keys(Key.J);
+                yield return null;
+                bool dashed = k.LastAction == "Dash" && k.ActionsSeen == b0 + 1;
+                bool off = !k.Charging;
+                yield return W(0.5f);
+                bool noRestart2 = !k.Charging;
+                Keys();
+                yield return W(0.3f);
+                Check("a dash drops the charge: no swing, no new charge while the button stays down", dashed && off && noRestart2 && k.ActionsSeen == b0 + 1 && k.LastAction == "Dash");
+                yield return W(1.0f);
+                StandNear(d, 1.3f);
+                yield return W(0.3f);
+
+                Heal();
+                Keys(Key.J);
+                yield return WaitCharging(1.5f);
+                Keys(Key.J, Key.Q);
+                yield return null; yield return null; yield return null;
+                Keys(Key.J);
+                yield return null;
+                bool whirl = k.LastAction == "Whirlwind" && !k.Charging;
+                Keys();
+                yield return WaitIdle(2f);
+                yield return W(0.4f);
+                Check("a skill (Q) drops the charge and plays; the released button does not swing afterwards (" + k.LastAction + ")", whirl && k.LastAction == "Whirlwind");
+                yield return W(1.0f);
+            }
+
+            // combo position: Side Slash > charge (pressed during the swing) > Heavy > click = Rising Slash; Heavy first > click = Overhead Chop
+            {
+                Heal();
+                StandNear(d, 1.3f);
+                yield return W(1.3f);
+                yield return Swing();
+                string first = swingName;
+                yield return HoldJ(1.15f);
+                bool heavy = k.LastAction == "Heavy Strike";
+                yield return Swing();
+                Check("Side Slash > Heavy Strike > click = Rising Slash (" + first + " > " + (heavy ? "Heavy Strike" : "?") + " > " + swingName + ")",
+                    first == "Side Slash" && heavy && swingName == "Rising Slash");
+                yield return WaitIdle(2f);
+                yield return W(1.3f);
+                yield return HoldJ(1.3f);
+                bool heavy1 = k.LastAction == "Heavy Strike";
+                yield return Swing();
+                Check("Heavy Strike as the first click > click = Overhead Chop (" + swingName + ")", heavy1 && swingName == "Overhead Chop");
+                yield return WaitIdle(2f);
+                yield return W(1.3f);
+            }
+
+            // all six swords can use a new attack (reach is the sword's)
+            {
+                bool[] owned = (bool[])k.inventory.owned.Clone();
+                int equipped = k.inventory.equipped;
+                string line = "";
+                bool all = true;
+                for (int w = 0; w < Weapons.All.Length; w++)
+                {
+                    k.inventory.owned[w] = true;
+                    k.Equip(w);
+                    Heal(); d.ResetAll(); StandNear(d, 1.3f);
+                    yield return W(0.4f);
+                    int h0 = d.hits;
+                    k.DebugMove(6, 1);                                 // Advance Cleave
+                    yield return WaitIdle(2f);
+                    all &= d.hits - h0 == 1;
+                    line += " " + Weapons.All[w].name + "=" + (d.hits - h0);
+                    yield return W(0.3f);
+                }
+                for (int w = 0; w < owned.Length; w++) k.inventory.owned[w] = owned[w];
+                k.Equip(equipped);
+                Log("new attack with every sword:" + line);
+                Check("Advance Cleave hits the dummy once with each of the six swords", all);
+                d.ResetAll();
+            }
+
+            Knight.TestHoldSeconds = hold0;
+            k.transform.position = new Vector3(2f, 0f, -5f);
+            k.aimOverride = d.transform.position;
+        }
+
         IEnumerator Phase6Clicks(Dummy d)
         {
             // ------------------------------------------------ phase 6: which attack a click starts (direction / dash), the 0.5 s delay, the click queue
             {
                 ParkSlimes();
                 Heal(); d.ResetAll();
-                Vector3 home6 = new Vector3(9f, 0f, -10f);
+                Vector3 home6 = new Vector3(20f, 0f, 12f);                  // in the clear central arena, 54 m from the parked slimes (they chase from 30 m)
                 k.transform.position = home6;
                 k.aimOverride = home6 + new Vector3(0f, 0f, 8f);          // facing north: W = +Z, S = -Z, D = +X, A = -X
                 k.moveOverride = null;
                 g.SnapCamera();
                 yield return W(1.2f);
+                {
+                    string near = "";
+                    foreach (Enemy e in Enemy.All)
+                        if (!e.Dead && (e.transform.position - home6).magnitude < 40f) near += " " + e.label + "@" + V(e.transform.position);
+                    Log("phase 6 click tests at " + V(home6) + "; live enemies within 40 m:" + (near.Length > 0 ? near : " none") + "; in town " + MapLayout.InTown(home6.x, home6.z));
+                }
 
                 // chains of clicks per direction (the clicks go in at once: the later ones wait in the queue)
                 string[][] want =
@@ -2385,6 +2621,22 @@ namespace MedievalKnight
             Check("loop world: key 1 holds weapon slot 1 (Iron Sword), key 2 holds slot 2 (Swift Rapier +1) and swaps the model",
                 one && k.Weapon.id == Weapons.Rapier && d.heldSlot == 1 && k.inventory.plus[Weapons.Rapier] == 1);
             Check("loop world: the weapon strip shows both weapons and \"no food\"", run.ui.StripText.Contains("[1] Iron Sword") && run.ui.StripText.Contains("[2] Swift Rapier +1") && run.ui.StripText.Contains("[C] no food"));
+            {
+                // phase 6: a new attack and a full charge in the loop world leave the save and the carry alone
+                string saveBefore = File.Exists(LoopSave.Path) ? File.ReadAllText(LoopSave.Path) : "";
+                int acts0 = k.ActionsSeen;
+                k.DebugMove(6, 1);
+                yield return W(0.15f);
+                bool cleave = k.LastAction == "Advance Cleave";
+                yield return WaitIdle(2f);
+                yield return W(0.6f);
+                yield return HoldJ(1.3f);
+                yield return WaitIdle(2f);
+                string saveAfter = File.Exists(LoopSave.Path) ? File.ReadAllText(LoopSave.Path) : "";
+                Check("loop world: Advance Cleave and a full charge (Heavy Strike) work in the world and change neither the save file nor the carry",
+                    cleave && k.LastAction == "Heavy Strike" && k.ActionsSeen == acts0 + 2 && saveBefore == saveAfter
+                    && d.carry.weapons[1].id == Weapons.Rapier && d.heldSlot == 1 && !k.Dead);
+            }
             yield return Tap(Key.Escape);
             yield return W(0.2f);
             Check("loop world: Esc in the world warns that leaving counts as a death (and does not leave yet)",
