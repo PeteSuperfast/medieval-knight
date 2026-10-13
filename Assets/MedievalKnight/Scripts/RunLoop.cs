@@ -44,6 +44,7 @@ namespace MedievalKnight
         public int PileObjects { get { return views.Count; } }
         public Vector3 PilePosAt(int i) { return views[i].pos; }                       // test read-outs
         public int PileItemsAt(int i) { return views[i].data.items.Count; }
+        public OldWorld PileWorldInPlay { get { return Net.IsClient && team != null ? team.view : data.Find(data.runWorld); } }   // the world whose piles are in play
         OldWorld pileWorld;                                         // the world they belong to
         Pile curPile;                                               // the pile the loot window shows
         bool lootMode;                                              // the inventory window is the loot window, not the Carry window
@@ -225,6 +226,7 @@ namespace MedievalKnight
                 lootMode = false;
                 if (curView != null) curView.armed = false;         // not again until he has stepped away from that pile
                 curView = null;
+                if (Net.Multiplayer && g.knight != null) g.knight.Protect(0.6f);
                 if (State == LoopState.World && data.inRun) Save();
             }
             if (State == LoopState.Prepare)
@@ -381,20 +383,21 @@ namespace MedievalKnight
             OldWorld ow = data.Find(data.runWorld);
             int seedHere, leftHere;
             WorldInPlay(out seedHere, out leftHere);
+            if (ow == null && team != null && Net.IsClient && seedHere != 0 && team.view != null && team.view.piles.Count > 0) ow = team.view;   // the host's world (his piles, as he said)
             if (ow != null)
             {
                 BuildPileViews(ow);
                 float far = float.MaxValue;
                 foreach (PileView v in views) far = Mathf.Min(far, Vector3.Distance(MapLayout.TownSpawn, v.pos));
                 far = views.Count > 0 ? Mathf.Round(far) : 0f;
-                g.hud.Banner("OLD WORLD " + ow.Code + "\nYour loot lies where you fell" + (views.Count > 1 ? " (" + views.Count + " piles)" : "") + ". "
+                g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(ow.seed) + "\n" + (team != null ? "Loot lies where the team fell" : "Your loot lies where you fell") + (views.Count > 1 ? " (" + views.Count + " piles)" : "") + ". "
                     + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
                 ui.SetObjective2(ow.ItemCount > 0 ? "Recover your loot" : "");
             }
             else if (team != null && seedHere != 0)
             {
                 g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(seedHere) + "\nStay together. Revive with F.", LoopUi.OldText, 4f);
-                ui.SetObjective2("Recover your loot");
+                ui.SetObjective2("");
             }
             else
             {
@@ -402,6 +405,7 @@ namespace MedievalKnight
                 if (team != null) g.hud.Banner("WORLD\nStay together. Revive with F.", Color.white, 3.5f);
             }
             Sfx.I.Play(Snd.Ready);
+            if (team != null && Net.IsHost) team.BroadcastPiles(255);          // the others build the same piles
             Debug.Log("LOOP world start: " + held.Name + ", level " + g.progress.level + (ow != null ? ", old world " + ow.Code + " items " + ow.ItemCount : ""));
         }
 
@@ -500,7 +504,11 @@ namespace MedievalKnight
                 curPile = v.data;
                 g.SetInventory(true);
                 if (!g.InventoryOpen) { lootMode = false; curView = null; curPile = null; }     // refused (a level-up panel was about to open): try again
-                else v.armed = false;
+                else
+                {
+                    v.armed = false;
+                    if (Net.Multiplayer) k.Protect(Game.LevelUpProtect);        // online nothing pauses: a shield for the time he is looking (once per opening)
+                }
                 return;
             }
         }
@@ -512,6 +520,18 @@ namespace MedievalKnight
         {
             if (!LootOpen || pileWorld == null || curPile == null || index < 0 || index >= curPile.items.Count) return;
             Item it = curPile.items[index];
+            if (team != null && Net.IsClient)                        // online, a client: the host decides who gets it
+            {
+                if (!data.carry.CanAdd(it))
+                {
+                    PackFullHints++;
+                    g.lastNotice = "Pack full! Can't take " + it.Name;
+                    ui.SetLootWarn(g.lastNotice, LoopUi.Yellow, 1.8f, it.IsWeapon ? Section.Weapons : Section.Foods);
+                    return;
+                }
+                ClientTake(new List<int> { index }, new List<Item> { it });
+                return;
+            }
             bool maxed = false;
             if (it.IsWeapon)
             {
@@ -546,6 +566,27 @@ namespace MedievalKnight
         public void UiTakeAll()
         {
             if (!LootOpen || pileWorld == null || curPile == null || curPile.items.Count == 0) return;
+            if (team != null && Net.IsClient)
+            {
+                // what fits, in pile order (each one on top of the ones before it), asked for in one message
+                var copy = new ItemBag(Loadout.CarryCaps[0], Loadout.CarryCaps[1], Loadout.CarryCaps[2]);
+                for (int i = 0; i < copy.weapons.Length; i++) copy.weapons[i] = data.carry.weapons[i];
+                for (int i = 0; i < copy.foods.Length; i++) copy.foods[i] = data.carry.foods[i];
+                for (int i = 0; i < copy.supplies.Length; i++) copy.supplies[i] = data.carry.supplies[i];
+                var idx = new List<int>();
+                var its = new List<Item>();
+                for (int i = 0; i < curPile.items.Count; i++)
+                    if (copy.CanAdd(curPile.items[i])) { copy.Add(curPile.items[i]); idx.Add(i); its.Add(curPile.items[i]); }
+                if (idx.Count == 0)
+                {
+                    PackFullHints++;
+                    g.lastNotice = "Pack full! Nothing more fits";
+                    ui.SetLootWarn(g.lastNotice, LoopUi.Yellow, 1.8f, Section.Weapons);
+                    return;
+                }
+                ClientTake(idx, its);
+                return;
+            }
             int n = data.TakeAll(pileWorld, curPile);
             if (n == 0)
             {
@@ -560,11 +601,126 @@ namespace MedievalKnight
             AfterPileChange();
         }
 
+        // client: asks the host for these items of the open pile; the answer (TakeAck) puts them into the carry
+        float takeSentAt = -10f;
+
+        void ClientTake(List<int> index, List<Item> items)
+        {
+            if (Time.unscaledTime - takeSentAt < 0.25f) return;      // one question at a time
+            takeSentAt = Time.unscaledTime;
+            Net.ToServer(TeamNet.Take(curPile.id, index, items));
+        }
+
+        // client: the host answered. The granted items are mine (merged / refined like any pickup), the others were gone.
+        public void OnTakeAck(List<Item> got, int failed)
+        {
+            Vector3 at = g.knight.Pos;
+            foreach (Item it in got) OnGrant(it, at);
+            if (got.Count > 0 && LootOpen)
+            {
+                g.lastNotice = "Took " + (got.Count == 1 ? got[0].Name : got.Count + " items");
+                g.hud.Notice(g.lastNotice, LoopUi.LootGold);
+            }
+            if (failed > 0)
+            {
+                Member by = team != null ? team.Find(team.lastTakerPid) : null;
+                string who = by != null && team.lastTakerPid != Net.LocalPid ? by.name : "somebody";
+                g.lastNotice = "Taken by " + who;
+                if (LootOpen) ui.SetLootWarn("Taken by " + who, LoopUi.Yellow, 1.8f, null);
+                g.hud.Notice(g.lastNotice, LoopUi.Yellow);
+            }
+        }
+
+        // The piles changed (a teammate took something, or the host sent the list): the objects and the window follow.
+        // Host and client both: the world in play is the one whose piles changed.
+        public void OnPilesChanged(int byPid)
+        {
+            OldWorld w = PileWorldInPlay;
+            if (w == null || State != LoopState.World) return;
+            if (pileWorld == null || pileWorld != w) { if (views.Count == 0 && w.piles.Count > 0) BuildPileViews(w); return; }
+            int before = 0;
+            foreach (PileView v in views) before += v.data.items.Count;
+            bool closeWindow = false;
+            for (int i = views.Count - 1; i >= 0; i--)
+            {
+                PileView v = views[i];
+                if (w.piles.Contains(v.data) && v.data.items.Count > 0) continue;
+                if (v.obj != null) v.obj.Vanish();
+                if (v == curView) closeWindow = true;
+                views.RemoveAt(i);
+            }
+            foreach (Pile p in w.piles)
+            {
+                if (p.items.Count == 0) continue;
+                bool has = false;
+                foreach (PileView v in views) if (v.data == p) has = true;
+                if (has) continue;
+                Vector3 at = PilePoint(p.x, p.z);
+                views.Add(new PileView { data = p, pos = at, obj = LootPile.Create(g.transform, at) });
+            }
+            int after = 0;
+            foreach (PileView v in views) after += v.data.items.Count;
+            if (before > 0 && after == 0)
+            {
+                g.hud.Notice("Everything recovered.", LoopUi.Green);
+                g.hud.Banner("Everything recovered.", LoopUi.Green, 2.5f);
+                ui.SetObjective2("");
+            }
+            if (byPid != Net.LocalPid && byPid != 255 && after < before && LootOpen)
+            {
+                Member by = team != null ? team.Find(byPid) : null;
+                ui.SetLootWarn("Taken by " + (by != null ? by.name : "somebody"), LoopUi.Yellow, 1.8f, null);
+            }
+            if (closeWindow && (LootOpen || lootMode)) { g.SetInventory(false); }
+        }
+
+        // host: a piles change (a teammate's take) is saved at once like his own
+        public void SaveWorldChange() { Save(); }
+
+        // host, online: everybody who plays is down or fallen: the run is lost. Each player's things lie where he was last
+        // (his mirror at his last place; the host's own carry where the host's knight is), a player who left too. One old
+        // world holds all the piles (the new one, or the one this run was played in).
+        public void HostWipe()
+        {
+            if (State != LoopState.World || team == null || !Net.IsHost) return;
+            var drops = new List<Drop>();
+            var e = new RunEndInfo { kind = 2, leftBefore = team.worldLeft };
+            foreach (Member m in team.roster)
+            {
+                if (!m.inRun) continue;
+                var d = new Drop { who = m.name };
+                if (m.pid == Net.LocalPid)
+                {
+                    Vector3 p = g.knight.Pos;
+                    d.x = p.x; d.z = p.z;
+                    d.items.AddRange(data.carry.All());
+                }
+                else
+                {
+                    d.x = m.lastPos.x; d.z = m.lastPos.z;
+                    d.items.AddRange(m.mirror.All());
+                }
+                drops.Add(d);
+                e.pids.Add(m.pid);
+                e.team.Add(new TeamLine { name = m.name, status = m.status == Stat.Left ? TeamRun.Left : TeamRun.Fell, items = d.items.Count });
+            }
+            result = data.Fall(drops, false, Loadout.NowUnix());
+            e.worldSeed = result.worldSeed; e.worldNote = (int)result.worldNote; e.leftAfter = result.worldLeft; e.pilesN = result.pilesN; e.itemsInPiles = result.pileCount;
+            e.crumbs.AddRange(result.crumbs);
+            result.teamSize = e.team.Count;
+            result.team.AddRange(e.team);
+            Save();
+            Net.ToAll(TeamNet.RunEnd(e), null);
+            EnterSummary();
+            Debug.Log("TEAM wipe: " + e.team.Count + " players, " + result.lost.Count + " items fell in " + result.pilesN + " piles of world " + result.WorldCode);
+        }
+
         // Every take is saved at once (no item can be taken twice by closing the game). A pile that ran empty vanishes; the
         // last one of the world says "Everything recovered".
         void AfterPileChange()
         {
             Save();
+            if (team != null) team.BroadcastPiles(Net.LocalPid);
             if (pileWorld == null || curPile == null) return;
             if (curPile.items.Count == 0)
             {
@@ -970,6 +1126,7 @@ namespace MedievalKnight
             ui.ShowSummary(result);
             Sfx.I.Play(Snd.Ready);
             team.EndRun();
+            if (Net.IsHost) team.SendWorlds(-1);                     // the clients' OLD WORLDS list: what this run did to the host's worlds
         }
 
         void Victory()

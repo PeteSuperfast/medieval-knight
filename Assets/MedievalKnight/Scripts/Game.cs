@@ -239,7 +239,7 @@ namespace MedievalKnight
         public bool WantsSnapshot(int pid)
         {
             if (!Coop) return true;
-            return run.team != null && run.team.IsPlaying(pid);
+            return run.team != null && run.team.IsPlaying(pid);                       // (and never to a player who left)
         }
 
         // Client: does it report its knight (State)? Not while it waits at the base.

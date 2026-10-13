@@ -71,6 +71,14 @@ namespace MedievalKnight
             return p;
         }
 
+        // A pile that comes with its own id (a client building the host's world from a message).
+        public Pile Adopt(Pile p)
+        {
+            piles.Add(p);
+            if (p.id >= nextPileId) nextPileId = p.id + 1;
+            return p;
+        }
+
         public Pile PileById(int id)
         {
             foreach (Pile p in piles) if (p.id == id) return p;

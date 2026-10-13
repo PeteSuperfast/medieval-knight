@@ -45,8 +45,8 @@ namespace MedievalKnight
         public bool Has(int pid) { return Find(pid) != null; }
 
         // client: the host's old worlds (read only; the Worlds message fills it)
-        public readonly List<OldWorld> hostWorlds = new List<OldWorld>();
-        public List<OldWorld> HostWorlds() { return hostWorlds; }
+
+        public List<OldWorld> HostWorlds() { return hostWorlds2; }
 
         public Member Find(int pid)
         {
@@ -78,6 +78,7 @@ namespace MedievalKnight
             }
             m.name = name;
             dirty = true;
+            if (Net.IsHost) SendWorlds(pid);                          // he can look at the old worlds of this room while he packs
             return m;
         }
 
@@ -100,6 +101,7 @@ namespace MedievalKnight
             if (m.inRun && runLive) { m.status = Stat.Left; m.ready = false; }
             else roster.Remove(m);
             dirty = true;
+            if (Net.IsHost && runLive) wipeChecked = false;
         }
 
         // ---------------------------------------------------------------- READY
@@ -230,6 +232,8 @@ namespace MedievalKnight
             homeAt = -1f;
             reachedSent = false;
             roster.RemoveAll(m => m.status == Stat.Left);
+            view = null;
+            lastTakerPid = 255;
             runLive = false;
             worldSeed = 0;
             worldLeft = 0;
@@ -400,6 +404,22 @@ namespace MedievalKnight
             if (phase == 2) g.knight.Revive();
         }
 
+        // host, every frame: everybody who plays is down or fallen (and the team is not on its way home): the run is lost.
+        bool wipeChecked;
+
+        void TickWipe()
+        {
+            int n = 0;
+            foreach (Member m in roster)
+            {
+                if (!m.inRun || m.status == Stat.Left) continue;
+                n++;
+                if (m.status == Stat.Alive) return;
+            }
+            if (n == 0 || run.Busy || !run.InWorld) return;
+            run.HostWipe();
+        }
+
         // host, every frame: what each player's knight says about him (down / fallen / on his feet) is the roster's status
         void TickStatus()
         {
@@ -462,6 +482,104 @@ namespace MedievalKnight
 
         // client: the host ended the run (the table says how it went for everybody)
         public void OnRunEnd(RunEndInfo e) { run.OnTeamRunEnd(e); }
+
+        // ---------------------------------------------------------------- the piles and the host's old worlds
+
+        public OldWorld view;                                         // client: the piles of the world in play, as the host last said
+        public int lastTakerPid = 255;                                // who emptied something from them last
+        readonly List<OldWorld> hostWorlds2 = new List<OldWorld>();
+
+        // host: the piles changed (somebody took something): everybody in the run gets the list
+        public void BroadcastPiles(int byPid)
+        {
+            if (!Net.IsHost || !runLive) return;
+            Net.ToAll(TeamNet.Piles(byPid, run.PileWorldInPlay), null);
+        }
+
+        // client: the host's piles of the world in play (the loot windows and markers follow)
+        public void OnPiles(int byPid, List<Pile> list)
+        {
+            if (Net.IsHost) return;
+            if (view == null) view = new OldWorld { seed = worldSeed, left = worldLeft };
+            // update in place by id so an open loot window keeps its pile; new ones are added, missing ones go
+            var keep = new List<Pile>();
+            foreach (Pile np in list)
+            {
+                Pile p = view.PileById(np.id);
+                if (p == null) { p = new Pile { id = np.id, x = np.x, z = np.z }; view.Adopt(p); }
+                p.x = np.x; p.z = np.z;
+                p.items.Clear();
+                p.items.AddRange(np.items);
+                keep.Add(p);
+            }
+            view.piles.RemoveAll(p => !keep.Contains(p));
+            if (byPid != 255) lastTakerPid = byPid;
+            run.OnPilesChanged(byPid);
+        }
+
+        // host: a client takes items from a pile. Each one must still be there (same place, same item) and must fit his
+        // mirror; what is granted leaves the pile and is told to him (TakeAck, counted like a pickup); what is gone already
+        // is reported as failed (he sees "Taken by ..."). Everybody gets the new piles.
+        public void HostTake(int pid, int pileId, List<int> index, List<Item> items)
+        {
+            Member m = Find(pid);
+            OldWorld w = run.PileWorldInPlay;
+            if (!Net.IsHost || m == null || !m.inRun || m.status == Stat.Left || m.status == Stat.Down || m.status == Stat.Fallen || w == null) return;
+            Pile p = w.PileById(pileId);
+            var granted = new List<Item>();
+            int failed = 0;
+            if (p == null) failed = index.Count;
+            else
+            {
+                var removed = new List<int>();
+                for (int i = 0; i < index.Count; i++)
+                {
+                    int at = index[i];
+                    Item it = items[i];
+                    if (at < 0 || at >= p.items.Count || removed.Contains(at) || it.IsNone || !p.items[at].Same(it) || !m.mirror.CanAdd(it)) { failed++; continue; }
+                    m.mirror.Add(it);
+                    m.grants++;
+                    removed.Add(at);
+                    granted.Add(it);
+                }
+                removed.Sort();
+                for (int i = removed.Count - 1; i >= 0; i--) p.items.RemoveAt(removed[i]);
+                if (p.items.Count == 0) w.piles.Remove(p);
+            }
+            Net.ToPid(pid, TeamNet.TakeAck(pileId, granted, failed));
+            if (granted.Count > 0)
+            {
+                lastTakerPid = pid;
+                run.SaveWorldChange();
+                run.OnPilesChanged(pid);
+                BroadcastPiles(pid);
+            }
+            Debug.Log("TAKE by " + m.name + ": " + granted.Count + " granted, " + failed + " gone already");
+        }
+
+        // client: the host answered a Take: the granted items are mine now (counted like pickups)
+        public void OnTakeAck(int pileId, List<Item> got, int failed)
+        {
+            run.OnTakeAck(got, failed);
+        }
+
+        // host: the old worlds of this save go to one client (pid >= 0) or to everybody (-1)
+        public void SendWorlds(int pid)
+        {
+            if (!Net.IsHost) return;
+            byte[] msg = TeamNet.Worlds(run.data.Sorted());
+            if (pid >= 0) Net.ToPid(pid, msg); else Net.ToAll(msg, null);
+        }
+
+        public List<OldWorld> HostWorldsView() { return hostWorlds2; }
+
+        // client: the host's old worlds, read only (the OLD WORLDS list at the base)
+        public void OnWorlds(List<OldWorld> list)
+        {
+            hostWorlds2.Clear();
+            hostWorlds2.AddRange(list);
+            hostWorlds2.Sort((a, b) => a.left != b.left ? a.left.CompareTo(b.left) : b.fellUnix.CompareTo(a.fellUnix));
+        }
 
         // ---------------------------------------------------------------- items
 
@@ -532,6 +650,7 @@ namespace MedievalKnight
                     if (k != null && m.inRun && m.status != Stat.Left) m.lastPos = k.Pos;
                 }
                 if (runLive) TickStatus();
+                if (runLive && homeAt < 0f) TickWipe();
                 if (dirty && Time.unscaledTime >= nextTeamSend)
                 {
                     dirty = false;

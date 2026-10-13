@@ -66,6 +66,56 @@ namespace MedievalKnight
             return w.Pos(x).Pos(z).Done();
         }
 
+        // H>C: the piles of the world in play (who changed them last: pid, 255 = nobody in particular)
+        public static byte[] Piles(int byPid, OldWorld w)
+        {
+            var list = new List<Pile>();
+            if (w != null) foreach (Pile p in w.piles) if (p.items.Count > 0 && list.Count < 48) list.Add(p);
+            var wr = new NetW(Msg.Piles).U8(byPid).U8(list.Count);
+            foreach (Pile p in list)
+            {
+                wr.U16(p.id).Pos(p.x).Pos(p.z).U8(Mathf.Min(p.items.Count, OldWorld.MaxPile));
+                for (int i = 0; i < p.items.Count && i < OldWorld.MaxPile; i++) PutItem(wr, p.items[i]);
+            }
+            return wr.Done();
+        }
+
+        // C>H: I take these items (index + what I think is there) from this pile
+        public static byte[] Take(int pileId, List<int> index, List<Item> items)
+        {
+            var w = new NetW(Msg.Take).U16(pileId).U8(index.Count);
+            for (int i = 0; i < index.Count; i++) { w.U8(index[i]); PutItem(w, items[i]); }
+            return w.Done();
+        }
+
+        // H>C: what the take got (these went into your carry) and how many were gone already
+        public static byte[] TakeAck(int pileId, List<Item> granted, int failed)
+        {
+            var w = new NetW(Msg.TakeAck).U16(pileId).U8(granted.Count);
+            foreach (Item it in granted) PutItem(w, it);
+            return w.U8(failed).Done();
+        }
+
+        // H>C: the host's old worlds (read only): at most 8, each with all its piles
+        public static byte[] Worlds(List<OldWorld> sorted)
+        {
+            int n = Mathf.Min(sorted.Count, 8);
+            var w = new NetW(Msg.Worlds).U8(n);
+            for (int i = 0; i < n; i++)
+            {
+                OldWorld ow = sorted[i];
+                int np = Mathf.Min(ow.piles.Count, 48);
+                w.I32(ow.seed).U8(ow.left).I32((int)System.Math.Min(ow.fellUnix, int.MaxValue)).U8(np);
+                for (int p = 0; p < np; p++)
+                {
+                    Pile pl = ow.piles[p];
+                    w.Pos(pl.x).Pos(pl.z).U8(Mathf.Min(pl.items.Count, OldWorld.MaxPile));
+                    for (int k = 0; k < pl.items.Count && k < OldWorld.MaxPile; k++) PutItem(w, pl.items[k]);
+                }
+            }
+            return w.Done();
+        }
+
         // C>H: I am holding F on this player (phase 1) / let go (0) / 2 s are up (2)
         public static byte[] Revive(int target, int phase) { return new NetW(Msg.Revive).U8(target).U8(phase).Done(); }
 
@@ -135,6 +185,17 @@ namespace MedievalKnight
                     t.HostReached(c.pid);
                     break;
 
+                case Msg.Take:
+                {
+                    int pileId = r.U16();
+                    int n = Mathf.Min(r.U8(), OldWorld.MaxPile);
+                    var idx = new List<int>();
+                    var items = new List<Item>();
+                    for (int i = 0; i < n; i++) { idx.Add(r.U8()); items.Add(GetItem(r)); }
+                    t.HostTake(c.pid, pileId, idx, items);
+                    break;
+                }
+
                 case Msg.Revive:
                 {
                     int target = r.U8(), phase = r.U8();
@@ -190,6 +251,54 @@ namespace MedievalKnight
                 case Msg.HomeIn:
                     t.OnHomeIn(r.F32());
                     break;
+
+                case Msg.Piles:
+                {
+                    int by = r.U8();
+                    int n = Mathf.Min(r.U8(), 48);
+                    var list = new List<Pile>();
+                    for (int i = 0; i < n; i++)
+                    {
+                        var p = new Pile { id = r.U16(), x = r.Pos(), z = r.Pos() };
+                        int m = Mathf.Min(r.U8(), OldWorld.MaxPile);
+                        for (int k = 0; k < m; k++) { Item it = GetItem(r); if (!it.IsNone) p.items.Add(it); }
+                        list.Add(p);
+                    }
+                    t.OnPiles(by, list);
+                    break;
+                }
+
+                case Msg.TakeAck:
+                {
+                    int pileId = r.U16();
+                    int n = Mathf.Min(r.U8(), OldWorld.MaxPile);
+                    var got = new List<Item>();
+                    for (int i = 0; i < n; i++) { Item it = GetItem(r); if (!it.IsNone) got.Add(it); }
+                    int failed = r.U8();
+                    t.OnTakeAck(pileId, got, failed);
+                    break;
+                }
+
+                case Msg.Worlds:
+                {
+                    int n = Mathf.Min(r.U8(), 8);
+                    var list = new List<OldWorld>();
+                    for (int i = 0; i < n; i++)
+                    {
+                        var w = new OldWorld { seed = r.I32(), left = Mathf.Clamp(r.U8(), 1, OldWorld.StartLeft), fellUnix = r.I32() };
+                        int np = Mathf.Min(r.U8(), 48);
+                        for (int p = 0; p < np; p++)
+                        {
+                            var pl = new Pile { x = r.Pos(), z = r.Pos() };
+                            int m = Mathf.Min(r.U8(), OldWorld.MaxPile);
+                            for (int k = 0; k < m; k++) { Item it = GetItem(r); if (!it.IsNone) pl.items.Add(it); }
+                            w.AddLoaded(pl);
+                        }
+                        if (w.seed != 0) list.Add(w);
+                    }
+                    t.OnWorlds(list);
+                    break;
+                }
 
                 case Msg.Revive:
                 {

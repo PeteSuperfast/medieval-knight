@@ -334,6 +334,16 @@ namespace MedievalKnight
                   .Append(";revby=").Append(run.teamUi.ReviveByText.Replace(';', ',').Replace('=', ':')).Append(";revprompt=").Append(run.teamUi.RevivePromptText.Replace(';', ',').Replace('=', ':'))
                   .Append(";spec=").Append(run.teamUi.SpectatingText.Replace(';', ',').Replace('=', ':')).Append(";overhead=").Append(run.teamUi.OverheadShown);
             if (me != null) sb.Append(";lastact=").Append(me.LastAction).Append(";downleft=").Append(F1(me.DownLeft));
+            if (run != null)
+            {
+                sb.Append(";piles=").Append(run.PileObjects).Append(";lootopen=").Append(run.LootOpen ? 1 : 0).Append(";packfull=").Append(run.PackFullHints);
+                if (t != null)
+                {
+                    string hw = "";
+                    foreach (OldWorld w in t.HostWorlds()) hw += w.seed + "/" + w.left + "/" + w.piles.Count + "/" + w.ItemCount + ",";
+                    sb.Append(";hw=").Append(t.HostWorlds().Count).Append(";hwlist=").Append(hw);
+                }
+            }
             sb.Append(";pk=").Append(Pickup.All.Count).Append(";pklist=").Append(pk.Trim());
             sb.Append(";notice=").Append(g.hud.NoticeShown.Replace(';', ',').Replace('=', ':').Replace('|', '/'))
               .Append(";banner=").Append(g.hud.BannerShown.Replace(';', ',').Replace('=', ':').Replace('|', '/').Replace('\n', ' '));
@@ -481,6 +491,42 @@ namespace MedievalKnight
                     autoHeal = false;
                     k.TakeDamage(99999f, k.transform.position + Vector3.right, "mptest");
                     Reply(id, "dead=" + k.Dead);
+                    break;
+
+                case "gopile":                                        // index: stand 1 m from that pile (the window opens by itself)
+                {
+                    int i = int.Parse(a[0]);
+                    if (i >= run.PileObjects) { Reply(id, "nopile"); break; }
+                    k.transform.position = run.PilePosAt(i) + new Vector3(1.0f, 0f, 0f);
+                    k.aimOverride = k.transform.position + Vector3.forward * 5f;
+                    g.SnapCamera();
+                    yield return W(0.7f);
+                    Reply(id, "lootopen=" + (run.LootOpen ? 1 : 0) + ";items=" + run.PileItemsAt(i));
+                    break;
+                }
+
+                case "take":                                          // index of the open pile
+                {
+                    int before = run.data.carry.Total;
+                    run.UiTake(int.Parse(a[0]));
+                    yield return W(0.8f);
+                    Reply(id, "carry=" + run.data.carry.Total + ";before=" + before + ";notice=" + g.hud.NoticeShown.Replace(';', ',').Replace('=', ':'));
+                    break;
+                }
+
+                case "takeall":
+                {
+                    int before = run.data.carry.Total;
+                    run.UiTakeAll();
+                    yield return W(0.8f);
+                    Reply(id, "carry=" + run.data.carry.Total + ";before=" + before);
+                    break;
+                }
+
+                case "closeloot":
+                    if (run.LootOpen) g.SetInventory(false);
+                    yield return null;
+                    Reply(id, "ok");
                     break;
 
                 case "autoheal":
@@ -810,6 +856,152 @@ namespace MedievalKnight
                 yield return Cmd("all", "shot", "second_victory");
                 foreach (string r in new[] { A, B, C, "H" }) yield return Cmd(r, "ret");
                 yield return W(0.6f);
+            }
+
+            // ------------------------------------------------ 7. everybody falls: one old world, a pile for each place somebody fell
+            int worldSeedNew = 0;
+            {
+                foreach (string r in new[] { A, B, C })
+                {
+                    yield return Cmd(r, "carryclear");
+                    yield return Cmd(r, "give", "w", Weapons.Iron.ToString(), "0");
+                    yield return Cmd(r, "give", "f", Foods.Apple.ToString());
+                    yield return Cmd(r, "ready", "1");
+                }
+                yield return Cmd(A, "give", "w", Weapons.Dao.ToString(), "1");
+                yield return Cmd(C, "give", "f", Foods.Meat.ToString());
+                yield return W(0.5f);
+                yield return Cmd("H", "carryclear");
+                yield return Cmd("H", "give", "w", Weapons.Iron.ToString(), "0");
+                yield return Cmd("H", "give", "w", Weapons.Fang.ToString(), "2");
+                yield return Cmd("H", "give", "f", Foods.Apple.ToString());
+                yield return Cmd("H", "enter", "0");
+                yield return W(2.4f);
+                yield return Sum();
+                Check("a third run with all four starts (" + S("H", "n") + " knights)", S("H", "live") == "1" && S("H", "n") == "4");
+                g.packsOff = true;
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                yield return Sum();
+                int cA = (int)N(A, "carry"), cB = (int)N(B, "carry"), cC = (int)N(C, "carry"), cH = (int)N("H", "carry");
+                OldWorld a1b2 = g.run.data.Find(0xA1B2);
+                if (a1b2 != null) a1b2.left = 3;                                   // (it would crumble with this return; keep it for the count)
+                int worlds0 = (int)N("H", "worlds");
+                int stashA = (int)N(A, "stash"), stashC = (int)N(C, "stash");
+                Vector3 p1 = new Vector3(40f, 0f, -100f);
+                yield return Cmd(A, "tp", F2(p1.x), F2(p1.z));
+                yield return Cmd(B, "tp", F2(p1.x + 1.5f), F2(p1.z));              // 1.5 m from A: their things share one pile
+                yield return Cmd(C, "tp", F2(-40f), F2(-100f));
+                yield return Cmd("H", "tp", F2(0f), F2(-60f));
+                yield return W(0.5f);
+                foreach (string r in new[] { A, B, C }) yield return Cmd(r, "autoheal", "0");
+                yield return Cmd("H", "autoheal", "0");
+                yield return Cmd(A, "die");
+                yield return W(0.4f);
+                yield return Sum();
+                Check("with only some fallen the run goes on (no wipe yet): the host still plays", S("H", "st") == "World" && S("H", "live") == "1");
+                yield return Cmd(B, "die");
+                yield return Cmd(C, "die");
+                yield return W(0.3f);
+                yield return Cmd("H", "die");
+                yield return W(1.5f);
+                yield return Sum();
+                Ck(S("H", "sum") == "1" && S(A, "sum") == "1" && S(B, "sum") == "1" && S(C, "sum") == "1", "the last one went down: the run ended for all four at once (the wipe)");
+                Check("the summary says ALL FELL with the four names and 'items dropped' (" + S("H", "sumtitle") + ")",
+                    S(A, "sumtitle").Contains("ALL FELL") && S(A, "sumbody").Contains("items dropped") && S(A, "sumbody").Contains("Alice") && S(A, "sumbody").Contains("Cara"));
+                Check("one old world #" + "made on the host: " + S("H", "worlds") + " worlds now (was " + worlds0 + "), carry gone on every machine (" + S("H", "carry") + S(A, "carry") + S(B, "carry") + S(C, "carry") + ")",
+                    N("H", "worlds") == worlds0 + 1 && S("H", "carry") == "0" && S(A, "carry") == "0" && S(B, "carry") == "0" && S(C, "carry") == "0");
+                // the host's newest world: its piles
+                OldWorld nw = null;
+                foreach (OldWorld w in g.run.data.worlds) if (w.seed != 0xA1B2 && (nw == null || w.fellUnix >= nw.fellUnix)) nw = w;
+                int total = cA + cB + cC + cH;
+                Check("the new world holds all " + total + " items in 3 piles (A + B within 3 m share one, C one, the host one) at the places they fell",
+                    nw != null && nw.ItemCount == total && nw.piles.Count == 3 && nw.left == 3);
+                if (nw != null)
+                {
+                    worldSeedNew = nw.seed;
+                    int near = 0;
+                    foreach (Pile pl in nw.piles) { if (Flat(new Vector3(pl.x, 0f, pl.z), p1) < 3f) near = pl.items.Count; }
+                    Check("the pile at A's place holds A's and B's things (" + near + " = " + (cA + cB) + ")", near == cA + cB);
+                }
+                Check("the stash and the worlds of A and C are untouched (stash " + S(A, "stash") + " / " + S(C, "stash") + ", worlds " + S(A, "worlds") + ")",
+                    N(A, "stash") >= stashA && N(C, "stash") >= stashC && S(A, "worlds") == "0" && S(C, "worlds") == "0");
+                // the others see the host's worlds list (read only) with the new world in it
+                yield return W(0.6f);
+                yield return Sum();
+                Check("every client sees the host's old worlds list with the new world (" + S(A, "hwlist") + " / " + S(C, "hwlist") + ")",
+                    S(A, "hw") == S("H", "worlds") && S(C, "hw") == S("H", "worlds") && S(A, "hwlist").Contains(worldSeedNew + "/3/3/"));
+                Shot("wipe_summary");
+                foreach (string r in new[] { A, B, C, "H" }) yield return Cmd(r, "ret");
+                yield return W(0.6f);
+            }
+
+            // ------------------------------------------------ 8. back into that old world: loot of the others, a race for one item
+            if (worldSeedNew != 0)
+            {
+                foreach (string r in new[] { A, B, C })
+                {
+                    yield return Cmd(r, "autoheal", "1");
+                    yield return Cmd(r, "carryclear");
+                    yield return Cmd(r, "give", "w", Weapons.Iron.ToString(), "0");
+                    yield return Cmd(r, "give", "f", Foods.Apple.ToString());
+                    yield return Cmd(r, "ready", "1");
+                }
+                yield return Cmd("H", "autoheal", "1");
+                yield return Cmd("H", "carryclear");
+                yield return Cmd("H", "give", "w", Weapons.Iron.ToString(), "0");
+                yield return Cmd("H", "give", "f", Foods.Apple.ToString());
+                yield return W(0.4f);
+                yield return Sum();
+                Check("the clients' OLD WORLDS view lists the world and the host's button reads OLD WORLDS (2)", S(A, "hw") == "2" || S(A, "hw") == "3");
+                yield return Cmd("H", "enter", worldSeedNew.ToString());
+                yield return W(2.6f);
+                yield return Sum();
+                Ck(S("H", "live") == "1" && S("H", "st") == "World" && S(A, "st") == "World" && S(B, "st") == "World" && S(C, "st") == "World", "all four are in the old world #" + (worldSeedNew & 0xFFFF).ToString("X4"));
+                Check("every machine knows the world (seed " + S(A, "rseed") + ") and shows 3 piles",
+                    S(A, "rseed") == worldSeedNew.ToString() && S(C, "rseed") == worldSeedNew.ToString() && S("H", "piles") == "3" && S(A, "piles") == "3" && S(B, "piles") == "3" && S(C, "piles") == "3");
+                g.packsOff = true;
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                // B walks into the biggest pile (A's and B's things): the window opens and the game keeps running
+                int big = 0, bigN = -1;
+                for (int i = 0; i < g.run.PileObjects; i++) if (g.run.PileItemsAt(i) > bigN) { bigN = g.run.PileItemsAt(i); big = i; }
+                yield return Cmd(B, "gopile", big.ToString());
+                Map gp = Parse(Rep(last, B));
+                Check("B touched the pile of " + bigN + ": the loot window opened by itself and time runs (the world is not paused)", gp.G("lootopen") == "1");
+                yield return Sum();
+                Check("... the others see him in the world and nothing stopped (time scale on B " + Time.timeScale.ToString("0.0", Inv) + ")", S("H", "st") == "World");
+                int carryB0 = (int)N(B, "carry");
+                yield return Cmd(B, "takeall");
+                Map ta = Parse(Rep(last, B));
+                yield return W(0.5f);
+                yield return Sum();
+                Check("B took everything that fits (his carry " + ta.G("before") + " -> " + ta.G("carry") + ")", ta.F("carry") > ta.F("before"));
+                Ck(S("H", "piles") == "2" && EqP("piles", "H", A, B, C), "B emptied that pile: it is gone on all four screens (2 piles left)");
+                yield return Cmd(B, "closeloot");
+
+                // the race: A and C both stand at the host's pile and take item 0 at the same moment
+                int hostPile = -1;
+                for (int i = 0; i < g.run.PileObjects; i++) if (Flat(g.run.PilePosAt(i), new Vector3(0f, 0f, -60f)) < 6f) hostPile = i;
+                if (hostPile >= 0)
+                {
+                    int items0 = g.run.PileItemsAt(hostPile);
+                    yield return Cmd(A, "gopile", hostPile.ToString());
+                    yield return Cmd(C, "gopile", hostPile.ToString());
+                    yield return Sum();
+                    int a0 = (int)N(A, "carry"), c0 = (int)N(C, "carry");
+                    int sa = Send(A, "take", "2");                                 // the Apple of the host's pile
+                    int sc = Send(C, "take", "2");
+                    yield return Wait(sa, A);
+                    yield return Wait(sc, C);
+                    yield return W(0.5f);
+                    yield return Sum();
+                    int da = (int)N(A, "carry") - a0, dc = (int)N(C, "carry") - c0;
+                    Check("two players took the Apple of the same pile at the same moment: exactly one got it (A +" + da + ", C +" + dc + ") and the pile lost exactly one (" + items0 + " -> " + (g.run.PileObjects > hostPile ? g.run.PileItemsAt(hostPile) : 0) + ")",
+                        da + dc == 1);
+                    string loserNotice = da == 0 ? Parse(Rep(sa, A)).G("notice") : Parse(Rep(sc, C)).G("notice");
+                    Check("the one who lost it was told 'Taken by' (" + loserNotice + ") and nothing vanished silently", loserNotice.Contains("Taken by"));
+                }
+                else Check("the host's pile exists for the race", false);
+                yield return Cmd("all", "shot", "old_world_loot");
             }
 
             // ------------------------------------------------ the extra join attempts were turned away
