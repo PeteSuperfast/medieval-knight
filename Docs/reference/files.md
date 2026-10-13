@@ -6,7 +6,7 @@
 | --- | --- |
 | `Game.cs` | จุดเริ่มเกม (`Boot`), กล้อง top-down, แสง, สร้างฉาก (`WorldBuilder`), แพ็คสไลม์ (`UpdatePacks`), EXP + Soul (`OnEnemyKilled`), เลเวลอัป 2 ขั้น (`LevelStep`), ดรอป (`RollDrop`), เก็บของ (`UpdatePickups`), Tab (`SetInventory`), ตาย / ฟื้น, shake, hit-stop, ปุ่ม F1 / F5 / H / Tab / M / Esc. **Loop**: `StartSession(loop)`, `run`, `Loop` / **`Coop`**, `OnLoopDeath`; phase 2: `worldHpMul` / `worldDmgMul` / `worldPackMul`; **phase 4**: `WantsSnapshot` / `SendsState` / `PidFree` / `WelcomeList` (ที่ Net ถาม), join/left ของห้อง, เก็บของของเพื่อน, กล้อง spectate, `TestDownSeconds` |
 | `World.cs` | `MapLayout` (โซน, จุดเกิด / รัง / ประตู / `BasePoint`, `Walkable`, `SpawnTier`), `Obstacles` (collision บน grid 8 ม.: `Push`), `StaticBatcher`, `WorldBuilder` (ฉากทั้งหมด — `System.Random(11)` ล้วน) |
-| `Knight.cs` | ผู้เล่น: เดิน หัน วิ่ง dash โล่, HP / Armor / Stamina, `Knight.Attacks` (คอมโบ 5 ท่า + 5..11 ของ phase 6; `PickAttack`, `UpdateHold`), `Knight.Skills` (Q E R F), `progress` / `inventory` / `souls`, ตัวเลขต่อสู้รวมดาบ (`DamageMult` / `CritChance` / `CritMult` / `SwingSpeed` / `Reach`), `RollDamage`, `Equip`, `SetWeapon` (loop), `SpendPoint`, `Heal`, `ResetProgress` (ตาย) / `ResetAll` (F5) / `ResetForRun` (loop), `CancelAction`; **phase 4**: `Down` / `Fallen` / `DownLeft`, `Revive()`, `RevTarget`, `NetFallen`, DownRoutine แบบทีม |
+| `Knight.cs` | ผู้เล่น: เดิน หัน วิ่ง dash โล่, HP / Armor / Stamina, `Knight.Attacks` (คอมโบ 5 ท่า + 5..11 ของ phase 6; `PickAttack`, `UpdateHold`), `Knight.Skills` (Q E R F), `progress` / `inventory` / `souls`, ตัวเลขต่อสู้รวมดาบ (`DamageMult` / `CritChance` / `CritMult` / `SwingSpeed` / `Reach`), `RollDamage`, `Equip`, `SetWeapon` (loop), `SpendPoint`, `Heal`, `ResetProgress` (ตาย) / `ResetAll` (F5) / `ResetForRun` (loop), `CancelAction`; **phase 7**: parry (`ParryOpen`) / clash (`ClashOpen`) ใน `TakeDamage(..., by, heavy)`, `ParryCount`/`ClashCount`/`HeavyBlockCount`; **phase 4**: `Down` / `Fallen` / `DownLeft`, `Revive()`, `RevTarget`, `NetFallen`, DownRoutine แบบทีม |
 | `Progress.cs` | เลเวล / EXP (`Need(lvl)`), ผลรวมอัปเกรด, สุ่มการ์ด 3 ใบ (`MakeOffers`), แต้มสเตตัส HP / BLOCK / STAMINA (`Spend`, `AttrCap`) — instance ของอัศวินแต่ละคน |
 | `Weapon.cs` | `WeaponDef` + `Weapons.All`, `Weapons.BuildModel` (จาก `Prims` หรือไฟล์ `modelPath`), `Inventory` (`SetSingle` = ภาพฉายของ HELD ใน loop), `Foods`, `Pickup` (`kind`, หมุน + วงแหวน, ดาบ 90 วิ อาหาร 60 วิ, `plus` / `dropped` ของ loop) |
 | `Loadout.cs` | **Loop**: `Item`, `ItemBag`, `Loadout` (stash / carry / HELD / `worlds` โลกเก่า / `runWorld` / `unseen`), `RunResult`; `Die` → **`Fall(drops)`** (ของเข้ากอง) / `Survive(decay)` / `LoseCarry` / `TakeFromPile` / `TakeAll` / `Sanitize` / `runCoop` — logic ล้วน |
@@ -17,8 +17,8 @@
 | `Portal.cs` | **Loop**: portal โลก (วงแหวน + ลำแสง + วงโหลด) |
 | `LootPile.cs` | **Loop phase 2**: กองของโลกเก่า (ถุง + ด้ามอาวุธ + วงทอง + ลำแสงทอง 12 ม.); `Vanish()` ตอนเก็บหมด |
 | `SwordIcons.cs` | ไอคอนดาบ 128 x 128: ถ่ายโมเดลด้วยกล้อง ortho (layer 31) ตอนเริ่ม; แผนสำรองวาดพิกเซล |
-| `Sfx.cs` | เสียง: โหลด 6 คลิปจาก `Resources/Audio`, AudioSource 2D 8 ตัว, สุ่ม pitch / volume, ปุ่ม M |
-| `Enemy.cs` | คลาสแม่ศัตรู: HP + Armor, กระเด็น, สตัน, แถบเลือด, ตัวเลขดาเมจ, `soulReward`, `ClampToArena` |
+| `Sfx.cs` | เสียง: โหลด 6 คลิปจาก `Resources/Audio`, AudioSource 2D 8 ตัว, สุ่ม pitch / volume, ปุ่ม F2 |
+| `Enemy.cs` | คลาสแม่ศัตรู: HP + Armor, กระเด็น, สตัน, แถบเลือด, ตัวเลขดาเมจ (`NumberStyle` สีเลข), `soulReward`, `ClampToArena`; **p7**: `Deflect`/`NetDeflect` (parry/clash), `glowAmt`, `HeavyWarn` |
 | `Slime.cs` | สไลม์ 3 สี กระโดดไล่ผู้เล่นใน 30 ม. ยกเว้นคนที่ยืนในเมือง |
 | `Minotaur.cs` | บอส: AI 3 ท่า (Sweep / Smash / Charge) มีเครื่องหมายเตือน, leash (ห่างรัง > 40 ม. / ไม่มีใครใน 45 ม. 5 วิ = กลับรัง) |
 | `Dummy.cs` | หุ่นฟาง: ไม่โจมตี ไม่ให้ EXP / Soul พังแล้วเกิดใหม่ |
@@ -26,9 +26,10 @@
 | `Hud.cs` | UI (uGUI `Text`): แผงซ้ายบน (HP / Armor / Stamina / EXP / Soul), สกิล, แถบบอส, ลูกศรชี้รัง/portal (`SetArrowTarget`), การ์ดเลเวลอัป, Tab (v1), YOU DIED, `Notice`, `Banner`, ปุ่มควบคุม (`SetLoopTexts`) |
 | `Prims.cs` | mesh low-poly ในโค้ด + material (`Lit` / `Glow`), `Tint` |
 | `InputX.cs` | ตัวกลางรับปุ่ม / เมาส์; ปุ่มใหม่ต้องเพิ่มใน `Map()` |
-| `Net.cs` | Online: `Conn` (TCP + thread), `NetW` / `NetR`, `enum Msg`, host / join / handshake, snapshot (ต่อ conn), `Protocol` 4 |
+| `Net.cs` | Online: `Conn` (TCP + thread), `NetW` / `NetR`, `enum Msg`, host / join / handshake, snapshot (ต่อ conn), `Protocol` 5 |
 | `TeamRun.cs` | **phase 4**: ห้อง (`roster`, `leavers`), READY, mirror ของ carry, Enter, ล้ม/ชุบ/wipe, portal ทีม, Take / Piles / Worlds |
 | `TeamNet.cs` | **phase 4**: เข้ารหัส/ถอดรหัสข้อความ loop (`Pack` `Drop` `Take` `Revive` `Reached` `Team` `Worlds` `Enter` `Piles` `TakeAck` `Portal` `HomeIn` `RunEnd`) |
+| `MapUi.cs` | **phase 7**: แผนที่ M (canvas ของตัวเอง; texture 190x190 จาก `MapLayout.ZoneAt`; มาร์กเกอร์ ตัวเอง/เพื่อน/portal/กอง `RunLoop.PileMarks`/รัง; ไม่แสดงศัตรู; ไม่หยุดเกม) |
 | `TeamUi.cs` | **phase 4**: รายชื่อห้อง R1/T1, รอรอบ R4, ล้ม K1, ดู S1, นับกลับ X1, ป้าย DOWN เหนือหัว |
 | `NetInterp.cs` | บัฟเฟอร์ interpolate ตำแหน่ง/มุมของ puppet |
 | `Menu.cs` | เมนู Single / Host / Join / Connecting (ทั้งสาม → loop; `-arena` Host/Join = v1) |
