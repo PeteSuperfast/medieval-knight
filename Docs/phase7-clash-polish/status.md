@@ -52,3 +52,11 @@
 
 ## รอใคร (ปัจจุบัน)
 - รอปูส้มตรวจด่าน 2 → พีทลองเล่น (parry/clash ที่จังหวะจริง, ความรู้สึกหน้าต่าง 0.2 วิ, แผนที่ M)
+
+## ผลตรวจ director ด่าน 2 (developer phase 7)
+- ครบ 7 ขั้น (commit c5f72c3..4c0263b); git diff --stat 21 ไฟล์ ตรงรายการ tech.md (ใหม่ MapUi.cs + สคริปต์/เอกสารตามแผน) ไม่มีไฟล์นอกแผน; ไม่แตะ B2
+- ผลเทสที่ developer รายงาน: build ผ่าน, selftest 416/0, -p7only 30 PASS, mptest -arena FAIL=0, mptest-loop FAIL=0, -menutest 19/0
+- ต่างจากแผน: commit ขั้น 4-6 รวมเป็น b53e83a; แผงแผนที่ 566x646; มี test hook เล็กๆ (ไม่กระทบเกม)
+- ปูส้มตัด vision.md / design-ui.md ให้ ≤10KB แล้ว
+- ยังไม่อัป Drive / ไม่ push (รอพีทสั่ง); พีทควรลองเล่น: หน้าต่าง parry 0.2 วิ, clash ±0.1 วิ, แผนที่ M ทับแผง F1, เสียง parry/clash ใช้ตัวเดียวต่าง pitch
+- ปูส้ม: ผ่าน -> โพสต์ให้พีท
