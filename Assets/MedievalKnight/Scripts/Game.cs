@@ -797,11 +797,27 @@ namespace MedievalKnight
 
         // A monster hurts a knight. The local knight takes it here; a remote one is told by the host and applies it
         // on his own machine (his block and dodge are judged where he plays).
-        public void DamageKnight(Knight k, float damage, Vector3 from, string source, float knockback = 6f)
+        // by / heavy (phase 7): who struck and whether it is a heavy blow (a heavy one cannot be clashed or parried).
+        public void DamageKnight(Knight k, float damage, Vector3 from, string source, float knockback = 6f, Enemy by = null, bool heavy = false)
         {
             if (k == null) return;
-            if (!k.remote) k.TakeDamage(damage, from, source, knockback);
+            if (!k.remote) k.TakeDamage(damage, from, source, knockback, by, heavy);
             else if (Net.IsHost) Net.SendKnightHit(k.pid, damage, from, source, knockback);
+        }
+
+        // A knight parried / clashed with this enemy's blow (decided on his machine). Where the world is simulated the enemy
+        // reacts right away; a client tells the host.
+        public void ReportDeflect(Knight k, Enemy by, bool parry)
+        {
+            if (by == null || by.Dead) return;
+            if (Net.Authority) by.Deflect(parry, k.Pos, k);
+        }
+
+        // Test hook: the enemy lands a blow on the knight right now (parry / clash / block are judged exactly as for a real one).
+        public void DebugStrike(Enemy e, Knight k, bool heavy, float damage = 20f)
+        {
+            if (e == null || k == null) return;
+            DamageKnight(k, damage, e.transform.position, "DebugStrike", 6f, e, heavy);
         }
 
         // Other players' sounds are quieter and fade with distance from the local knight.

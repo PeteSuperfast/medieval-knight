@@ -160,6 +160,45 @@ namespace MedievalKnight
             }
         }
 
+        // Phase 7: a knight parried (parry) or clashed with (!parry) this enemy's blow. Where the world is simulated only:
+        // it flies back (3-4 m, scaled by knockResist) and is stunned (parry 0.6 s / clash 0.3 s, scaled by stunResist).
+        public int DeflectCount;                     // test counter
+        protected virtual float DeflectStun(bool parry) { return parry ? 0.6f : 0.3f; }
+
+        public virtual void Deflect(bool parry, Vector3 from, Knight by)
+        {
+            if (Dead || puppet) return;
+            DeflectCount++;
+            Vector3 away = transform.position - from; away.y = 0f;
+            away = away.sqrMagnitude > 0.0001f ? away.normalized : transform.forward;
+            float meters = parry ? 4f : 3f;
+            knock += away * Mathf.Sqrt(2f * 26f * meters) * knockResist;           // BaseTick slows knock by 26 m/s per second
+            float stun = DeflectStun(parry);
+            if (stun > 0f) stunUntil = Mathf.Max(stunUntil, Time.time + stun * stunResist);
+            Net.BroadcastDeflect(this, parry, away, by != null ? by.pid : 255);
+            if (by != null && by.remote) ShowDeflect(parry, away);
+        }
+
+        // A client shows a deflect the host applied (byOther: another player's, whose own machine has played it already for him).
+        public void NetDeflect(bool parry, Vector3 away, bool byOther, float newHp, float newArmor)
+        {
+            if (Dead) return;
+            hp = newHp; armor = newArmor;
+            DeflectCount++;
+            if (byOther) ShowDeflect(parry, away);
+        }
+
+        // What the others see and hear of a player's parry / clash (the player himself gets it in Knight.Deflected).
+        void ShowDeflect(bool parry, Vector3 away)
+        {
+            Vector3 at = Center;
+            Color c = parry ? new Color(0.81f, 0.91f, 1f) : new Color(0.96f, 0.76f, 0.35f);
+            Fx.I.Burst(at, parry ? 18 : 14, c, 3f, 9f, Vector3.up, 0.9f, 0.3f, 4f, 0.1f);
+            Fx.I.Ring(new Vector3(transform.position.x, 0.1f, transform.position.z), 0.3f, parry ? 1.8f : 1.2f, new Color(c.r, c.g, c.b, 0.9f), 0.25f);
+            Game.I.hud.Popup(at + Vector3.up * (height * 0.5f), parry ? "PARRY!" : "CLASH", parry ? c : Color.white, parry ? 32 : 28);
+            Sfx.I.Play(Snd.Clash, Game.I.RemoteVolume(transform.position), parry ? 1.35f : 0.9f);
+        }
+
         // A client shows a hit that the host applied (numbers, sparks, wobble, and death when it was the last one).
         public void NetHit(float damage, float toArmor, float toHp, bool crit, bool stunned, bool killed, Vector3 away, bool byOther, float newHp, float newArmor, bool heavy = false)
         {

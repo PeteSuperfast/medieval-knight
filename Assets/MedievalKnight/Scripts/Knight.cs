@@ -257,6 +257,15 @@ namespace MedievalKnight
         bool invuln, lockFacing, whirl, shieldPush;
         float shieldPushK;
         Vector3 knockVel, aimPoint;
+        // phase 7: parry window (0.2 s from a fresh shield press, not again within 0.5 s), clash window (the strike of a light swing +-0.1 s)
+        float parryUntil, lastPressAt = -10f, clashFrom, clashTo, shieldFlashUntil;
+        Tint shieldTint;
+        public const float ParryWindow = 0.2f, ParryGap = 0.5f, ClashPad = 0.1f, ClashHalfAngle = 60f, ClashRange = 5.5f;
+        public bool ParryOpen { get { return Time.time < parryUntil; } }
+        public bool ClashOpen { get { return clashTo > 0f && Time.time >= clashFrom && Time.time <= clashTo; } }
+        public int ParryCount { get; private set; }               // blows turned away by a parry (test counters)
+        public int ClashCount { get; private set; }               // light blows traded in a clash
+        public int HeavyBlockCount { get; private set; }          // heavy blows that came through a block / the parry window
         int comboIndex, queued = -1;
         float queuedTime;
         float nextSwingAt, dashStartTime = -10f;             // phase 6: no new swing before nextSwingAt; when the last dash began
@@ -350,6 +359,7 @@ namespace MedievalKnight
             Prims.Box(shieldNode, "ArmL", new Vector3(0f, 0.05f, -0.16f), new Vector3(0.17f, 0.17f, 0.3f), darkSteel);
 
             tint = new Tint(rig);
+            shieldTint = new Tint(shieldNode);
 
             if (!remote)                                           // the charge disc (phase 6): grows and turns pale when full
             {
@@ -444,6 +454,7 @@ namespace MedievalKnight
         {
             IsAttacking = false; lockFacing = false; whirl = false; shieldPush = false; invuln = false;
             queued = -1; rigSpin = 0f;
+            clashFrom = clashTo = 0f;
             CancelHold();
         }
 
@@ -547,7 +558,14 @@ namespace MedievalKnight
             // left button: a click is decided when it comes up (<= TestHoldSeconds), holding it charges the Heavy Strike
             if (canInput && (inp.request >= 0 || (Charging && inp.block))) CancelHold();         // a skill or the shield drops the charge, no swing
             int holdReq = UpdateHold(inp.attackHeld, canInput, inp.block);
+            bool wasBlocking = IsBlocking;
             IsBlocking = canInput && !IsAttacking && !Charging && inp.block && !dashMoving;      // the shield drops during a dash
+            if (IsBlocking && !wasBlocking)                                                      // a fresh press: 0.2 s parry window, unless pressed again within 0.5 s
+            {
+                float now = Time.time;
+                if (now - lastPressAt >= ParryGap) { parryUntil = now + ParryWindow; shieldFlashUntil = parryUntil; }
+                lastPressAt = now;
+            }
 
             if (canInput && inp.dash) TryDash(inp);
             dashMoving = Time.time < dashMoveEnd;
@@ -786,7 +804,16 @@ namespace MedievalKnight
                     full ? 0.5f + 0.15f * Mathf.Sin(Time.time * 18f) : 0.12f + 0.3f * Mathf.Clamp01(shown / ChargeTime));
             }
             else tint.Set(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
+
+            // the shield flashes pale blue while the parry window is open (a remote knight: for 0.2 s after his shield goes up)
+            bool flashing = !Dead && IsBlocking && Time.time < shieldFlashUntil;
+            if (flashing || shieldFlashOn)
+            {
+                shieldFlashOn = flashing;
+                shieldTint.Set(new Color(0.81f, 0.91f, 1f), flashing ? 0.75f : 0f);
+            }
         }
+        bool shieldFlashOn;
 
         // ---------------------------------------------------------------- remote knight (another player)
 
@@ -862,7 +889,9 @@ namespace MedievalKnight
             netPos = pos; netYaw = yaw; netTime = senderTime;
             interp.Push(senderTime, Time.unscaledTime, pos, yaw);
             bool wasDead = Dead, nowDead = (flags & NetDead) != 0;
+            bool wasUp = IsBlocking;
             IsBlocking = (flags & NetBlocking) != 0 && !nowDead;
+            if (IsBlocking && !wasUp) shieldFlashUntil = Time.time + ParryWindow;
             Airborne = (flags & NetAirborne) != 0;
             netGlow = (flags & NetGlow) != 0;
             bool nowCharging = (flags & NetCharging) != 0 && !nowDead;
@@ -1167,6 +1196,11 @@ namespace MedievalKnight
             float mir = a.sideStep > 0f && side < 0 ? -1f : 1f;           // the Sidestep Slash is drawn for the right; mirrored for the left
             float yawW = a.yawWind * mir, yawS = a.yawStrike * mir;
             if (a.shieldJab) shieldPush = true;
+            if (!a.heavy)                                                 // clash window: the strike +-0.1 s (a Heavy Strike never clashes)
+            {
+                clashFrom = Time.time + a.windupTime / speed - ClashPad;
+                clashTo = Time.time + (a.windupTime + a.strikeTime) / speed + ClashPad;
+            }
 
             // 1) wind-up
             float y0 = swYaw, p0 = swPitch, h0 = swHand, lean0 = rigLean, hop0 = rigHop;
@@ -1447,7 +1481,8 @@ namespace MedievalKnight
 
         // Armor absorbs first. A raised shield facing the blow cuts it by 80% (+2% per BLOCK point) for free (no stamina).
         // Always runs on the machine of the player who owns this knight (the host forwards monster hits to it).
-        public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f)
+        // by != null: a monster's blow (phase 7) - it can be parried / clashed unless heavy. null (test button H, old tests) = as before.
+        public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f, Enemy by = null, bool heavy = false)
         {
             if (remote || Dead) return;
             if (Dashing)
@@ -1465,20 +1500,41 @@ namespace MedievalKnight
                 return;
             }
             if (Invulnerable) return;
-            LastDamageSource = source;
-            LastHurtTime = Time.time;
             Vector3 toSrc = from - transform.position; toSrc.y = 0f;
             Vector3 srcDir = toSrc.sqrMagnitude > 0.0001f ? toSrc.normalized : transform.forward;
             Vector3 chestPos = transform.position + new Vector3(0f, 1.4f, 0f);
+            bool facing = Vector3.Angle(transform.forward, srcDir) < 75f;
+
+            // phase 7: parry (shield up within 0.2 s of the press) > clash (his light swing meets the monster's) > block > hit.
+            // Neither touches health or armor; the monster is thrown back / stunned (the host does that: Game.ReportDeflect).
+            if (by != null && !heavy)
+            {
+                bool parry = IsBlocking && facing && ParryOpen;
+                bool clash = false;
+                if (!parry && !IsBlocking && IsAttacking && ClashOpen)
+                {
+                    Vector3 toE = by.transform.position - transform.position; toE.y = 0f;
+                    clash = toE.magnitude <= ClashRange && (toE.sqrMagnitude < 0.01f || Vector3.Angle(transform.forward, toE) <= ClashHalfAngle);
+                }
+                if (parry || clash)
+                {
+                    Deflected(parry, srcDir, chestPos, by);
+                    return;
+                }
+            }
+
+            LastDamageSource = source;
+            LastHurtTime = Time.time;
             bool blocked = false;
 
-            if (IsBlocking && Vector3.Angle(transform.forward, srcDir) < 75f)
+            if (IsBlocking && facing)
             {
                 // the shield costs no stamina any more: a frontal blow is always blocked
                 blocked = true;
                 damage *= 1f - progress.BlockReduction;
                 Sfx.I.Play(Snd.Clash);
-                Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
+                if (heavy) { HeavyBlockCount++; Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "HEAVY", new Color(0.78f, 0.28f, 0.23f), 28); }
+                else Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
                 Fx.I.Burst(chestPos + srcDir * 0.6f, 12, new Color(1f, 0.92f, 0.6f), 3f, 8f, srcDir + Vector3.up * 0.4f, 0.7f, 0.25f, 5f, 0.1f);
             }
 
@@ -1505,6 +1561,35 @@ namespace MedievalKnight
                 StopAllCoroutines();
                 StartCoroutine(DownRoutine());
             }
+        }
+
+        // A parry or a clash: feedback here, then the host is told so the monster flies back / is stunned.
+        void Deflected(bool parry, Vector3 srcDir, Vector3 chestPos, Enemy by)
+        {
+            Vector3 mid = Vector3.Lerp(chestPos, by.Center, 0.5f);
+            if (parry)
+            {
+                ParryCount++;
+                Sfx.I.Play(Snd.Clash, 1f, 1.35f);
+                Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "PARRY!", new Color(0.81f, 0.91f, 1f), 32);
+                Fx.I.Burst(mid, 18, new Color(0.81f, 0.91f, 1f), 3f, 9f, srcDir + Vector3.up * 0.4f, 0.9f, 0.3f, 4f, 0.1f);
+                Fx.I.Ring(new Vector3(mid.x, 0.1f, mid.z), 0.3f, 1.8f, new Color(0.81f, 0.91f, 1f, 0.9f), 0.25f);
+                Game.I.Shake(0.16f, 0.12f);
+                Game.I.HitStop(0.10f);
+            }
+            else
+            {
+                ClashCount++;
+                clashTo = 0f;                                                        // one clash per swing
+                knockVel = -srcDir * 10f;                                            // thrown back a little; the swing carries on
+                Sfx.I.Play(Snd.Clash, 1f, 0.9f);
+                Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "CLASH", Color.white, 28);
+                Fx.I.Burst(mid, 14, new Color(0.96f, 0.76f, 0.35f), 3f, 9f, Vector3.up, 0.9f, 0.3f, 4f, 0.1f);
+                Fx.I.Ring(new Vector3(mid.x, 0.1f, mid.z), 0.3f, 1.2f, new Color(0.96f, 0.76f, 0.35f, 0.9f), 0.25f);
+                Game.I.Shake(0.12f, 0.15f);
+                Game.I.HitStop(0.08f);
+            }
+            Game.I.ReportDeflect(this, by, parry);
         }
 
         public string LastDamageSource { get; private set; }

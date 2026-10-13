@@ -731,6 +731,9 @@ namespace MedievalKnight
 
             yield return Phase6Clicks(d);
             yield return Phase6Charge(d);
+            yield return Phase7(d);
+            k.transform.position = new Vector3(2f, 0f, -5f);
+            k.aimOverride = d.transform.position;
 
             // ------------------------------------------------ sword drop, pickup, inventory panel, the six swords
             {
@@ -1703,6 +1706,236 @@ namespace MedievalKnight
                 Check("number colour on the dummy: plain blow 0, Heavy Strike 2, crit Heavy Strike 4, armor-soaked 1", plain == 0 && heavy == 2 && heavyCrit == 4 && soaked == 1);
                 d.ResetAll();
             }
+
+            yield return Phase7Clash(d);
+        }
+
+        static void ShieldUp() { SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, true); }
+        static void ShieldDown() { SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, false); }
+
+        // A harmless light slime in town (it chases nobody there and only hops 1.2 m); the knight faces it from 2.5 m.
+        Slime P7Slime(int kind, Vector3 dirFromKnight)
+        {
+            Slime s = Slime.Spawn(kind, k.transform.position + dirFromKnight.normalized * 2.5f, g.transform);
+            return s;
+        }
+
+        // parry / clash / heavy / block against a debug strike (no monster AI involved).
+        IEnumerator Phase7Clash(Dummy d)
+        {
+            g.packsOff = true;
+            k.moveOverride = null;
+            Vector3 home = new Vector3(2f, 0f, -5f);
+            Vector3 north = new Vector3(0f, 0f, 1f);
+            Heal(); d.ResetAll();
+            ShieldDown();
+            yield return W(0.8f);
+            k.transform.position = home;
+            k.aimOverride = home + north * 10f;                     // he faces +Z; the slimes stand in front (+Z) or behind (-Z)
+            yield return W(0.4f);
+
+            // 1) parry: shield up 0.05 s ago, a light blow from the front
+            {
+                Slime s = P7Slime(0, north);
+                yield return W(0.4f);
+                Vector3 at0 = s.transform.position;
+                Heal();
+                float hp0 = k.hp, ar0 = k.armor; int par0 = k.ParryCount, cl0 = Snds(Snd.Clash);
+                ShieldUp();
+                yield return W(0.05f);
+                Check("shield is up and its parry window is open 0.05 s after the press", k.IsBlocking && k.ParryOpen);
+                g.DebugStrike(s, k, false);
+                bool stunnedNow = s.Stunned;
+                yield return W(0.6f);
+                float away = (s.transform.position - at0).magnitude;
+                Log("parry: hp " + F(hp0) + " -> " + F(k.hp) + ", armor " + F(ar0) + " -> " + F(k.armor) + ", parries +" + (k.ParryCount - par0) + ", slime stunned=" + stunnedNow + ", flew " + F(away) + " m, clash sounds +" + (Snds(Snd.Clash) - cl0));
+                Check("parry (shield up <= 0.2 s before a light blow): no damage, parry counted, the slime is stunned and flies back >= 2.5 m, one Clash sound",
+                    k.hp == hp0 && k.armor == ar0 && k.ParryCount == par0 + 1 && stunnedNow && s.DeflectCount == 1 && away >= 2.5f && Snds(Snd.Clash) - cl0 == 1);
+                ShieldDown();
+                Destroy(s.gameObject);
+            }
+
+            // 2) late press = a normal block (80% off)
+            {
+                yield return W(0.8f);
+                Slime s = P7Slime(0, north);
+                yield return W(0.2f);
+                Heal();
+                float hp0 = k.hp, ar0 = k.armor; int par0 = k.ParryCount;
+                ShieldUp();
+                yield return W(0.35f);
+                g.DebugStrike(s, k, false);
+                Log("late block: armor " + F(ar0) + " -> " + F(k.armor) + ", parries +" + (k.ParryCount - par0));
+                Check("a blow 0.35 s after the press is a normal block: armor -4 (20 x 0.2), no parry", k.hp == hp0 && Mathf.Abs(ar0 - k.armor - 4f) < 0.01f && k.ParryCount == par0 && !k.ParryOpen);
+                ShieldDown();
+                Destroy(s.gameObject);
+            }
+
+            // 3) spam guard: a press within 0.5 s of the last has no parry window; after 0.7 s it does
+            {
+                yield return W(0.8f);
+                Slime s = P7Slime(0, north);
+                yield return W(0.2f);
+                Heal();
+                ShieldUp(); yield return W(0.1f);
+                ShieldDown(); yield return W(0.1f);
+                float ar0 = k.armor; int par0 = k.ParryCount;
+                ShieldUp(); yield return W(0.05f);
+                g.DebugStrike(s, k, false);
+                Check("shield pressed again within 0.5 s: a normal block, no parry", Mathf.Abs(ar0 - k.armor - 4f) < 0.01f && k.ParryCount == par0);
+                ShieldDown();
+                yield return W(0.8f);
+                Heal();
+                float ar1 = k.armor;
+                ShieldUp(); yield return W(0.05f);
+                g.DebugStrike(s, k, false);
+                Check("after waiting 0.7 s the next press parries again", k.armor == ar1 && k.ParryCount == par0 + 1);
+                ShieldDown();
+                Destroy(s.gameObject);
+            }
+
+            // 4) heavy blow in the window: a normal block + HEAVY, no parry
+            {
+                yield return W(0.8f);
+                Slime s = P7Slime(2, north);                           // red slime = heavy
+                yield return W(0.2f);
+                Heal();
+                float ar0 = k.armor; int par0 = k.ParryCount, hb0 = k.HeavyBlockCount;
+                ShieldUp(); yield return W(0.05f);
+                g.DebugStrike(s, k, true);
+                Log("heavy in window: armor " + F(ar0) + " -> " + F(k.armor) + ", heavy blocks +" + (k.HeavyBlockCount - hb0));
+                Check("a heavy blow cannot be parried: normal block (armor -4) and HeavyBlockCount +1", Mathf.Abs(ar0 - k.armor - 4f) < 0.01f && k.ParryCount == par0 && k.HeavyBlockCount == hb0 + 1 && s.DeflectCount == 0);
+                ShieldDown();
+                Destroy(s.gameObject);
+            }
+
+            // 5) clash: his light swing is in its strike window and the slime is in front
+            {
+                yield return W(0.8f);
+                Slime s = P7Slime(0, north);
+                yield return W(0.2f);
+                Heal();
+                float hp0 = k.hp, ar0 = k.armor; int cl0 = k.ClashCount;
+                k.DebugAttack(0);
+                float tw = Time.realtimeSinceStartup;
+                while (!k.ClashOpen && Time.realtimeSinceStartup - tw < 1f) yield return null;
+                bool open = k.ClashOpen;
+                g.DebugStrike(s, k, false);
+                yield return null;
+                bool stillSwinging = k.IsAttacking;
+                Log("clash: window open=" + open + ", hp " + F(hp0) + " -> " + F(k.hp) + ", armor " + F(ar0) + " -> " + F(k.armor) + ", clashes +" + (k.ClashCount - cl0) + ", still swinging=" + stillSwinging + ", slime deflects " + s.DeflectCount);
+                Check("clash (light swing meets a light blow from the front): nobody is hurt, clash counted, the swing is not cut off, the slime is thrown back",
+                    open && k.hp == hp0 && k.armor == ar0 && k.ClashCount == cl0 + 1 && stillSwinging && s.DeflectCount == 1);
+                yield return WaitIdle(2f);
+                Destroy(s.gameObject);
+            }
+
+            // 6) no clash: slime behind him / Heavy Strike / outside the window / not a monster blow (by = null)
+            {
+                yield return W(0.8f);
+                Slime s = P7Slime(0, -north);
+                yield return W(0.2f);
+                Heal();
+                float ar0 = k.armor; int cl0 = k.ClashCount;
+                k.DebugAttack(0);
+                float tw = Time.realtimeSinceStartup;
+                while (!k.ClashOpen && Time.realtimeSinceStartup - tw < 1f) yield return null;
+                g.DebugStrike(s, k, false);
+                Check("no clash when the slime is behind him: the blow lands (armor -20)", Mathf.Abs(ar0 - k.armor - 20f) < 0.01f && k.ClashCount == cl0);
+                yield return WaitIdle(2f);
+                Destroy(s.gameObject);
+
+                yield return W(0.8f);
+                s = P7Slime(0, north);
+                yield return W(0.2f);
+                Heal();
+                ar0 = k.armor;
+                k.DebugMove(Knight.HeavyIndex, 1);
+                yield return W(0.1f);
+                g.DebugStrike(s, k, false);
+                Check("a Heavy Strike never clashes: the blow lands (armor -20)", Mathf.Abs(ar0 - k.armor - 20f) < 0.01f && k.ClashCount == cl0 && !k.ClashOpen);
+                yield return WaitIdle(3f);
+                yield return W(0.5f);
+                if (s != null) Destroy(s.gameObject);                     // the Heavy Strike may have killed it
+                s = P7Slime(0, north);
+                yield return W(0.2f);
+
+                Heal();
+                ar0 = k.armor;
+                g.DebugStrike(s, k, false);
+                Check("outside the swing window the blow lands (armor -20)", Mathf.Abs(ar0 - k.armor - 20f) < 0.01f && k.ClashCount == cl0);
+
+                Heal();
+                ar0 = k.armor;
+                k.DebugAttack(0);
+                tw = Time.realtimeSinceStartup;
+                while (!k.ClashOpen && Time.realtimeSinceStartup - tw < 1f) yield return null;
+                k.TakeDamage(20f, s.transform.position, "selftest");
+                Check("a blow without a monster behind it (test button H, old tests) never clashes", Mathf.Abs(ar0 - k.armor - 20f) < 0.01f && k.ClashCount == cl0);
+                yield return WaitIdle(2f);
+                Destroy(s.gameObject);
+            }
+
+            // 7) dash in the window = DODGE, not a parry
+            {
+                yield return W(1.0f);
+                Slime s = P7Slime(0, north);
+                yield return W(0.2f);
+                Heal();
+                float hp0 = k.hp, ar0 = k.armor; int par0 = k.ParryCount, dg0 = k.DodgeCount;
+                ShieldUp(); yield return W(0.05f);
+                yield return Tap(Key.Space);
+                g.DebugStrike(s, k, false);
+                Check("dash inside the parry window is a DODGE (no damage, no parry)", k.hp == hp0 && k.armor == ar0 && k.ParryCount == par0 && k.DodgeCount == dg0 + 1);
+                ShieldDown();
+                Destroy(s.gameObject);
+                yield return W(0.8f);
+            }
+
+            // 8) the Minotaur: parry = stun 0.5 s; clash = Recover 0.5 s without a stun
+            {
+                Heal();
+                k.transform.position = home;
+                Minotaur m = Minotaur.Spawn(home + north * 5.0f, g.transform);
+                m.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+                yield return W(0.1f);
+                float hp0 = k.hp, ar0 = k.armor; int par0 = k.ParryCount;
+                ShieldUp(); yield return W(0.05f);
+                m.DebugState(Minotaur.S.SweepStrike);
+                g.DebugStrike(m, k, false, 26f);
+                bool stunned = m.Stunned;
+                yield return W(0.3f);
+                bool stillStunned = m.Stunned;
+                yield return W(0.4f);
+                bool over = !m.Stunned;
+                Log("minotaur parry: stunned=" + stunned + " at 0.3 s=" + stillStunned + " at 0.7 s=" + !over + ", state " + m.State);
+                Check("parrying the Minotaur's Sweep stuns him about 0.5 s (still stunned at 0.3 s, free by 0.7 s)", k.ParryCount == par0 + 1 && k.hp == hp0 && k.armor == ar0 && stunned && stillStunned && over);
+                ShieldDown();
+                Destroy(m.gameObject);
+
+                yield return W(0.8f);
+                Heal();
+                m = Minotaur.Spawn(home + north * 5.0f, g.transform);
+                m.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+                yield return W(0.1f);
+                int cl0 = k.ClashCount;
+                k.DebugAttack(0);
+                float tw = Time.realtimeSinceStartup;
+                while (!k.ClashOpen && Time.realtimeSinceStartup - tw < 1f) yield return null;
+                m.DebugState(Minotaur.S.SweepStrike);
+                hp0 = k.hp; ar0 = k.armor;
+                g.DebugStrike(m, k, false, 26f);
+                Log("minotaur clash: state " + m.State + ", stunned=" + m.Stunned + ", clashes +" + (k.ClashCount - cl0));
+                Check("a clash with the Minotaur's Sweep cuts it short into Recover without a stun", k.ClashCount == cl0 + 1 && k.hp == hp0 && k.armor == ar0 && m.State == Minotaur.S.Recover && !m.Stunned);
+                yield return WaitIdle(2f);
+                Destroy(m.gameObject);
+            }
+
+            ShieldDown();
+            Heal(); d.ResetAll();
+            k.transform.position = home;
+            k.aimOverride = d.transform.position;
+            yield return W(0.5f);
         }
 
         bool holdSawCharging, holdSawFull;

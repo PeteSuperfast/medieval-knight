@@ -921,7 +921,8 @@ namespace MedievalKnight
                     int by = r.U8();
                     float hp = r.F32(), armor = r.F32();
                     Enemy e = Enemy.Find(id);
-                    if (e != null) e.NetHit(damage, toArmor, toHp, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, away, by != LocalPid, hp, armor, (flags & 8) != 0);
+                    if (e != null && (flags & 48) != 0) e.NetDeflect((flags & 16) != 0, away, by != LocalPid, hp, armor);          // phase 7: parry 16 / clash 32
+                    else if (e != null) e.NetHit(damage, toArmor, toHp, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, away, by != LocalPid, hp, armor, (flags & 8) != 0);
                     break;
                 }
 
@@ -1008,13 +1009,19 @@ namespace MedievalKnight
             ToServer(new NetW(Msg.Hit).U16(e.netId).F32(damage).F32(pierce).U8(crit ? 1 : 0).F32(knock).F32(stun).Vec(origin).U8(src < 0 ? 255 : src).Done());
         }
 
-        public static void BroadcastEnemyHit(Enemy e, float damage, float toArmor, float toHp, bool crit, bool stun, bool killed, Vector3 away, int byPid, bool heavy = false)
+        public static void BroadcastEnemyHit(Enemy e, float damage, float toArmor, float toHp, bool crit, bool stun, bool killed, Vector3 away, int byPid, bool heavy = false, int deflect = 0)
         {
             if (!IsHost) return;
             ToAll(new NetW(Msg.EnemyHit).U16(e.netId).F32(damage).F32(toArmor).F32(toHp)
-                .U8((crit ? 1 : 0) | (stun ? 2 : 0) | (killed ? 4 : 0) | (heavy ? 8 : 0))
+                .U8((crit ? 1 : 0) | (stun ? 2 : 0) | (killed ? 4 : 0) | (heavy ? 8 : 0) | deflect)
                 .U8(Mathf.RoundToInt(Mathf.Clamp(away.x, -1f, 1f) * 127f) & 0xFF).U8(Mathf.RoundToInt(Mathf.Clamp(away.z, -1f, 1f) * 127f) & 0xFF)
                 .U8(byPid).F32(e.hp).F32(e.armor).Done(), null);
+        }
+
+        // Host: a parry (EnemyHit flag 16) or clash (32) happened to this enemy. No damage: everyone shows the fx and sees the stun.
+        public static void BroadcastDeflect(Enemy e, bool parry, Vector3 away, int byPid)
+        {
+            BroadcastEnemyHit(e, 0f, 0f, 0f, false, parry, false, away, byPid, false, parry ? 16 : 32);
         }
 
         public static void SendKnightHit(int pid, float damage, Vector3 from, string source, float knockback)

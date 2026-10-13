@@ -162,6 +162,18 @@ namespace MedievalKnight
             if (!puppet && State == S.Idle) Begin(S.Chase);
         }
 
+        public void DebugState(S s) { if (!Dead && !puppet) Begin(s); }              // test hook
+
+        // Parry: stun 1.0 x stunResist 0.5 = 0.5 s (he is too heavy to fly back: knockResist). Clash: no stun, the sweep is cut short -> Recover 0.5 s.
+        protected override float DeflectStun(bool parry) { return parry ? 1.0f : 0f; }
+
+        public override void Deflect(bool parry, Vector3 from, Knight by)
+        {
+            if (Dead || puppet) return;
+            base.Deflect(parry, from, by);
+            if (!parry && (State == S.SweepTele || State == S.SweepStrike)) Recover(0.5f);
+        }
+
         // ---------------------------------------------------------------- online
 
         public override int NetType { get { return 3; } }
@@ -380,7 +392,7 @@ namespace MedievalKnight
                             Vector3 toP = p.Pos - transform.position; toP.y = 0f;
                             float dp = toP.magnitude;
                             if (dp < SweepRange + 0.4f && (dp < 1.6f || Vector3.Angle(transform.forward, toP) < SweepHalfArc))
-                                Game.I.DamageKnight(p, SweepDamage * dmgScale, transform.position, "Axe Sweep", 9f);
+                                Game.I.DamageKnight(p, SweepDamage * dmgScale, transform.position, "Axe Sweep", 9f, this, false);
                         }
                     }
                     if (sim && t >= 1f) Recover(0.75f);
@@ -410,7 +422,7 @@ namespace MedievalKnight
                         {
                             Knight p = ps[i];
                             if (!p.Dead && !p.Airborne && FlatDist(p.Pos, smashPoint) < SmashRadius + 0.35f)
-                                Game.I.DamageKnight(p, SmashDamage * dmgScale, smashPoint, "Axe Smash", 7f);
+                                Game.I.DamageKnight(p, SmashDamage * dmgScale, smashPoint, "Axe Smash", 7f, this, true);
                         }
                         Recover(1.0f);
                         axePitch = 38f;
@@ -449,7 +461,7 @@ namespace MedievalKnight
                         int bit = 1 << (p.pid & 31);
                         if ((chargeMask & bit) != 0 || p.Dead || p.Airborne || FlatDist(before, p.Pos) >= radius + 1.0f) continue;
                         chargeMask |= bit;
-                        Game.I.DamageKnight(p, ChargeDamage * dmgScale, transform.position - chargeDir, "Charge", 15f);
+                        Game.I.DamageKnight(p, ChargeDamage * dmgScale, transform.position - chargeDir, "Charge", 15f, this, true);
                         Game.I.Shake(0.35f, 0.3f);
                     }
                     if (t >= LaneLength / 15f || wall)

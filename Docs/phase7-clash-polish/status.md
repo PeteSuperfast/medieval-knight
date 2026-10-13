@@ -43,3 +43,4 @@
 
 ## Developer 2026-10-14
 - ขั้น 1 เสร็จ: เลขสี (`Enemy.NumberStyle`, `lastNumberKind`, heavy ใน `TakeHit`/`HitEnemy`/`ClientHit`, `EnemyHit` บิต 8); build ผ่าน; `-p7only` ผ่าน (ยังไม่ bump protocol)
+- ขั้น 2 เสร็จ: parry/clash โลคัล (`Knight.TakeDamage(by, heavy)`, หน้าต่าง parry 0.2 วิ + กันสแปม 0.5 วิ, โล่แฟลช, `Enemy.Deflect`, `Minotaur.Deflect`, `Game.DebugStrike`); `-p7only` ผ่านทุกเคส (ส่ง by/heavy จาก Slime/Minotaur ทำไปในขั้นนี้ด้วย เพราะเทสต์ต้องใช้)

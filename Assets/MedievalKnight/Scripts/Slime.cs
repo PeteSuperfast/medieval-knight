@@ -223,7 +223,7 @@ namespace MedievalKnight
                                 Knight kn = ps[i];
                                 if (kn.Dead || kn.Airborne || FlatDist(transform.position, kn.Pos) >= radius + 0.6f) continue;
                                 hitDone = true;
-                                Game.I.DamageKnight(kn, damage, transform.position, label);
+                                Game.I.DamageKnight(kn, damage, transform.position, label, 6f, this, kind == 2);   // the red slime is a heavy blow (no clash / parry)
                             }
                         }
                         if (stateT >= 1f)
