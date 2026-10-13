@@ -32,6 +32,8 @@ namespace MedievalKnight
         Vector3 hopFrom, hopTo, squash = Vector3.one;
         bool hitDone;
         Color color;
+        Transform warnDecal;                      // red slime only: the ring that shrinks while it squashes (phase 7)
+        bool warned;
 
         public static Slime Spawn(int kind, Vector3 pos, Transform parent)
         {
@@ -85,8 +87,39 @@ namespace MedievalKnight
 
         protected override Color SparkColor(bool flesh) { return flesh ? Color.Lerp(color, Color.white, 0.25f) : new Color(0.7f, 0.85f, 1f); }
 
+        void OnDestroy() { if (warnDecal != null) Destroy(warnDecal.gameObject); }
+        public override bool HeavyWarn { get { return warned; } }
+
+        // Phase 7: the red slime's heavy blow is announced: a red ring shrinking to the body, a red glow and one "!" when the squash starts.
+        // Every machine shows it (the puppet's state comes from the host).
+        void Warn(bool on, float k)
+        {
+            if (kind != 2) return;
+            if (!on)
+            {
+                warned = false; glowAmt = 0f;
+                if (warnDecal != null && warnDecal.gameObject.activeSelf) warnDecal.gameObject.SetActive(false);
+                return;
+            }
+            if (warnDecal == null) warnDecal = Fx.I.MakeDecal(Prims.Arc(0f, 1f, 0f, 360f), "SlimeWarnMarker");
+            if (!warned)
+            {
+                warned = true;
+                Game.I.hud.Popup(Center + Vector3.up * height * 0.8f, "!", new Color(0.78f, 0.28f, 0.23f), 28);
+            }
+            float r = Mathf.Lerp(2.2f, 0.9f, Mathf.Clamp01(k));
+            warnDecal.gameObject.SetActive(true);
+            warnDecal.position = new Vector3(transform.position.x, 0.04f, transform.position.z);
+            warnDecal.localScale = new Vector3(r, 1f, r);
+            float blink = Mathf.Sin(Time.time * Mathf.PI * 8f) > 0f ? 1f : 0.7f;      // 4 Hz
+            Fx.I.SetDecal(warnDecal, new Color(0.78f, 0.28f, 0.23f, (0.35f + 0.45f * Mathf.Clamp01(k)) * blink));
+            glowColor = new Color(1f, 0.35f, 0.24f);
+            glowAmt = 0.15f + 0.35f * Mathf.Clamp01(k);
+        }
+
         protected override void OnDeath(Vector3 away)
         {
+            Warn(false, 0f);
             Fx.I.Burst(Center, 18 + kind * 8, color, 2f, 7f, away + Vector3.up, 0.9f, 0.6f, 10f, 0.2f * size);
             Fx.I.Disc(new Vector3(transform.position.x, 0.05f, transform.position.z), radius, radius * 2.4f, new Color(color.r, color.g, color.b, 0.55f), 0.5f);
         }
@@ -121,7 +154,7 @@ namespace MedievalKnight
                 float br = Mathf.Sin(Time.time * 4f + size * 7f) * 0.05f;
                 target = new Vector3(1f + br, 1f - br, 1f + br);
             }
-            else if (state == St.Squash) target = new Vector3(1.3f, 0.6f, 1.3f);
+            else if (state == St.Squash) { stateT += dt / 0.28f; target = new Vector3(1.3f, 0.6f, 1.3f); }
             else if (state == St.Hop)
             {
                 stateT += dt / 0.42f;
@@ -131,6 +164,7 @@ namespace MedievalKnight
             else target = new Vector3(1.35f, 0.55f, 1.35f);
 
             squash = Vector3.Lerp(squash, target, 1f - Mathf.Exp(-22f * dt));
+            Warn(state == St.Squash && !Stunned, stateT);
             rig.localScale = squash * size;
             rig.localPosition = new Vector3(0f, y, 0f);
         }
@@ -241,6 +275,7 @@ namespace MedievalKnight
                 }
             }
 
+            Warn(state == St.Squash && !Stunned, stateT);
             squash = Vector3.Lerp(squash, target, 1f - Mathf.Exp(-22f * dt));
             rig.localScale = squash * size;
             rig.localPosition = new Vector3(0f, y, 0f);

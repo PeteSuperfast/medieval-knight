@@ -29,6 +29,8 @@ namespace MedievalKnight
 
         protected Transform rig;
         protected Tint tint;
+        protected Color glowColor = new Color(0.78f, 0.28f, 0.23f);   // phase 7: warning glow of a heavy blow (set by the subclass every frame)
+        protected float glowAmt;
         protected float flash, stunUntil;
         protected Vector3 knock;
         protected float knockResist = 1f, stunResist = 1f;
@@ -163,6 +165,7 @@ namespace MedievalKnight
         // Phase 7: a knight parried (parry) or clashed with (!parry) this enemy's blow. Where the world is simulated only:
         // it flies back (3-4 m, scaled by knockResist) and is stunned (parry 0.6 s / clash 0.3 s, scaled by stunResist).
         public int DeflectCount;                     // test counter
+        public virtual bool HeavyWarn { get { return false; } }        // a heavy blow is being announced right now (test / read-out)
         protected virtual float DeflectStun(bool parry) { return parry ? 0.6f : 0.3f; }
 
         public virtual void Deflect(bool parry, Vector3 from, Knight by)
@@ -260,7 +263,11 @@ namespace MedievalKnight
         protected void BaseTick(float dt)
         {
             flash = Mathf.Max(0f, flash - dt / 0.18f);
-            if (tint != null) tint.Set(Color.white, flash * 0.85f);
+            if (tint != null)
+            {
+                float fa = flash * 0.85f;                      // the hit flash wins while it is brighter than the warning glow
+                if (glowAmt > fa) tint.Set(glowColor, glowAmt); else tint.Set(Color.white, fa);
+            }
 
             if (knock.sqrMagnitude > 0.0001f)
             {

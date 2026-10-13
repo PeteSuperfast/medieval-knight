@@ -21,6 +21,7 @@ namespace MedievalKnight
 
         Transform body, head, legL, legR, armL, axePivot;
         Transform decalSector, decalDisc, decalLane;
+        Tint axeTint, headTint;             // phase 7: the axe (Smash) and the horns (Charge) glow red while a heavy blow is announced
         float t, atkCd = 0.6f, chargeCd = 3f, walkPhase, axeYaw = 25f, axePitch = -40f, lean = 12f, deathT, dmgScale;
         Vector3 chargeDir, smashPoint;
         bool hitDone, roared;
@@ -47,6 +48,8 @@ namespace MedievalKnight
             Build();
             tint = new Tint(rig);
             BuildBar(2.4f);
+            axeTint = new Tint(axePivot);
+            headTint = new Tint(head);
 
             decalSector = Fx.I.MakeDecal(Prims.Arc(0.9f, SweepRange, -SweepHalfArc, SweepHalfArc), "SweepMarker");
             decalDisc = Fx.I.MakeDecal(Prims.Arc(0f, 1f, 0f, 360f), "SmashMarker");
@@ -162,6 +165,7 @@ namespace MedievalKnight
             if (!puppet && State == S.Idle) Begin(S.Chase);
         }
 
+        public override bool HeavyWarn { get { return (State == S.SmashTele || State == S.ChargeTele) && !Stunned; } }
         public void DebugState(S s) { if (!Dead && !puppet) Begin(s); }              // test hook
 
         // Parry: stun 1.0 x stunResist 0.5 = 0.5 s (he is too heavy to fly back: knockResist). Clash: no stun, the sweep is cut short -> Recover 0.5 s.
@@ -265,6 +269,8 @@ namespace MedievalKnight
         void Begin(S s)
         {
             State = s;
+            if (s == S.SmashTele || s == S.ChargeTele)                    // heavy blow announced: one red "!" (every machine: a puppet comes through here too)
+                Game.I.hud.Popup(Center + Vector3.up * (height * 0.5f), "!", new Color(0.78f, 0.28f, 0.23f), 28);
             t = 0f;
             hitDone = false;
             chargeMask = 0;
@@ -277,14 +283,21 @@ namespace MedievalKnight
             t = seconds;
         }
 
-        void ShowDecal(Transform d, Vector3 pos, float yaw, Vector3 scale, float k)
+        // heavy = false: the light Sweep, gold (can be parried); true: Smash / Charge, red, blinking 4 Hz and stronger (cannot be parried)
+        void ShowDecal(Transform d, Vector3 pos, float yaw, Vector3 scale, float k, bool heavy)
         {
             d.gameObject.SetActive(true);
             d.position = new Vector3(pos.x, 0.04f, pos.z);
             d.rotation = Quaternion.Euler(0f, yaw, 0f);
             d.localScale = scale;
+            if (heavy)
+            {
+                float blink = Mathf.Sin(Time.time * Mathf.PI * 8f) > 0f ? 1f : 0.75f;
+                Fx.I.SetDecal(d, new Color(0.78f, 0.28f, 0.23f, Mathf.Lerp(0.5f, 0.85f, k) * blink));
+                return;
+            }
             float a = 0.3f + 0.4f * k + 0.1f * Mathf.Sin(Time.time * 22f) * k;
-            Fx.I.SetDecal(d, new Color(1f, 0.05f + 0.25f * (1f - k), 0.03f, a));
+            Fx.I.SetDecal(d, new Color(0.96f, 0.76f, 0.35f, a));
         }
 
         // ---------------------------------------------------------------- AI
@@ -302,6 +315,10 @@ namespace MedievalKnight
                 return;
             }
             BaseTick(dt);
+            bool warnSmash = State == S.SmashTele && !Stunned, warnCharge = State == S.ChargeTele && !Stunned;
+            float warnK = Mathf.Clamp01(t);
+            axeTint.Set(new Color(1f, 0.35f, 0.24f), warnSmash ? 0.25f + 0.5f * warnK : 0f);
+            headTint.Set(new Color(1f, 0.35f, 0.24f), warnCharge ? 0.25f + 0.5f * warnK : 0f);
 
             // sim = the AI runs here (single player / host). A client's puppet only poses: its State, t and position
             // come from the host, and nothing below may start a state or hurt anybody.
@@ -368,7 +385,7 @@ namespace MedievalKnight
                     t += dt / 0.75f;
                     if (sim) TurnTowards(toK, 80f, dt);
                     yawT = 125f; pitchT = -8f; leanT = 4f; poseRate = 12f;
-                    ShowDecal(decalSector, transform.position, transform.eulerAngles.y, Vector3.one, Mathf.Clamp01(t));
+                    ShowDecal(decalSector, transform.position, transform.eulerAngles.y, Vector3.one, Mathf.Clamp01(t), false);
                     if (sim && t >= 1f)
                     {
                         Begin(S.SweepStrike);
@@ -406,7 +423,7 @@ namespace MedievalKnight
                         smashPoint = transform.position + transform.forward * 3.1f + transform.right * 0.7f;
                     }
                     yawT = 0f; pitchT = -125f; leanT = -6f; poseRate = 10f;
-                    ShowDecal(decalDisc, smashPoint, 0f, new Vector3(SmashRadius, 1f, SmashRadius), Mathf.Clamp01(t));
+                    ShowDecal(decalDisc, smashPoint, 0f, new Vector3(SmashRadius, 1f, SmashRadius), Mathf.Clamp01(t), true);
                     if (sim && t >= 1f) Begin(S.SmashStrike);
                     break;
 
@@ -435,7 +452,7 @@ namespace MedievalKnight
                     chargeDir = transform.forward;
                     yawT = 12f; pitchT = -80f; leanT = -10f + 40f * Mathf.Clamp01(t);
                     walking = true;                                    // paws the ground
-                    ShowDecal(decalLane, transform.position, transform.eulerAngles.y, new Vector3(LaneWidth, 1f, LaneLength), Mathf.Clamp01(t));
+                    ShowDecal(decalLane, transform.position, transform.eulerAngles.y, new Vector3(LaneWidth, 1f, LaneLength), Mathf.Clamp01(t), true);
                     if (Random.value < dt * 14f) Fx.I.Dust(transform.position - transform.forward * 0.6f, 2, 1.2f);
                     if (sim && t >= 1f) Begin(S.Charging);
                     break;

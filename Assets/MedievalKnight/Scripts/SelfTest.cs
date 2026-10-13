@@ -1931,6 +1931,36 @@ namespace MedievalKnight
                 Destroy(m.gameObject);
             }
 
+            // 9) the warnings: a red slime announces its hop (ring + glow + "!"), a green one does not; Smash / Charge are announced, Sweep is not
+            {
+                Heal();
+                Slime red = Slime.Spawn(2, home + new Vector3(0f, 0f, 9f), g.transform);
+                Slime green = Slime.Spawn(0, home + new Vector3(3f, 0f, 9f), g.transform);
+                bool redSeen = false, greenSeen = false;
+                float tw = Time.realtimeSinceStartup;
+                while (Time.realtimeSinceStartup - tw < 4f && !redSeen)
+                {
+                    redSeen |= red.HeavyWarn;
+                    greenSeen |= green.HeavyWarn;
+                    yield return null;
+                }
+                Log("slime warnings: red announced=" + redSeen + ", green announced=" + greenSeen);
+                Check("a red slime announces its heavy hop (warning ring + glow) and a green slime never does", redSeen && !greenSeen);
+                Destroy(red.gameObject); Destroy(green.gameObject);
+
+                Minotaur m = Minotaur.Spawn(home + new Vector3(30f, 0f, 30f), g.transform);
+                yield return W(0.1f);
+                m.DebugState(Minotaur.S.SweepTele);
+                bool sweepW = m.HeavyWarn;
+                m.DebugState(Minotaur.S.SmashTele);
+                bool smashW = m.HeavyWarn;
+                m.DebugState(Minotaur.S.ChargeTele);
+                bool chargeW = m.HeavyWarn;
+                Log("minotaur warnings: sweep=" + sweepW + " smash=" + smashW + " charge=" + chargeW);
+                Check("Minotaur: Smash and Charge are announced as heavy blows, the Sweep is not", !sweepW && smashW && chargeW);
+                Destroy(m.gameObject);
+            }
+
             ShieldDown();
             Heal(); d.ResetAll();
             k.transform.position = home;
