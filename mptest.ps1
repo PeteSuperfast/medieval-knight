@@ -1,10 +1,13 @@
-# Multi-process co-op test on this PC only (127.0.0.1): 1 host + 3 clients, plus join attempts that must be refused.
-# Usage:  powershell -ExecutionPolicy Bypass -File mptest.ps1 [-Port 47811] [-Out mptest]
+# Multi-process co-op test of the v1 ARENA on this PC only (127.0.0.1): 1 host + 3 clients, plus join attempts that must be refused.
+# Since phase 4 Host / Join play the loop by default; this suite is the v1 arena, so every process gets -arena.
+# (The loop's own suite is mptest-loop.ps1.)
+# Usage:  powershell -ExecutionPolicy Bypass -File mptest.ps1 [-Port 47811] [-Out mptest] [-Arena]
+#         set MK_EXE=<path to MedievalKnight.exe> to test another build than Builds\MedievalKnight.exe
 # Results: <Out>\<role>\player.log  (lines "MPTEST PASS/FAIL ...") and screenshots in the same folders.
-param([int]$Port = 47811, [string]$Out = "mptest")
+param([int]$Port = 47811, [string]$Out = "mptest", [switch]$Arena)
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$exe = Join-Path $root "Builds\MedievalKnight.exe"
+$exe = if ($env:MK_EXE) { $env:MK_EXE } else { Join-Path $root "Builds\MedievalKnight.exe" }
 $outDir = Join-Path $root $Out
 if (Test-Path $outDir) { Remove-Item -Recurse -Force $outDir }
 New-Item -ItemType Directory -Force $outDir | Out-Null
@@ -12,11 +15,10 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 function Launch([string]$role, [string[]]$extra) {
     $dir = Join-Path $outDir $role
     New-Item -ItemType Directory -Force $dir | Out-Null
-    $a = @('-screen-width', '960', '-screen-height', '540', '-screen-fullscreen', '0', '-port', "$Port",
+    $a = @('-screen-width', '960', '-screen-height', '540', '-screen-fullscreen', '0', '-port', "$Port", '-arena',
            '-mptest', $dir, '-role', $role, '-logFile', (Join-Path $dir 'player.log')) + $extra
     Start-Process -FilePath $exe -ArgumentList $a -PassThru
 }
-
 $procs = @()
 $procs += Launch 'H' @('-host', '-bind', '127.0.0.1', '-name', 'Host', '-expect', '3', '-refusals')
 Start-Sleep -Seconds 3

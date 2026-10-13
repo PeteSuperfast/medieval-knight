@@ -43,8 +43,9 @@ namespace MedievalKnight
         public bool LevelUpOpen { get { return LevelStep != 0; } }
         public bool InventoryOpen { get; private set; }
         public bool InSession { get; private set; }                    // false while the start menu is up
-        public RunLoop run;                                            // Phase 1 base / world loop (single player from the menu only)
-        public bool Loop { get { return InSession && run != null && Net.Mode == NetMode.Single; } }
+        public RunLoop run;                                            // the base / world loop of this session (null = the v1 arena)
+        public bool Loop { get { return InSession && run != null; } }                  // a loop session (any mode)
+        public bool Coop { get { return Loop && Net.Multiplayer; } }                   // ... played online (host or client)
         public bool PanelOpen { get { return LevelStep != 0 || InventoryOpen || (Loop && run.SummaryOpen); } }
         // The panels freeze the game in single player only; online the world keeps running for everybody.
         public bool Paused { get { return PanelOpen && !Net.Multiplayer; } }
