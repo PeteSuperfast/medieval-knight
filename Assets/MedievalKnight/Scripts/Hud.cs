@@ -26,13 +26,6 @@ namespace MedievalKnight
             public Color color;
         }
 
-        class SlotUi
-        {
-            public Image bg, icon;
-            public RectTransform cool;
-            public Text key, name, cdText, cost;
-        }
-
         class CardUi
         {
             public RectTransform rt;
@@ -63,7 +56,7 @@ namespace MedievalKnight
         GameObject partyRoot;
         Image partyPanel, levelDim, invDim, invFrame;
         RawImage eqIcon;
-        Text eqName, eqStats, ownedText, charText, charStats, expValue, statHead, skillsText, soulKills, tabHint, tabCornerHint;
+        Text eqName, eqStats, ownedText, charText, charStats, expValue, statHead, soulKills, tabHint, tabCornerHint;
         RectTransform expFill;
         readonly RectTransform[] statFill = new RectTransform[3];
         readonly Text[] statNum = new Text[3], statEffect = new Text[3];
@@ -93,7 +86,6 @@ namespace MedievalKnight
         readonly Image[] staminaTicks = new Image[10];
         float lastStamina, tickFlashAt = -10f;
         int tickFlash = -1;
-        readonly SlotUi[] slots = new SlotUi[4];
         readonly CardUi[] cards = new CardUi[3];
         readonly RowUi[] rows = new RowUi[Weapons.All.Length];
         bool showControls = true;
@@ -114,11 +106,6 @@ namespace MedievalKnight
 
         static readonly Color PanelCol = new Color(0f, 0f, 0f, 0.45f);
         static readonly Color FrameCol = new Color(0.06f, 0.06f, 0.08f, 0.95f);
-
-        public static Color StatColor(StatKind s)
-        {
-            return s == StatKind.Damage ? new Color(1f, 0.42f, 0.32f) : s == StatKind.Speed ? new Color(1f, 0.86f, 0.3f) : new Color(0.8f, 0.55f, 1f);
-        }
 
         // same colours as the three bars
         public static Color AttrColor(Attr a)
@@ -244,22 +231,18 @@ namespace MedievalKnight
                 "CONTROLS   (F1 hides this)\n"
                 + "WASD / Arrows    Move\n"
                 + "Mouse    Aim - the knight faces the cursor\n"
-                + "Left Click / J    Sword combo\n"
-                + "     Side > Chop > Rising > Spin > Thrust\n"
+                + "Left Click / J    Swing (clicks chain)\n"
+                + "     Diagonal > Sweep > Thrust\n"
                 + "Left Shift (hold)    Run\n"
-                + "Space    Dash - dodge, 0.5 s untouchable (25 stamina)\n"
-                + "Right Click (hold)    Shield block\n"
-                + "Q  Whirlwind          E  Dash Thrust\n"
-                + "R  Shield Bash        F  Ground Slam\n"
-                + "1 / 2 / 3 or Click    Level-up card, then stat point\n"
+                + "Space    Roll - dodge, 0.5 s untouchable (25 stamina)\n"
+                + "Right Click (hold)    Shield block / parry\n"
+                + "F (hold)    Revive a downed friend\n"
+                + "1 / 2 / 3 or Click    Level-up: spend the stat point\n"
                 + "Tab  Inventory + stats (1 - 5 / Click equips)\n"
                 + "Walk over a dropped sword to take it\n"
                 + "M  Map   F2  Sound   Scroll  Camera\n"
                 + "H  Test hit   F5  Restart (online: host)   Esc  Menu";
             controlsV1 = controlsText.text;
-
-            // --- skill bar, bottom-centre ---
-            for (int i = 0; i < 4; i++) slots[i] = MakeSlot(i);
 
             BuildLevelPanel();
             BuildInventoryPanel();
@@ -353,32 +336,6 @@ namespace MedievalKnight
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
-        }
-
-        SlotUi MakeSlot(int i)
-        {
-            SkillDef sk = Knight.Skills[i];
-            var s = new SlotUi();
-            float x = (i - 1.5f) * 104f;
-            s.bg = Panel("Slot" + sk.key, new Vector2(0.5f, 0), new Vector2(x, 16), new Vector2(96, 96), FrameCol);
-            Transform p = s.bg.transform;
-            s.icon = Panel("Icon", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(88, 88), sk.color * 0.55f, p);
-            s.cool = Panel("Cooldown", Vector2.zero, Vector2.zero, Vector2.zero, new Color(0f, 0f, 0f, 0.72f), p).rectTransform;
-            s.cool.pivot = new Vector2(0.5f, 0f);
-            s.cool.anchorMin = new Vector2(0f, 0f);
-            s.cool.anchorMax = new Vector2(1f, 0f);
-            s.cool.offsetMin = new Vector2(4, 4);
-            s.cool.offsetMax = new Vector2(-4, 4);
-            s.key = MakeText("Key", new Vector2(0.5f, 1), new Vector2(0, -4), new Vector2(90, 34), 28, TextAnchor.MiddleCenter, p);
-            s.key.fontStyle = FontStyle.Bold;
-            s.key.text = sk.key;
-            s.name = MakeText("Name", new Vector2(0.5f, 0), new Vector2(0, 20), new Vector2(96, 18), 13, TextAnchor.MiddleCenter, p);
-            s.name.text = sk.name;
-            s.cost = MakeText("Cost", new Vector2(0.5f, 0), new Vector2(0, 4), new Vector2(96, 16), 11, TextAnchor.MiddleCenter, p);
-            s.cdText = MakeText("Cd", new Vector2(0.5f, 0.5f), new Vector2(0, 2), new Vector2(90, 30), 24, TextAnchor.MiddleCenter, p);
-            s.cdText.fontStyle = FontStyle.Bold;
-            s.cdText.text = "";
-            return s;
         }
 
         void BuildLevelPanel()
@@ -527,10 +484,7 @@ namespace MedievalKnight
                 statEffect[a].color = gray;
             }
 
-            // ---- right: skills, Soul, kills
-            Panel("SkillBox", tl, new Vector2(cx - 8, -316), new Vector2(338, 104), new Color(0.1f, 0.1f, 0.14f, 1f), p);
-            skillsText = MakeText("Skills", tl, new Vector2(cx, -320), new Vector2(326, 98), 13, TextAnchor.UpperLeft, p);
-            skillsText.supportRichText = true;
+            // ---- right: Soul, kills
             Panel("SoulBox", tl, new Vector2(cx - 8, -426), new Vector2(338, 36), new Color(0.1f, 0.1f, 0.14f, 1f), p);
             soulKills = MakeText("SoulKills", tl, new Vector2(cx, -432), new Vector2(326, 24), 18, TextAnchor.MiddleLeft, p);
             soulKills.supportRichText = true;
@@ -661,30 +615,6 @@ namespace MedievalKnight
         {
             foreach (PopupUi p in popups) { p.text.gameObject.SetActive(false); popupPool.Push(p); }
             popups.Clear();
-        }
-
-        public void ShowLevelUp(UpgradeOffer[] offers, int newLevel)
-        {
-            levelRoot.SetActive(true);
-            levelOpenedAt = Time.unscaledTime;
-            bannerTime = 0f; bannerText.text = "";
-            levelTitle.text = "LEVEL UP!   Lv " + newLevel;
-            levelSub.text = "Choose 1 of 3 upgrades   (keys 1 / 2 / 3 or click a card)" + OnlineNote();
-            DimFor(levelDim, 0.68f);
-            for (int i = 0; i < 3; i++)
-            {
-                bool on = i < offers.Length;
-                cards[i].rt.gameObject.SetActive(on);
-                if (!on) continue;
-                UpgradeOffer o = offers[i];
-                Color col = StatColor(o.stat);
-                cards[i].border.color = col;
-                cards[i].title.text = o.title;
-                cards[i].line.text = o.line;
-                cards[i].line.color = col;
-                cards[i].detail.text = o.detail;
-                cards[i].rt.localScale = Vector3.one;
-            }
         }
 
         // Step 2 of the level-up panel: the same three cards now stand for HP / BLOCK / STAMINA.
@@ -830,8 +760,8 @@ namespace MedievalKnight
             bool max = pr.IsMax;
             charText.text = "<b>Lv " + pr.level + " / " + Progress.MaxLevel + "</b>" + (max ? "   <color=#ffd34d>MAX LEVEL</color>" : "");
             charStats.text = "<b>Health</b> " + k.MaxHp.ToString("0") + "     <b>Armor</b> " + k.MaxArmor.ToString("0") + "     <b>Stamina</b> " + k.MaxStamina.ToString("0")
-                + "\nSword hit x" + k.DamageMult(-1).ToString("0.0") + "    Swing x" + k.SwingSpeed.ToString("0.0")
-                + "\nCrit " + (k.CritChance(-1) * 100f).ToString("0") + "% x" + k.CritMult(-1).ToString("0.0") + "    Reach x" + cur.reach.ToString("0.00");
+                + "\nSword hit x" + k.DamageMult().ToString("0.0") + "    Swing x" + k.SwingSpeed.ToString("0.0")
+                + "\nCrit " + (k.CritChance() * 100f).ToString("0") + "% x" + k.CritMult().ToString("0.0") + "    Reach x" + cur.reach.ToString("0.00");
             float expFrac = max ? 1f : Mathf.Clamp01(pr.exp / Progress.Need(pr.level));
             expFill.anchorMax = new Vector2(Mathf.Max(0.0001f, expFrac), 1f);
             expFill.offsetMax = new Vector2(-2f * expFrac, -2f);
@@ -855,19 +785,6 @@ namespace MedievalKnight
                 statNum[a].text = pr.attr[a] + "/" + Progress.AttrCap;
                 statEffect[a].text = effect[a];
             }
-
-            // SKILLS
-            var sb = new System.Text.StringBuilder(300);
-            sb.Append("<b>SKILLS</b>   (upgrades)\n");
-            for (int i = 0; i < 4; i++)
-            {
-                SkillDef s = Knight.Skills[i];
-                sb.Append(s.key).Append(' ').Append(s.name.PadRight(12))
-                  .Append(" dmg x").Append(k.DamageMult(i).ToString("0.0"))
-                  .Append("  spd x").Append(pr.SpeedMult(i).ToString("0.0"))
-                  .Append("  crit ").Append((k.CritChance(i) * 100f).ToString("0")).Append("%\n");
-            }
-            skillsText.text = sb.ToString();
 
             soulKills.text = "<color=" + Hex(SoulColor) + "><b>SOUL " + k.souls.ToString("N0") + "</b></color>        Kills " + pr.kills;
         }
@@ -970,20 +887,6 @@ namespace MedievalKnight
             if (tabCornerHint.gameObject.activeSelf != hintOn) tabCornerHint.gameObject.SetActive(hintOn);
             if (hintOn) tabCornerHint.color = new Color(1f, 1f, 1f, Mathf.Clamp01((5f - hintAge) / 1f) * 0.7f);
 
-            // skill slots
-            for (int i = 0; i < 4; i++)
-            {
-                SkillDef s = Knight.Skills[i];
-                SlotUi u = slots[i];
-                float left = k.cd[i];
-                float frac = k.cdMax[i] > 0f ? Mathf.Clamp01(left / k.cdMax[i]) : 0f;
-                u.cool.offsetMax = new Vector2(-4, 4 + 88f * frac);
-                u.cool.gameObject.SetActive(left > 0f);
-                u.cdText.text = left > 0f ? left.ToString(left < 1f ? "0.0" : "0") : "";
-                u.icon.color = left > 0f ? s.color * 0.35f : s.color * 0.75f;
-                u.key.color = left > 0f ? new Color(1f, 1f, 1f, 0.35f) : Color.white;
-                u.cost.text = (s.cooldown / pr.SpeedMult(i)).ToString("0.0") + "s";
-            }
 
             // boss bar: only when the Minotaur is within 45 m (the map is big); the arrow to the lair covers the rest
             Minotaur m = g.minotaur;
@@ -1083,16 +986,15 @@ namespace MedievalKnight
                 : "CONTROLS   (F1 hides this)\n"
                 + "WASD / Arrows    Move\n"
                 + "Mouse    Aim - the knight faces the cursor\n"
-                + "Left Click / J    Weapon combo\n"
-                + "     Side > Chop > Rising > Spin > Thrust\n"
+                + "Left Click / J    Swing (clicks chain)\n"
+                + "     Diagonal > Sweep > Thrust\n"
                 + "Left Shift (hold)    Run\n"
-                + "Space    Dash - dodge, 0.5 s untouchable (25 stamina)\n"
-                + "Right Click (hold)    Shield block\n"
-                + "Q  Whirlwind          E  Dash Thrust\n"
-                + "R  Shield Bash        F  Ground Slam  /  hold F next to a downed friend: revive\n"
+                + "Space    Roll - dodge, 0.5 s untouchable (25 stamina)\n"
+                + "Right Click (hold)    Shield block / parry\n"
+                + "F (hold)    Revive a downed friend\n"
                 + "1 / 2    Hold Weapon slot 1 / 2         C  Eat\n"
                 + "Tab    Carry window  (at the base: PREPARE)\n"
-                + "Level-up cards: 1 / 2 / 3 or Click\n"
+                + "Level-up: 1 / 2 / 3 or Click spends the stat point\n"
                 + "Walk over a drop to take it   -   Right Click in Tab drops\n"
                 + "M  Map   F2  Sound   Scroll  Camera   Esc Esc  Menu (= death)";
         }

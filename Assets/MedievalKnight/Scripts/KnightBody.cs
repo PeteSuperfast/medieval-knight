@@ -47,7 +47,6 @@ namespace MedievalKnight
 
         Transform legL, legR, swordPivot, armR, shieldNode;
         Tint tint, shieldTint;
-        float shieldPushK;
 
         public override string Kind { get { return "coded"; } }
 
@@ -109,21 +108,20 @@ namespace MedievalKnight
             rigLean = 0f; rigHop = 0f;
         }
 
-        // Idle / walk / block poses, legs and shield (a swing or a skill drives the sword and the body itself while "attacking").
+        // Idle / walk / block poses, legs and shield (a swing or a roll drives the sword and the body itself while "attacking").
         // Shared by the local knight and by remote knights.
-        public void Pose(float dt, bool moving, bool attacking, bool dead, bool charge, bool blocking, bool whirl, bool shieldPush)
+        public void Pose(float dt, bool moving, bool attacking, bool dead, bool blocking)
         {
-            if (moving) walkPhase += dt * 13f * (whirl ? 0.5f : 1f);
+            if (moving) walkPhase += dt * 13f;
             if (!attacking && !dead)
             {
                 float e = 1f - Mathf.Exp(-14f * dt);
-                swYaw = Mathf.Lerp(swYaw, blocking ? 80f : charge ? 0f : RestYaw + (moving ? Mathf.Sin(walkPhase) * 6f : 0f), e);
-                swPitch = Mathf.Lerp(swPitch, blocking ? -55f : charge ? -125f : RestPitch + Mathf.Sin(Time.time * 2.2f) * 2f, e);
-                swHand = Mathf.Lerp(swHand, charge ? 0.5f : RestHand, e);
+                swYaw = Mathf.Lerp(swYaw, blocking ? 80f : RestYaw + (moving ? Mathf.Sin(walkPhase) * 6f : 0f), e);
+                swPitch = Mathf.Lerp(swPitch, blocking ? -55f : RestPitch + Mathf.Sin(Time.time * 2.2f) * 2f, e);
+                swHand = Mathf.Lerp(swHand, RestHand, e);
                 float bob = moving ? Mathf.Abs(Mathf.Sin(walkPhase)) * 0.07f : Mathf.Sin(Time.time * 2.2f) * 0.015f;
-                if (charge) bob = -0.06f;
                 rigHop = Mathf.Lerp(rigHop, bob, 1f - Mathf.Exp(-20f * dt));
-                rigLean = Mathf.Lerp(rigLean, charge ? -14f : moving ? 6f : 0f, 1f - Mathf.Exp(-12f * dt));
+                rigLean = Mathf.Lerp(rigLean, moving ? 6f : 0f, 1f - Mathf.Exp(-12f * dt));
                 rigSpin = 0f;
             }
             float swing = moving && !dead ? Mathf.Sin(walkPhase) * 32f : 0f;
@@ -132,23 +130,12 @@ namespace MedievalKnight
 
             // shield
             float sk = 1f - Mathf.Exp(-18f * dt);
-            shieldPushK = Mathf.MoveTowards(shieldPushK, shieldPush ? 1f : 0f, dt * (shieldPush ? 14f : 6f));
             Vector3 sPos = blocking ? KnightGear.ShieldBlockPos : KnightGear.ShieldRestPos;
             Quaternion sRot = blocking ? Quaternion.Euler(-12f, 5f, 0f) : Quaternion.Euler(-18f, -72f, 0f);
             float sScale = blocking ? 1.3f : 1f;
-            if (shieldPushK > 0.001f)
-            {
-                sPos = Vector3.Lerp(sPos, new Vector3(0f, 1.15f, 1.05f), shieldPushK);
-                sRot = Quaternion.Slerp(sRot, Quaternion.Euler(-8f, 0f, 0f), shieldPushK);
-                sScale = Mathf.Lerp(sScale, 1.6f, shieldPushK);
-                shieldNode.localPosition = sPos; shieldNode.localRotation = sRot; shieldNode.localScale = Vector3.one * sScale;
-            }
-            else
-            {
-                shieldNode.localPosition = Vector3.Lerp(shieldNode.localPosition, sPos, sk);
-                shieldNode.localRotation = Quaternion.Slerp(shieldNode.localRotation, sRot, sk);
-                shieldNode.localScale = Vector3.Lerp(shieldNode.localScale, Vector3.one * sScale, sk);
-            }
+            shieldNode.localPosition = Vector3.Lerp(shieldNode.localPosition, sPos, sk);
+            shieldNode.localRotation = Quaternion.Slerp(shieldNode.localRotation, sRot, sk);
+            shieldNode.localScale = Vector3.Lerp(shieldNode.localScale, Vector3.one * sScale, sk);
         }
 
         // Writes the numbers into the transforms (after everything else moved this frame).

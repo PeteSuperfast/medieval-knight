@@ -921,7 +921,7 @@ namespace MedievalKnight
                     Progress.ForceCrit = 0;
                     int crits = 0;
                     const int Rolls = 4000;
-                    for (int n = 0; n < Rolls; n++) { bool c; k.RollDamage(-1, 10f, out c); if (c) crits++; }
+                    for (int n = 0; n < Rolls; n++) { bool c; k.RollDamage(10f, out c); if (c) crits++; }
                     float chance = crits / (float)Rolls;
 
                     float wantPlain = KnightAnim.BaseDamage * slash.damageMul * w.damage, wantCrit = wantPlain * (Progress.BaseCritMult + w.critMult), wantCost = 0f;                         // stamina is for the dash only
@@ -967,7 +967,7 @@ namespace MedievalKnight
                 // reach on the field: from 3.6 m the Iron Sword misses the dummy, the Greatsword reaches it
                 ParkSlimes();
                 g.EquipWeapon(Weapons.Iron);
-                d.ResetAll(); Heal(); StandNear(d, 2.5f);
+                d.ResetAll(); Heal(); StandNear(d, 2.9f);
                 yield return W(0.4f);
                 Progress.ForceCrit = 1;
                 int hr = d.hits;
@@ -975,15 +975,15 @@ namespace MedievalKnight
                 yield return WaitIdle(3f);
                 bool ironMiss = d.hits == hr;
                 g.EquipWeapon(Weapons.Greatsword);
-                Heal(); StandNear(d, 2.5f);
+                Heal(); StandNear(d, 2.9f);
                 yield return W(0.4f);
                 k.DebugAttack(0);
                 yield return WaitIdle(3f);
                 bool greatHit = d.hits == hr + 1;
-                Log("reach with the dummy 2.5 m from the sword hand: Iron Sword hit=" + !ironMiss + ", Iron Greatsword hit=" + greatHit
-                    + "; with the Greatsword: Whirlwind dmg x" + F(k.DamageMult(0)) + ", Shield Bash dmg x" + F(k.DamageMult(2)) + " (shield, no sword bonus)");
+                Log("reach with the dummy 2.9 m from the sword hand: Iron Sword hit=" + !ironMiss + ", Iron Greatsword hit=" + greatHit
+                    + "; with the Greatsword the sword hit is x" + F(k.DamageMult()));
                 Check("the Greatsword's longer reach hits where the Iron Sword misses", ironMiss && greatHit);
-                Check("sword damage applies to sword skills but not to Shield Bash", Mathf.Abs(k.DamageMult(0) - 1.7f) < 0.001f && Mathf.Abs(k.DamageMult(2) - 1f) < 0.001f);
+                Check("the Greatsword sets the hit multiplier (x1.7, no level-up bonus)", Mathf.Abs(k.DamageMult() - 1.7f) < 0.001f);
 
                 // back to the Iron Sword through the panel (key 1), so the older checks below see base numbers
                 yield return W(0.4f);
@@ -997,60 +997,8 @@ namespace MedievalKnight
                 Progress.ForceCrit = 1;
             }
 
-            // ------------------------------------------------ skills (real keys Q / E / R / F)
-            Key[] skillKeys = { Key.Q, Key.E, Key.R, Key.F };
             int killsBefore = g.progress.kills;
             float expBefore = g.progress.totalExp;
-            int skillGrunts0 = Snds(Snd.Grunt), skillSwings0 = Snds(Snd.Swing);
-            for (int i = 0; i < 4; i++)
-            {
-                SkillDef s = Knight.Skills[i];
-                yield return WaitIdle(2f);
-                Heal();
-                Enemy target = d;
-                if (i >= 2)
-                {
-                    Slime sl = Nearest<Slime>(i == 2 ? corner : k.transform.position);
-                    if (sl != null) target = sl;
-                }
-                Vector3 tp = target.transform.position;
-                Vector3 inward = new Vector3(-tp.x, 0f, -tp.z).normalized;       // stand on the side facing the arena centre
-                if (i == 1) { k.transform.position = tp + Vector3.left * 3.5f; k.aimOverride = tp; }
-                else if (i == 2) { k.transform.position = tp + inward * (target.radius + 0.9f); k.aimOverride = tp; }
-                else if (i == 3) { k.transform.position = tp + inward * 5.5f; k.aimOverride = tp; }
-                else StandNear(target, 1.2f);
-                yield return W(0.3f);
-                if (target is Slime) { tp = target.transform.position; k.aimOverride = tp; yield return W(0.1f); }
-                Vector3 kp0 = k.transform.position;
-                float st0 = k.stamina, thp0 = target.hp + target.armor;
-                int h0 = target.hits;
-                yield return Tap(skillKeys[i]);
-                bool started = k.IsAttacking && k.LastAction == s.name;
-                float cd0 = k.cdMax[i];
-                yield return W(i == 0 ? 0.45f : i == 3 ? 0.25f : 0.1f);
-                Shot("skill" + s.key + "_" + s.name.Replace(" ", ""));
-                yield return WaitIdle(3f);
-                yield return W(0.1f);
-                bool tdead = target == null || target.Dead;
-                Log("skill " + s.key + " " + s.name + ": started=" + started + ", cooldown " + F(cd0) + "s (base " + s.cooldown + "), stamina " + F(st0) + " -> " + F(k.stamina)
-                    + ", target " + target.label + " hits +" + (target.hits - h0) + " hp+armor " + F(thp0) + " -> " + F(target.hp + target.armor) + (tdead ? " (killed)" : "")
-                    + ", last " + target.lastHit + ", stunned=" + target.Stunned + ", knight moved " + F((k.transform.position - kp0).magnitude) + " m");
-                bool ok = started && Mathf.Abs(cd0 - s.cooldown) < 0.01f && target.hits > h0;
-                if (i == 0) ok &= target.hits - h0 == 3;
-                if (i == 1) ok &= (k.transform.position - kp0).magnitude > 4f;
-                if (i == 2) ok &= tdead || target.Stunned;
-                if (i == 3) ok &= (k.transform.position - kp0).magnitude > 3f;
-                Check("skill " + s.key + " " + s.name + " works (cooldown, hit" + (i == 0 ? ", 3 ticks" : i == 1 ? ", dash" : i == 2 ? ", stun" : ", leap") + ")", ok);
-                // pressing it again while on cooldown must be refused
-                if (i == 0)
-                {
-                    float stB = k.stamina;
-                    yield return Tap(skillKeys[i]);
-                    Check("skill on cooldown is refused", !k.IsAttacking && Mathf.Abs(k.stamina - stB) < 2f && k.cd[0] > 0f);
-                }
-            }
-            Log("skill sounds: grunts +" + (Snds(Snd.Grunt) - skillGrunts0) + " over 4 skills, sword_swing +" + (Snds(Snd.Swing) - skillSwings0) + " (Q 3 spins, E 1, F 1; the bash has none)");
-            Check("every skill makes the knight grunt, sword skills play sword_swing", Snds(Snd.Grunt) - skillGrunts0 >= 3 && Snds(Snd.Swing) - skillSwings0 == 5);
 
             // ------------------------------------------------ kill slimes -> EXP -> first level-up by kills
             {
@@ -1085,20 +1033,9 @@ namespace MedievalKnight
                 yield return W(0.4f);
                 Shot("levelup_panel");
                 yield return W(0.2f);
-                Check("level-up panel opened with 3 choices and paused the game", g.LevelUpOpen && g.offers != null && g.offers.Length == 3 && Time.timeScale == 0f);
+                Check("level-up panel opened on the stat point step (HP / BLOCK / STAMINA) and paused the game", g.LevelUpOpen && g.LevelStep == 2 && Time.timeScale == 0f && pr.pendingChoices == 0);
                 if (g.LevelUpOpen)
                 {
-                    string all = "";
-                    foreach (UpgradeOffer o in g.offers) all += " [" + o.title + " | " + o.line + "]";
-                    Log("offers:" + all);
-                    UpgradeOffer pick = g.offers[1];
-                    float cur0 = pr.Current(pick.stat, pick.target);
-                    int pts0 = pr.statPoints;
-                    yield return Tap(Key.Digit2);
-                    float cur1 = pr.Current(pick.stat, pick.target);
-                    Log("picked card 2 with key '2': " + pick.title + " " + pick.line + ": x" + F(cur0) + " -> x" + F(cur1) + ", panel step " + g.LevelStep + ", unspent stat points " + pr.statPoints);
-                    Check("key 2 applies the upgrade (+" + pick.amount + "x) and moves on to the stat point step",
-                        g.LevelStep == 2 && Mathf.Abs(cur1 - cur0 - pick.amount) < 0.001f && pr.pendingChoices == 0 && pts0 >= 1 && Time.timeScale == 0f);
                     yield return W(0.3f);
                     Shot("statpoint_panel");
                     yield return W(0.15f);
@@ -1309,20 +1246,8 @@ namespace MedievalKnight
                 yield return W(0.5f);
                 if (g.LevelUpOpen)
                 {
-                    UpgradeOffer pick = g.offers[0];
-                    float cur0 = pr.Current(pick.stat, pick.target);
-                    Vector2 c = g.hud.CardRect(0).position;
-                    SetMouse(c, false);
-                    yield return null; yield return null; yield return null;
+                    Check("a level-up opens straight on the stat point step", g.LevelStep == 2);
                     Shot("levelup_hover");
-                    yield return null;
-                    SetMouse(c, true);
-                    yield return null; yield return null; yield return null;
-                    SetMouse(c, false);
-                    yield return null;
-                    float cur1 = pr.Current(pick.stat, pick.target);
-                    Log("picked card 1 with a mouse click at " + c + ": " + pick.title + " " + pick.line + ": x" + F(cur0) + " -> x" + F(cur1) + ", panel step " + g.LevelStep);
-                    Check("mouse click applies the upgrade (+" + pick.amount + "x) and moves on to the stat point step", g.LevelStep == 2 && Mathf.Abs(cur1 - cur0 - pick.amount) < 0.001f);
 
                     // stat point by mouse: click the middle card = BLOCK
                     Heal();
@@ -1398,14 +1323,6 @@ namespace MedievalKnight
                     while (!g.LevelUpOpen && Time.realtimeSinceStartup - t0 < 4f) yield return null;
                     yield return W(0.15f);
                     if (pr.level == 6) Shot("levelup_panel_lv6");
-                    // prefer an "all attacks" card so the dummy check below sees a change
-                    if (g.LevelStep == 1)
-                    {
-                        int idx = 0;
-                        for (int i = 0; i < g.offers.Length; i++) if (g.offers[i].target == 0) idx = i;
-                        yield return Tap(idx == 0 ? Key.Digit1 : idx == 1 ? Key.Digit2 : Key.Digit3);
-                        yield return W(0.1f);
-                    }
                     if (g.LevelStep == 2 && !staminaDone)
                     {
                         staminaDone = true;
@@ -1437,11 +1354,8 @@ namespace MedievalKnight
                     for (int n = 0; n < 12; n++) if (scratch.Spend(Attr.Block)) spent++;
                     Check("a stat takes at most 10 points (block tops out at 92%)", spent == Progress.AttrCap && scratch.statPoints == 2 && Mathf.Abs(scratch.BlockReduction - 0.92f) < 0.0001f && !scratch.CanSpend(Attr.Block) && scratch.CanSpend(Attr.Hp));
                 }
-                Log("EXP granted directly by the self-test up to max level. level " + pr.level + ", pending " + pr.pendingChoices
-                    + ", all: dmg x" + F(pr.DamageMult(-1)) + " spd x" + F(pr.SpeedMult(-1)) + " (sword x" + F(pr.BasicSpeed()) + ") crit " + F(pr.CritChance(-1) * 100f) + "% x" + F(pr.CritMult(-1)));
-                for (int i = 0; i < 4; i++)
-                    Log("  skill " + Knight.Skills[i].key + ": dmg x" + F(pr.DamageMult(i)) + " spd x" + F(pr.SpeedMult(i)) + " crit " + F(pr.CritChance(i) * 100f) + "% x" + F(pr.CritMult(i)));
-                Check("level caps at 25 with all 24 upgrades picked", pr.level == Progress.MaxLevel && pr.pendingChoices == 0 && !g.LevelUpOpen);
+                Log("EXP granted directly by the self-test up to max level. level " + pr.level + ", pending " + pr.pendingChoices + ", sword hit x" + F(k.DamageMult()) + " crit " + F(k.CritChance() * 100f) + "% x" + F(k.CritMult()));
+                Check("level caps at 25 with all 24 stat points spent", pr.level == Progress.MaxLevel && pr.pendingChoices == 0 && !g.LevelUpOpen);
                 int lv = pr.level;
                 g.GrantExp(500f, k.transform.position);
                 Check("no EXP past max level", pr.level == lv && pr.exp == 0f && pr.pendingChoices == 0);
@@ -1485,7 +1399,7 @@ namespace MedievalKnight
                     Heal();
                 }
 
-                // ------------------------------------------ do the numbers reach combat?
+                // ------------------------------------------ level-ups give stats, not damage: the sword hit is the same at level 25
                 yield return W(2.6f);      // let the dummy rebuild / regen if needed
                 d.ResetAll();
                 Heal(); StandNear(d, 1.3f);
@@ -1495,12 +1409,11 @@ namespace MedievalKnight
                 k.DebugAttack(0);
                 yield return WaitIdle(2f);
                 float took = Time.time - tA;
-                float expect = KnightAnim.BaseDamage * KnightAnim.Swings[0].damageMul * k.DamageMult(-1);
-                Log("after upgrades, Diagonal Slash (no crit): dealt " + F(d.lastDamage) + ", expected 14 x " + F(k.DamageMult(-1)) + " = " + F(expect)
-                    + "; duration " + F(took) + "s vs " + F(sideSlashTime) + "s at level 1 (sword speed x" + F(pr.BasicSpeed()) + ")");
-                Check("damage upgrade multiplies the hit (Iron Sword equipped: " + (k.Weapon.id == Weapons.Iron) + ")", Mathf.Abs(d.lastDamage - expect) < 0.01f && k.Weapon.id == Weapons.Iron);
-                if (pr.BasicSpeed() > 1.01f) Check("attack speed upgrade shortens the swing", took < sideSlashTime);
-                else Log("no ALL attack-speed upgrade was rolled, swing time check skipped");
+                float expect = KnightAnim.BaseDamage * KnightAnim.Swings[0].damageMul * k.DamageMult();
+                Log("at level " + pr.level + ", Diagonal Slash (no crit): dealt " + F(d.lastDamage) + ", expected 14 x " + F(k.DamageMult()) + " = " + F(expect)
+                    + "; duration " + F(took) + "s vs " + F(sideSlashTime) + "s at level 1");
+                Check("the swing damage at level 25 is the same as at level 1: 14 x the Iron Sword (no damage upgrade any more)", Mathf.Abs(d.lastDamage - expect) < 0.01f && Mathf.Abs(expect - 14f) < 0.001f && k.Weapon.id == Weapons.Iron);
+                Check("the swing takes as long as at level 1 (no attack speed upgrade any more)", Mathf.Abs(took - sideSlashTime) < 0.1f);
 
                 yield return W(0.7f);
                 d.ResetAll(); Heal(); StandNear(d, 1.3f);
@@ -1510,12 +1423,12 @@ namespace MedievalKnight
                 yield return W(0.16f);
                 Shot("crit_hit");
                 yield return WaitIdle(2f);
-                float expectCrit = expect * k.CritMult(-1);
-                Log("forced crit Side Slash: dealt " + F(d.lastDamage) + " crit=" + d.lastCrit + ", expected " + F(expect) + " x " + F(pr.CritMult(-1)) + " = " + F(expectCrit));
+                float expectCrit = expect * k.CritMult();
+                Log("forced crit Diagonal Slash: dealt " + F(d.lastDamage) + " crit=" + d.lastCrit + ", expected " + F(expect) + " x " + F(k.CritMult()) + " = " + F(expectCrit));
                 Check("crit multiplies the hit by the crit multiplier", d.lastCrit && Mathf.Abs(d.lastDamage - expectCrit) < 0.01f);
                 Progress.ForceCrit = 0;
 
-                // upgrades and a sword together: the Horned King's Blade +1 on top of the level-up totals
+                // the weapon alone sets the numbers: the Horned King's Blade +1
                 yield return W(0.7f);
                 g.EquipWeapon(Weapons.Boss);
                 d.ResetAll(); Heal(); StandNear(d, 1.3f);
@@ -1529,25 +1442,17 @@ namespace MedievalKnight
                 Progress.ForceCrit = 0;
                 g.camZoom = 1f;
                 float bossDmg = k.inventory.DamageOf(Weapons.Boss);
-                float comboCrit = Mathf.Min(Progress.CritMultCap, pr.CritMult(-1) + 0.5f);
-                float comboWant = KnightAnim.BaseDamage * KnightAnim.Swings[0].damageMul * pr.DamageMult(-1) * bossDmg * comboCrit;
-                Log("level-up totals x sword: forced crit with " + k.inventory.NameOf(Weapons.Boss) + " dealt " + F(d.lastDamage) + ", want 14 x " + F(pr.DamageMult(-1)) + " (upgrades) x " + F(bossDmg) + " (sword) x "
-                    + F(comboCrit) + " (crit " + F(pr.CritMult(-1)) + " + 0.5) = " + F(comboWant)
-                    + "; crit chance " + F(k.CritChance(-1) * 100f) + "% = " + F(pr.CritChance(-1) * 100f) + "% + 10%, swing speed x" + F(k.SwingSpeed) + " = " + F(pr.BasicSpeed()) + " x 1.1");
-                Check("sword stats multiply / add on top of the level-up upgrades", Mathf.Abs(d.lastDamage - comboWant) < 0.02f
-                    && Mathf.Abs(k.CritChance(-1) - Mathf.Min(Progress.CritChanceCap, pr.CritChance(-1) + 0.10f)) < 0.0001f
-                    && Mathf.Abs(k.SwingSpeed - Mathf.Clamp(pr.BasicSpeed() * 1.1f, Knight.MinSwingSpeed, Knight.MaxSwingSpeed)) < 0.0001f);
+                float comboCrit = Mathf.Min(Progress.CritMultCap, Progress.BaseCritMult + 0.5f);
+                float comboWant = KnightAnim.BaseDamage * KnightAnim.Swings[0].damageMul * bossDmg * comboCrit;
+                Log("weapon only: forced crit with " + k.inventory.NameOf(Weapons.Boss) + " dealt " + F(d.lastDamage) + ", want 14 x " + F(bossDmg) + " (sword) x "
+                    + F(comboCrit) + " (crit 1.5 + 0.5) = " + F(comboWant)
+                    + "; crit chance " + F(k.CritChance() * 100f) + "% = 10% + 10%, swing speed x" + F(k.SwingSpeed));
+                Check("sword stats set the hit: damage x crit, crit chance +10%, speed x1.1", Mathf.Abs(d.lastDamage - comboWant) < 0.02f
+                    && Mathf.Abs(k.CritChance() - (Progress.BaseCritChance + 0.10f)) < 0.0001f
+                    && Mathf.Abs(k.SwingSpeed - Mathf.Clamp(1.1f, Knight.MinSwingSpeed, Knight.MaxSwingSpeed)) < 0.0001f);
 
                 yield return W(0.5f);
                 Heal();
-                for (int i = 0; i < 4; i++) k.cd[i] = 0f;
-                yield return Tap(Key.Q);
-                float wantCd = Knight.Skills[0].cooldown / pr.SpeedMult(0);
-                Log("Whirlwind cooldown after upgrades: " + F(k.cdMax[0]) + "s, expected 6 / " + F(pr.SpeedMult(0)) + " = " + F(wantCd));
-                Check("attack speed divides skill cooldown", Mathf.Abs(k.cdMax[0] - wantCd) < 0.01f);
-                yield return W(0.5f);
-                Shot("whirlwind_upgraded");
-                yield return WaitIdle(3f);
             }
 
             // ------------------------------------------------ new monsters scale with level
@@ -1592,7 +1497,7 @@ namespace MedievalKnight
                 Check("dying sends the level, EXP, upgrades and stat points back to level 1",
                     lvBefore == Progress.MaxLevel && g.progress.level == 1 && g.progress.exp == 0f && g.progress.statPoints == 0 && g.progress.pendingChoices == 0
                     && g.progress.Points(Attr.Hp) + g.progress.Points(Attr.Block) + g.progress.Points(Attr.Stamina) == 0
-                    && Mathf.Abs(g.progress.DamageMult(-1) - 1f) < 0.001f && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
+                    && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
                     && g.progress.kills == kills0);
                 Check("YOU DIED screen shows while down, with the level from before the reset and the counter going down",
                     overlay && stillAtLevel && lose.Contains("Lv " + lvBefore + "  >  Lv 1") && keep.Contains("Swords (" + owned0 + " / " + Weapons.All.Length + ")")
@@ -1622,11 +1527,11 @@ namespace MedievalKnight
                     k.inventory.OwnedCount == 1 && k.inventory.equipped == Weapons.Iron && k.SwordModel.name == "Iron Sword" && k.inventory.plus[Weapons.Boss] == 0
                     && f5.Points(Attr.Hp) + f5.Points(Attr.Block) + f5.Points(Attr.Stamina) + f5.statPoints == 0
                     && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxArmor - 60f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
-                    && Mathf.Abs(f5.BlockReduction - 0.8f) < 0.0001f && Pickup.All.Count == 0 && Mathf.Abs(k.DamageMult(-1) - 1f) < 0.001f);
+                    && Mathf.Abs(f5.BlockReduction - 0.8f) < 0.0001f && Pickup.All.Count == 0 && Mathf.Abs(k.DamageMult() - 1f) < 0.001f);
                 Check("restart plays the 'ready' voice line", Snds(Snd.Ready) - readyF5 == 1);
                 Check("F5 clears Soul too (it was " + soulsPre + ")", soulsPre > 0 && k.souls == 0 && g.hud.SoulShown == "0");
-                Log("F5: level " + g.progress.level + ", dmg x" + F(g.progress.DamageMult(-1)) + ", enemies " + Enemy.All.Count + ", minotaur " + (g.minotaur != null) + ", knight at " + V(k.transform.position));
-                Check("F5 restarts at level 1 with no upgrades", g.progress.level == 1 && Mathf.Abs(g.progress.DamageMult(-1) - 1f) < 0.001f && g.minotaur != null);
+                Log("F5: level " + g.progress.level + ", dmg x" + F(k.DamageMult()) + ", enemies " + Enemy.All.Count + ", minotaur " + (g.minotaur != null) + ", knight at " + V(k.transform.position));
+                Check("F5 restarts at level 1 with no stat points", g.progress.level == 1 && g.progress.statPoints == 0 && g.minotaur != null);
                 k.aimOverride = null;
                 SetMouse(new Vector2(Screen.width * 0.62f, Screen.height * 0.6f), false);
                 yield return W(0.8f);
@@ -1687,6 +1592,7 @@ namespace MedievalKnight
             yield return null; yield return null;
             k.attackHeldOverride = false;
             yield return null;
+            k.attackHeldOverride = null;                               // (back to the real devices)
         }
 
         // A harmless target in the open (frozen, very tough, no armor): counts hits and damage without dying.
@@ -1883,6 +1789,32 @@ namespace MedievalKnight
                 float stepSweep = (k.transform.position - p0).magnitude;
                 Log("body step: thrust " + F(stepThrust) + " m, sweep " + F(stepSweep) + " m");
                 Check("the thrust steps about 1 m forward and the sweep does not move the body (" + F(stepThrust) + " / " + F(stepSweep) + " m)", stepThrust > 0.8f && stepThrust < 1.25f && stepSweep < 0.35f);
+            }
+
+            // 6) what was taken out: skills Q / E / R / F, the Heavy Strike and the charge, upgrade cards
+            {
+                yield return W(0.6f);
+                Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                yield return W(0.4f);
+                int a0 = k.ActionsSeen;
+                foreach (Key key in new[] { Key.Q, Key.E, Key.R, Key.F }) { yield return Tap(key); yield return W(0.1f); }
+                Check("Q / E / R / F start nothing any more (no skills; F with nobody to revive does nothing)", k.ActionsSeen == a0 && !k.IsAttacking && k.Airborne == false);
+                k.attackHeldOverride = true;                           // the button held for 1.5 s: one swing, no charge, no Heavy Strike
+                yield return W(1.5f);
+                k.attackHeldOverride = false;
+                yield return WaitIdle(2f);
+                k.attackHeldOverride = null;
+                Check("holding the left button swings once and charges nothing (" + (k.ActionsSeen - a0) + " action, " + k.LastAction + ")", k.ActionsSeen == a0 + 1 && k.LastAction == "Diagonal Slash");
+                Check("the swing table has exactly three swings", KnightAnim.Swings.Length == 3);
+                yield return W(0.8f);
+                int a1 = k.ActionsSeen;
+                yield return Tap(Key.Space);
+                yield return W(0.5f);
+                Check("Space only dashes: no Dash Slash follows a click right after it", k.LastAction == "Dash" && k.ActionsSeen == a1 + 1);
+                yield return ClickLeft();
+                yield return null;
+                Check("a click right after the dash is the first swing (" + k.LastAction + ")", k.LastAction == "Diagonal Slash" && k.ActionsSeen == a1 + 2);
+                yield return WaitIdle(2f);
             }
 
             k.transform.position = home;
@@ -3255,7 +3187,7 @@ namespace MedievalKnight
             tc = Time.realtimeSinceStartup;
             while ((g.LevelUpOpen || g.progress.pendingChoices > 0) && Time.realtimeSinceStartup - tc < 10f)
             {
-                if (g.LevelStep == 1) g.ChooseUpgrade(0); else if (g.LevelStep == 2) g.ChooseStat(0);
+                if (g.LevelStep == 2) g.ChooseStat(0);
                 yield return W(0.45f);
             }
             k.transform.position = portalPos + new Vector3(0.6f, 0f, 0f);

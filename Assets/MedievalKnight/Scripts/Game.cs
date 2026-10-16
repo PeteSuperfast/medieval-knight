@@ -33,7 +33,6 @@ namespace MedievalKnight
         public Minotaur minotaur;
         public Hud hud;
         public Progress progress { get { return knight.progress; } }   // level / upgrades / stat points belong to the knight
-        public UpgradeOffer[] offers;              // the cards currently on screen
         public int wave, slimesAlive;
         public float inputBlockUntil;              // unscaled time; combat input is ignored until then
         public int dropOverride = -1;              // self-test hook: -1 = roll normally, 0 = never drop, 1 = always drop
@@ -206,7 +205,6 @@ namespace MedievalKnight
             players.Clear();
             knight = null;
             ClearWorld();
-            offers = null;
             LevelStep = 0;
             InventoryOpen = false;
             hud.HideLevelUp();
@@ -827,13 +825,12 @@ namespace MedievalKnight
                 e.Deflect(src == 37, by.Pos, by);
                 return true;
             }
-            if (!(src >= 0 && src < KnightAnim.Swings.Length) && !(src >= 10 && src < 10 + Knight.Skills.Length)) return false;      // an unknown source is dropped (protocol 6)
+            if (src < 0 || src >= KnightAnim.Swings.Length) return false;                    // only the three swings (37 / 38 were handled above); anything else is dropped (protocol 6)
             if (float.IsNaN(damage) || float.IsInfinity(damage) || damage <= 0f || damage > MaxHitDamage) return false;
             Vector3 a = origin - by.Pos; a.y = 0f;
             Vector3 b = e.transform.position - origin; b.y = 0f;
             if (a.magnitude > 14f || b.magnitude - e.radius > 9f) return false;
-            string source = src >= 10 && src < 10 + Knight.Skills.Length ? Knight.Skills[src - 10].name
-                : src >= 0 && src < KnightAnim.Swings.Length ? KnightAnim.Swings[src].name : "Sword";
+            string source = KnightAnim.Swings[src].name;
             e.TakeHit(damage, Mathf.Clamp01(pierce), origin, crit, Mathf.Clamp(knock, 0f, 20f), Mathf.Clamp(stun, 0f, 3f), source, by, false);
             return true;
         }
@@ -1149,19 +1146,12 @@ namespace MedievalKnight
             Fx.I.Burst(popupAt, 5, Hud.SoulColor, 1.5f, 3f, Vector3.up, 0.8f, 0.7f, -2f, 0.08f);
         }
 
-        // Step 1: the three upgrade cards. Step 2 (after a card is picked): where the stat point goes.
+        // A level-up: where the stat point goes (the panel step is LevelStep 2).
         void OpenLevelUp()
         {
             SetInventory(false);
             if (Net.Multiplayer) knight.Protect(LevelUpProtect);     // online nothing pauses: a short shield while choosing instead
-            offers = progress.MakeOffers();
-            if (offers.Length > 0)
-            {
-                LevelStep = 1;
-                hud.ShowLevelUp(offers, progress.level - progress.pendingChoices + 1);
-                return;
-            }
-            progress.pendingChoices = Mathf.Max(0, progress.pendingChoices - 1);   // every upgrade is capped
+            progress.pendingChoices = Mathf.Max(0, progress.pendingChoices - 1);
             OpenStatStep();
         }
 
@@ -1181,16 +1171,6 @@ namespace MedievalKnight
             levelUpOpenAt = Time.unscaledTime + 0.3f;
         }
 
-        public void ChooseUpgrade(int index)
-        {
-            if (LevelStep != 1 || offers == null || index < 0 || index >= offers.Length) return;
-            UpgradeOffer o = offers[index];
-            progress.Apply(o);
-            progress.pendingChoices = Mathf.Max(0, progress.pendingChoices - 1);
-            Debug.Log("UPGRADE picked " + (index + 1) + ": " + o.title + " " + o.line);
-            hud.Banner(o.title + ":  " + o.line, Hud.StatColor(o.stat));
-            OpenStatStep();
-        }
 
         // index 0 / 1 / 2 = HP / BLOCK / STAMINA
         public void ChooseStat(int index)
@@ -1210,7 +1190,6 @@ namespace MedievalKnight
         {
             if (k != knight) return;
             LevelStep = 0;
-            offers = null;
             hud.HideLevelUp();
             SetInventory(false);
             progress.pendingChoices = 0;
@@ -1323,7 +1302,6 @@ namespace MedievalKnight
         public void ResetAll()
         {
             ClearWorld();
-            offers = null;
             LevelStep = 0;
             hud.HideLevelUp();
             hud.HideDeath();
@@ -1410,10 +1388,10 @@ namespace MedievalKnight
             if (LevelStep != 0)
             {
                 if (!online) Time.timeScale = 0f;
-                int pick = hud.LevelUpInput(LevelStep == 1 ? offers.Length : 3);
+                int pick = hud.LevelUpInput(3);
                 if (pick >= 0)
                 {
-                    if (LevelStep == 1) ChooseUpgrade(pick); else ChooseStat(pick);
+                    ChooseStat(pick);
                 }
                 if (!online) return;
             }

@@ -113,8 +113,6 @@ namespace MedievalKnight
             {
                 panelSince = Time.unscaledTime;
                 panelsPicked++;
-                if (g.LevelStep == 1) g.ChooseUpgrade(0);
-                else
                 {
                     int best = 0;
                     for (int i = 1; i < 3; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
@@ -476,18 +474,6 @@ namespace MedievalKnight
                     Reply(id, "an=" + k.LastAction);
                     break;
 
-                case "skill":
-                {
-                    yield return WaitIdle(2f);
-                    for (int i = 0; i < 4; i++) k.cd[i] = 0f;
-                    yield return null;                                 // one frame so the aim point is current
-                    bool ok = k.DebugSkill(int.Parse(a[0]));
-                    yield return null;
-                    yield return WaitIdle(3f);
-                    Reply(id, "ok=" + ok + ";an=" + k.LastAction);
-                    break;
-                }
-
                 case "crit":
                     Progress.ForceCrit = int.Parse(a[0]);
                     Reply(id, "ok");
@@ -531,7 +517,7 @@ namespace MedievalKnight
                     float t0 = RT;
                     while (g.LevelStep != 0 && RT - t0 < 4f)
                     {
-                        if (g.LevelStep == 1) g.ChooseUpgrade(0); else g.ChooseStat(0);
+                        g.ChooseStat(0);
                         yield return W(0.15f);
                     }
                     Reply(id, "panel=" + g.LevelStep + ";lvl=" + k.progress.level);
@@ -878,7 +864,7 @@ namespace MedievalKnight
                 }
             }
 
-            // ------------------------------------------------ 3. block pose, the five sword attacks and four skills of a client
+            // ------------------------------------------------ 3. block pose and the three swings of a client
             Dummy d = g.dummy;
             Vector3 dp = d.transform.position;
             yield return Tp("H", dp.x - 3f, dp.z - 3.5f, dp.x, dp.z);
@@ -913,26 +899,6 @@ namespace MedievalKnight
                 Check("swing " + (i + 1) + ": the client's hit took exactly " + F1(want) + " from the host's dummy (hits +" + (d.hits - h0) + ", damage +" + F1(d.totalDamage - dt0) + ")",
                     d.hits - h0 == 1 && Mathf.Abs(d.totalDamage - dt0 - want) < 0.01f);
                 Ck(Near("dummy", 0.6f), "swing " + (i + 1) + ": the dummy's health + armor is the same everywhere");
-            }
-            string[] skillNames = { "Whirlwind", "Dash Thrust", "Shield Bash", "Ground Slam" };
-            for (int i = 0; i < 1; i++)                                // one skill (Whirlwind, 3 hits) is enough; the other three go through the same path
-            {
-                if (i == 1) yield return Tp(A, dp.x - 3.5f, dp.z, dp.x, dp.z);
-                else if (i == 3) yield return Tp(A, dp.x - 5f, dp.z + 0.5f, dp.x - 1.4f, dp.z);
-                else yield return Tp(A, dp.x - (d.radius + 1.2f), dp.z, dp.x, dp.z);
-                yield return W(0.3f);
-                int h0 = d.hits; float dt0 = d.totalDamage;
-                int sk = Send(A, "skill", i.ToString());
-                yield return W(i == 0 ? 0.6f : 0.3f);
-                yield return Cmd("all", "shot", "skill_" + skillNames[i].Replace(" ", ""));
-                yield return Wait(sk, A);
-                yield return W(0.5f);
-                yield return Sum();
-                float want = Knight.Skills[i].damage * (i == 0 ? 3 : 1);
-                Ck(Eq("an" + pidA) && S("H", "an" + pidA) == skillNames[i], "skill " + skillNames[i] + " by " + A + " is replayed on every screen");
-                Check("skill " + skillNames[i] + ": dummy hits +" + (d.hits - h0) + ", damage +" + F1(d.totalDamage - dt0) + " on the host (want " + (i == 0 ? 3 : 1) + " hit(s), " + want + ")",
-                    d.hits - h0 == (i == 0 ? 3 : 1) && Mathf.Abs(d.totalDamage - dt0 - want) < 0.01f);
-                Ck(Near("dummy", 0.6f), "skill " + skillNames[i] + ": the dummy's health + armor is the same everywhere");
             }
             Log("dummy took " + (d.hits - hits0) + " hits / " + F1(d.totalDamage - tot0) + " damage from " + A + " in total");
 

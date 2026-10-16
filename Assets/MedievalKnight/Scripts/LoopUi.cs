@@ -1228,8 +1228,8 @@ namespace MedievalKnight
                 + "\n<b>Health</b> " + Mathf.CeilToInt(k.hp) + " / " + Mathf.CeilToInt(k.MaxHp)
                 + "     <b>Armor</b> " + Mathf.CeilToInt(k.armor) + " / " + Mathf.CeilToInt(k.MaxArmor)
                 + "\n<b>Stamina</b> " + Mathf.CeilToInt(k.stamina) + " / " + Mathf.CeilToInt(k.MaxStamina)
-                + "\nSword hit x" + k.DamageMult(-1).ToString("0.0") + "    Swing x" + k.SwingSpeed.ToString("0.0")
-                + "\nCrit " + (k.CritChance(-1) * 100f).ToString("0") + "% x" + k.CritMult(-1).ToString("0.0") + "    Reach x" + k.Weapon.reach.ToString("0.00")
+                + "\nSword hit x" + k.DamageMult().ToString("0.0") + "    Swing x" + k.SwingSpeed.ToString("0.0")
+                + "\nCrit " + (k.CritChance() * 100f).ToString("0") + "% x" + k.CritMult().ToString("0.0") + "    Reach x" + k.Weapon.reach.ToString("0.00")
                 + "\nKills " + pr.kills;
         }
 

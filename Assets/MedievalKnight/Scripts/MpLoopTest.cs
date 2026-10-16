@@ -108,8 +108,6 @@ namespace MedievalKnight
             else if (autoLevel && Time.unscaledTime - panelSince > 0.4f)
             {
                 panelSince = Time.unscaledTime;
-                if (g.LevelStep == 1) g.ChooseUpgrade(0);
-                else
                 {
                     int best = 0;
                     for (int i = 1; i < 3; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
