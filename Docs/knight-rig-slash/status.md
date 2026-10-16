@@ -25,3 +25,11 @@
   - ขั้น 8 กินอาหารค้าง F 2 วิ ทุกโหมด (ไม่มีกินทันที): loop = จาก carry (F ค้าง / C / คลิกใน Carry), สนาม v1 = อาหารบนพื้น ≤1.2 ม.; ขัดจังหวะ: ตี/กลิ้ง/เดิน/ปล่อย F/คลิก/โล่/ล้ม/panel; flag NetEating 64 + Act 21; host ให้อาหารแก่ client ใน v1 เมื่อ flag ≥1.7 วิ (ไม่มีข้อความใหม่); แถบเขียว #8DB04A + "Hold F: Eat"
   - ผลทดสอบ: selftest เต็ม 441/0, -menutest 23 บรรทัด ผ่าน, mptest 80/0, mptest-loop 85/0; อัปเดต Docs/reference (controls, files, online-coop, weapons-and-tab, progression, dev-guide)
   - ยังไม่ทำ: ขั้น 9-10 (fbx/Mixamo, FileBody) รอรายงานแหล่ง/license/ขนาด + ผู้ขอยืนยัน
+- 2026-10-17 developer ส่งงานขั้น 1-8 (commit eb25fda) | 🎬 ด่าน 2 ผ่าน: ไฟล์ที่แก้อยู่ใน Scripts/Docs เท่านั้น (Prims/SwordIcons/Weapon ที่ขึ้น modified = แค่ line ending ไม่มี diff จริง) build ผ่าน selftest 441/0 mptest 80/0 mptest-loop 85/0 (ตามรายงาน dev ยังไม่รันซ้ำ) | ค้าง: ขั้น 9 fbx/Mixamo รอรายงานแหล่ง/license, สีผู้เล่น D2 ทำพร้อมขั้น 9, CLAUDE.md ของเกมยังเขียน protocol 5/คอมโบ/สกิล
+
+## สรุปบันทึก (2026-10-17, พีทสั่งพัก + !save)
+- ทำถึง: ขั้น 1-8 เสร็จ commit แล้ว (ล่าสุด eb25fda) ใช้โมเดลโค้ดเดิม; เทสผ่านตามรายงาน dev
+- ตัดสินแล้ว: decisions.md (ผู้ขอ test_disk อนุมัติ 19:30 UTC; พีทอนุมัติลบคอมโบ/สกิล + Mixamo)
+- เหลือ: ขั้น 9 (ค้นหา free model อัศวิน CC0/CC-BY / Mixamo -> รายงานแหล่ง+license+ขนาดให้ test_disk ยืนยันก่อนนำเข้า; สีผู้เล่น 4 สี D2), ขั้น 10 (ภาพเทียบ design, frame time), แก้ CLAUDE.md ของเกม (ยังเขียน protocol 5/คอมโบ/สกิล — ต้องให้พีทสั่ง), zip -> Drive
+- รอ: test_disk เลือกลองเล่นก่อน/ให้เริ่มหา free model; พีทสั่งพัก
+- ทำต่อ: "อ่าน Docs\knight-rig-slash\status.md + tech.md ขั้น 9 แล้วทำต่อ" (ห้ามนำเข้า fbx ก่อนผู้ขอยืนยัน license)
