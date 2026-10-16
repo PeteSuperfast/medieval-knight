@@ -307,6 +307,7 @@ namespace MedievalKnight
                   .Append(";blk").Append(p.pid).Append('=').Append(p.IsBlocking ? 1 : 0)
                   .Append(";hp").Append(p.pid).Append('=').Append(F1(p.hp))
                   .Append(";par").Append(p.pid).Append('=').Append(p.ParryCount)
+                  .Append(";pm").Append(p.pid).Append('=').Append(p.ParryMotionCount)
                   .Append(";cla").Append(p.pid).Append('=').Append(p.ClashCount)
                   .Append(";hb").Append(p.pid).Append('=').Append(p.HeavyBlockCount);
             }
@@ -463,6 +464,16 @@ namespace MedievalKnight
                     yield return WaitIdle(4f);
                     k.attackHeldOverride = null;
                     Reply(id, "an=" + k.LastAction + ";ac=" + k.ActionsSeen);
+                    break;
+                }
+
+                case "roll":                                          // dx dz: Space with that direction held (0 0 = backwards)
+                {
+                    yield return WaitIdle(2f);
+                    k.stamina = k.MaxStamina;
+                    bool ok = k.DebugRoll(new Vector2(P(a[0]), P(a[1])));
+                    yield return W(0.6f);
+                    Reply(id, "ok=" + ok + ";an=" + k.LastAction + ";x=" + F2(k.transform.position.x) + ";z=" + F2(k.transform.position.z));
                     break;
                 }
 
@@ -902,6 +913,23 @@ namespace MedievalKnight
             }
             Log("dummy took " + (d.hits - hits0) + " hits / " + F1(d.totalDamage - tot0) + " damage from " + A + " in total");
 
+            // ------------------------------------------------ 3a. knight-rig-slash: a roll is replayed on every screen and ends where the roller really is
+            {
+                yield return W(1.0f);
+                yield return Tp(A, dp.x - 6f, dp.z - 7f, dp.x, dp.z);
+                yield return Sum();
+                float ac0 = N("H", "ac" + pidA), acB0 = N(B, "ac" + pidA);
+                float x0 = N("H", "x" + pidA);
+                yield return Cmd(A, "roll", "1", "0");
+                yield return W(0.5f);
+                yield return Sum();
+                Ck(Eq("ac" + pidA) && N("H", "ac" + pidA) == ac0 + 1 && N(B, "ac" + pidA) == acB0 + 1 && S("H", "an" + pidA) == "Roll",
+                    A + " rolled east: one Roll action on every screen");
+                Ck(Eq("x" + pidA) && Mathf.Abs(N("H", "x" + pidA) - x0 - Knight.RollDistance) < 0.6f && Near("x" + pidA, 0.3f) && Near("z" + pidA, 0.3f),
+                    A + " ended the 6 m roll at the same place on every screen (moved " + F1(N("H", "x" + pidA) - x0) + " m)");
+                yield return W(0.9f);
+            }
+
             // ------------------------------------------------ 3b. knight-rig-slash: three clicks chain the three swings, each one is replayed once on every screen
             {
                 yield return W(1.0f);
@@ -938,7 +966,7 @@ namespace MedievalKnight
                 yield return Tp("H", 50f, 10f, 50f, 15f);
                 yield return W(0.5f);
                 yield return Sum();
-                float par0 = N(A, "par" + pidA), cla0 = N(A, "cla" + pidA), hb0 = N(A, "hb" + pidA), def0 = N("H", "sldef");
+                float par0 = N(A, "par" + pidA), cla0 = N(A, "cla" + pidA), hb0 = N(A, "hb" + pidA), def0 = N("H", "sldef"), pm0 = N("H", "pm" + pidA);
 
                 // a) A raises the shield and a slime hits him from the front 0.1 s later: parried, and everybody sees the slime fly back / stunned
                 yield return Cmd(A, "probe", "0");
@@ -946,6 +974,7 @@ namespace MedievalKnight
                 yield return Sum();
                 Ck(N(A, "par" + pidA) == par0 + 1 && Eq("sldef") && N("H", "sldef") == def0 + 1 && N("H", "slst") >= 1,
                     A + " parried a slime's blow over the network (owner counted it, the slime reacted on the host, every screen saw it, the slime is stunned)");
+                Ck(Eq("pm" + pidA) && N("H", "pm" + pidA) == pm0 + 1, A + "'s parry motion (net kind 22) is played once on every screen");
                 par0 = N(A, "par" + pidA); def0 = N("H", "sldef");
 
                 // b) the same with a heavy blow: a normal block, nothing deflected
@@ -973,6 +1002,7 @@ namespace MedievalKnight
                 yield return W(0.3f);
                 yield return Sum();
                 Ck(N("H", "par0") == 1 && Eq("sldef") && N("H", "sldef") == def0 + 1, "the host's own parry is seen by every client");
+                Ck(Eq("pm0") && N("H", "pm0") == 1, "the host's own parry motion is played on every client too");
                 ParkSlimes();
                 yield return W(0.3f);
 
@@ -1073,7 +1103,7 @@ namespace MedievalKnight
                 yield return Sum();
                 float snap0 = N(A, "snap");
                 int lvA = (int)N(A, "lvl");
-                Ck(S(A, "panel") == "1" && Eq("ts") && S(A, "ts") == "1.00", A + " levelled up to " + lvA + ": his card panel is open (step " + S(A, "panel") + ") and time runs at x1 for everybody");
+                Ck(S(A, "panel") == "2" && Eq("ts") && S(A, "ts") == "1.00", A + " levelled up to " + lvA + ": his stat point panel is open (step " + S(A, "panel") + ") and time runs at x1 for everybody");
                 int wa = Send(A, "watch", pidB.ToString(), "1.8");
                 yield return W(0.15f);
                 yield return Cmd(B, "walk", "0", "1", "1.0");
@@ -1082,7 +1112,7 @@ namespace MedievalKnight
                 yield return Cmd("all", "shot", "levelup_panel_open_on_" + A);
                 yield return Sum();
                 Check("with the panel open, " + A + " keeps receiving the world (" + (N(A, "snap") - snap0) + " snapshots meanwhile) and sees " + B + " walk " + w.G("moved") + " m; the panel is still open",
-                    N(A, "snap") - snap0 >= 15f && w.F("moved") > 4f && w.G("panel") == "1" && S(A, "panel") == "1");
+                    N(A, "snap") - snap0 >= 15f && w.F("moved") > 4f && w.G("panel") == "2" && S(A, "panel") == "2");
                 yield return Cmd(A, "walk", "-1", "0", "0.5");
                 float own = Parse(Rep(last, A)).F("moved");
                 Check(A + " can still walk with his own panel open (moved " + F1(own) + " m)", own > 2f);

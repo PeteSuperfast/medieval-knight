@@ -12,7 +12,7 @@ namespace MedievalKnight
         public Vector3 aim;         // world point the knight faces and leaps to
         public bool block;          // right mouse button held: shield up
         public bool run;            // Left Shift held
-        public bool dash;           // Space pressed this frame
+        public bool roll;           // Space pressed this frame
         public bool attackHeld;    // left mouse button / J held (read even while a panel is open, so a press that began there is not a click)
     }
 
@@ -29,8 +29,10 @@ namespace MedievalKnight
         public const float MinSwingSpeed = 0.4f, MaxSwingSpeed = 4f;
         const float MoveSpeed = 6.2f;
         public const float RunMult = 1.5f;                  // Left Shift: 6.2 -> 9.3 m/s, costs nothing
-        // Space: dash. Stamina is only used for this: one dash = 25 (one tick on the stamina bar).
-        public const float DashCost = 25f, DashCooldown = 0.8f, DashDistance = 6f, DashMoveTime = 0.20f, DashInvuln = 0.5f;
+        // Space: roll (dodge). Stamina pays for the roll and for blocking: one roll = 25 (one tick on the stamina bar).
+        public const float RollCost = 25f, RollCooldown = 0.8f, RollDistance = 6f, RollMoveTime = 0.40f, RollInvuln = 0.5f;
+        public const float BlockStaminaCost = 10f, BlockCostPerDef = 0.04f;     // a blow on the raised shield costs 10 stamina, 4% less per DEF point
+        public const int ParryLockPhases = 2;                                    // the first two phases of the parry motion (0.27 s) cannot be cut short
         const float RestYaw = 55f, RestPitch = -25f, RestHand = 0.36f;
 
         // tabard + shield colour and plume + cape colour per player slot (slot 0 is the classic blue / red knight)
@@ -57,11 +59,11 @@ namespace MedievalKnight
         public bool IsBlocking { get; private set; }
         public bool Dead { get; private set; }
         public bool Airborne { get; private set; }
-        public bool Invulnerable { get { return invuln || Glowing || Dashing; } }
-        // 0.5 s of invulnerability from the moment of a dash (the body only moves for the first 0.2 s)
-        public bool Dashing { get { return Time.time < dashInvulnUntil; } }
+        public bool Invulnerable { get { return invuln || Glowing || Rolling; } }
+        // 0.5 s of invulnerability from the moment of a roll (the body rolls for the first 0.4 s)
+        public bool Rolling { get { return Time.time < rollInvulnUntil; } }
         public float ReviveIn { get { return Dead ? Mathf.Max(0f, reviveAt - Time.time) : 0f; } }       // seconds until he stands up again
-        public float DashReadyIn { get { return Mathf.Max(0f, dashReadyAt - Time.time); } }
+        public float RollReadyIn { get { return Mathf.Max(0f, rollReadyAt - Time.time); } }
         // just revived, or picking a level-up card online: cannot be hurt, and glows
         public bool Glowing { get { return remote ? netGlow : Time.time < invulnUntil || Time.time < protectUntil; } }
         public float StaminaDeniedTime { get; private set; }
@@ -78,6 +80,7 @@ namespace MedievalKnight
         public WeaponDef Weapon { get { return inventory.Weapon; } }
         public Transform SwordModel { get { return swordModel; } }
         public string BodyKind { get { return body != null ? body.Kind : ""; } }          // "coded" (a "file" body comes with the .fbx work)
+        public float BodyLean { get { return body != null ? body.rigLean : 0f; } }                 // test read-out: the body turn (a roll goes through 360)
 
         // --- combat numbers: the equipped weapon only (level-ups give stats, not damage) ---
         public float DamageMult() { return inventory.Damage; }
@@ -109,8 +112,8 @@ namespace MedievalKnight
         float rigSpin { get { return body.rigSpin; } set { body.rigSpin = value; } }
         float jumpY, hurtTint;
         float lastSpendTime = -10f, lastDamageTime = -10f, lastAttackEnd = -10f, invulnUntil, protectUntil;
-        float dashInvulnUntil, dashMoveEnd, dashReadyAt, lastDodgeFx = -10f, lastRunDust, reviveAt;
-        Vector3 dashDir;
+        float rollInvulnUntil, rollMoveEnd, rollReadyAt, lastDodgeFx = -10f, lastRunDust, reviveAt;
+        Vector3 rollDir;
         bool invuln, lockFacing;
         Vector3 knockVel, aimPoint;
         // phase 7: parry window (0.2 s from a fresh shield press, not again within 0.5 s), clash window (the strike of a light swing +-0.1 s)
@@ -224,7 +227,7 @@ namespace MedievalKnight
             rigLean = 0f; rigHop = 0f; jumpY = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             invulnUntil = 0f; protectUntil = 0f;
-            dashInvulnUntil = 0f; dashMoveEnd = 0f; dashReadyAt = 0f;
+            rollInvulnUntil = 0f; rollMoveEnd = 0f; rollReadyAt = 0f;
             transform.position = at;
             transform.rotation = Quaternion.identity;
         }
@@ -238,7 +241,7 @@ namespace MedievalKnight
         }
 
         // Stops whatever the knight is doing (swing, roll) and clears every flag those leave behind.
-        // One place for the three callers: a dash that cancels a swing, death, restart.
+        // One place for the three callers: a roll that cancels a swing, death, restart.
         public void CancelAction()
         {
             StopAllCoroutines();
@@ -249,6 +252,8 @@ namespace MedievalKnight
         {
             IsAttacking = false; lockFacing = false; invuln = false;
             queuedClick = false; rigSpin = 0f;
+            if (clock.act == Act.Roll) { rigLean = 0f; rigHop = 0f; }                // (a half-turned body would otherwise unwind through the floor)
+            body.pivotY = 0f; body.ReleaseShield();
             clock.End();
             clashFrom = clashTo = 0f;
         }
@@ -333,7 +338,7 @@ namespace MedievalKnight
             if (!canInput) return inp;
             inp.block = InputX.MouseHeld(1);
             inp.run = InputX.Held(KeyCode.LeftShift) || InputX.Held(KeyCode.RightShift);
-            inp.dash = InputX.Down(KeyCode.Space);
+            inp.roll = InputX.Down(KeyCode.Space);
             return inp;
         }
 
@@ -343,12 +348,12 @@ namespace MedievalKnight
             Vector2 mv = inp.move;
             lastMove = mv;
             aimPoint = inp.aim;
-            bool dashMoving = Time.time < dashMoveEnd;
+            bool rolling = Time.time < rollMoveEnd;
             // left button: a click is the moment it goes down; a press that began while a panel was open never counts
             bool click = inp.attackHeld && !leftWas && canInput && !Dead;
             leftWas = inp.attackHeld;
             bool wasBlocking = IsBlocking;
-            IsBlocking = canInput && !IsAttacking && inp.block && !dashMoving;                   // the shield drops during a dash
+            IsBlocking = canInput && !IsAttacking && inp.block && !rolling;                   // the shield drops during a dash
             if (IsBlocking && !wasBlocking)                                                      // a fresh press: 0.2 s parry window, unless pressed again within 0.5 s
             {
                 float now = Time.time;
@@ -356,12 +361,12 @@ namespace MedievalKnight
                 lastPressAt = now;
             }
 
-            if (canInput && inp.dash) TryDash(inp);
-            dashMoving = Time.time < dashMoveEnd;
+            if (canInput && inp.roll) TryRoll(inp);
+            rolling = Time.time < rollMoveEnd;
             if (canInput)
             {
-                if (click && !inp.block) Click(dashMoving);                                     // the shield held at the press = no swing
-                else if (!IsAttacking && queuedClick) { queuedClick = false; if (!inp.block) Click(dashMoving); }
+                if (click && !inp.block) Click(rolling);                                     // the shield held at the press = no swing
+                else if (!IsAttacking && queuedClick) { queuedClick = false; if (!inp.block) Click(rolling); }
             }
             else queuedClick = false;
 
@@ -378,12 +383,12 @@ namespace MedievalKnight
             float speedMul = IsAttacking ? 0.2f : IsBlocking ? 0.4f : 1f;
             if (clock.act == Act.Swing && !clock.done) speedMul = (clock.phase == 0 || clock.phase == 3) ? 0.3f : 0f;   // the strike and the follow-through are driven by the move
             else if (lockFacing && IsAttacking) speedMul = Airborne ? 0f : 0.15f;
-            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Airborne && !Dead && !dashMoving;
+            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Airborne && !Dead && !rolling;
             if (running) speedMul *= RunMult;
             Running = running;
             Vector3 p = transform.position;
             p.y = 0f;
-            if (dashMoving) p += dashDir * (DashDistance / DashMoveTime) * dt;      // the dash replaces walking
+            if (rolling) p += rollDir * (RollDistance / RollMoveTime) * dt;      // the dash replaces walking
             else p += new Vector3(mv.x, 0f, mv.y) * MoveSpeed * speedMul * dt;
             p += knockVel * dt;
             if (running && Time.time - lastRunDust > 0.22f) { lastRunDust = Time.time; Fx.I.Dust(transform.position, 2); }
@@ -410,33 +415,118 @@ namespace MedievalKnight
             p.y = jumpY;
             transform.position = p;
 
-            Pose(dt, (mv.sqrMagnitude > 0.01f || dashMoving) && !Airborne);
+            Pose(dt, (mv.sqrMagnitude > 0.01f || rolling) && !Airborne);
         }
 
         public bool Running { get; private set; }
-        public int DodgeCount { get; private set; }               // blows that passed through a dash (test counter)
+        public int DodgeCount { get; private set; }               // blows that passed through a roll (test counter)
+        public int ParryMotionCount { get; private set; }          // parry motions played (a parry of his own, or a friend's replayed here)
 
-        // Space: a 6 m dash in 0.2 s that cannot be hurt for 0.5 s. Costs 25 stamina and has a 0.8 s cooldown.
-        // It cuts any swing short; it cannot be used while leaping.
-        void TryDash(KnightInput inp)
+        // Space: roll 6 m in 0.4 s; cannot be hurt for 0.5 s. Costs 25 stamina and has a 0.8 s cooldown.
+        // It cuts any swing (or the end of a parry motion) short; it cannot be used while leaping or in the first part of a parry motion.
+        void TryRoll(KnightInput inp)
         {
-            if (Dead || Airborne || Time.time < dashReadyAt) return;
-            if (stamina < DashCost - 0.001f) { Deny("Dash"); return; }
-            if (IsAttacking) CancelAction();
-            stamina -= DashCost;
+            if (Dead || Airborne || Time.time < rollReadyAt) return;
+            if (ParryLocked) return;
+            if (stamina < RollCost - 0.001f) { Deny("Roll"); return; }
+            if (IsAttacking || clock.act == Act.Parry) CancelAction();
+            stamina -= RollCost;
             lastSpendTime = Time.time;
-            dashReadyAt = Time.time + DashCooldown;
-            dashMoveEnd = Time.time + DashMoveTime;
+            rollReadyAt = Time.time + RollCooldown;
+            rollMoveEnd = Time.time + RollMoveTime;
             swingIndex = 0; queuedClick = false;                                  // a roll starts the chain over
-            dashInvulnUntil = Time.time + DashInvuln;
+            rollInvulnUntil = Time.time + RollInvuln;
             knockVel = Vector3.zero;
             Vector3 dir = new Vector3(inp.move.x, 0f, inp.move.y);
-            if (dir.sqrMagnitude < 0.01f) dir = -transform.forward;               // no direction held: hop backwards
-            dashDir = dir.normalized;
-            LastAction = "Dash";
+            bool backwards = dir.sqrMagnitude < 0.01f;                            // no direction held: roll backwards
+            if (backwards) dir = -transform.forward;
+            rollDir = dir.normalized;
+            Vector3 flat = transform.forward; flat.y = 0f;
+            backwards |= Vector3.Dot(rollDir, flat) < -0.5f;
+            if (!backwards) transform.rotation = Quaternion.LookRotation(rollDir);   // forwards and sideways: roll the way he runs
+            LastAction = "Roll";
             ActionsSeen++;
-            Net.SendAct(20, 1f, transform.position + dashDir * DashDistance);
-            DashFx(dashDir);
+            Net.SendAct(20, 1f, transform.position + rollDir * RollDistance);
+            RollFx(rollDir);
+            StartCoroutine(RollRoutine(backwards));
+        }
+
+        // The tumble: crouch, roll over (a full turn about the middle of the body), stand up. The clock is 20 / 60 / 20 % of 0.4 s.
+        IEnumerator RollRoutine(bool backwards)
+        {
+            lockFacing = true;
+            clock.Begin(Act.Roll, 0, KnightAnim.Roll, 1f);
+            body.pivotY = 0.8f;
+            PoseKey start = CurrentKey();
+            yield return null;
+            while (!clock.done)
+            {
+                clock.Tick(Time.deltaTime);
+                PoseKey p = ActClock.Pose(KnightAnim.Roll, clock.phase, clock.t, start);
+                if (backwards) p.lean = -p.lean;
+                SetPose(p);
+                yield return null;
+            }
+            rigLean = 0f; rigHop = 0f;                                             // (360 degrees is the same as 0: no unwinding)
+            body.pivotY = 0f;
+            lockFacing = false;
+            clock.End();
+        }
+
+        // ---------------------------------------------------------------- parry motion
+
+        // The parry motion (shield up, the blow knocked aside, arms a little wide, shield back) after a successful parry.
+        // The first two phases cannot be cut short; after that a swing or a roll can.
+        public bool ParryLocked { get { return clock.act == Act.Parry && !clock.done && clock.phase < ParryLockPhases; } }
+        public bool ParryActive { get { return clock.act == Act.Parry && !clock.done; } }
+
+        void StartParryMotion()
+        {
+            if (Dead || remote) return;
+            Net.SendAct(22, 1f, Vector3.zero);
+            StartCoroutine(ParryRoutine());
+        }
+
+        IEnumerator ParryRoutine()
+        {
+            ParryMotionCount++;
+            ActDef d = KnightAnim.Parry;
+            clock.Begin(Act.Parry, 0, d, 1f);
+            PoseKey start = CurrentKey();
+            ShieldKey sStart = body.CurrentShieldKey();
+            bool sparks = false;
+            yield return null;
+            while (!clock.done)
+            {
+                clock.Tick(Time.deltaTime);
+                SetPose(ActClock.Pose(d, clock.phase, clock.t, start));
+                body.DriveShield(ActClock.ShieldPose(d, clock.phase, clock.t, sStart));
+                if (!sparks && clock.phase >= 1)                                  // phase 2: the blow is knocked aside - gold sparks
+                {
+                    sparks = true;
+                    Vector3 at = body.ShieldMount.position + transform.forward * 0.3f;
+                    Fx.I.Burst(at, 12, new Color(0.961f, 0.761f, 0.353f), 3f, 8f, transform.forward + Vector3.up * 0.3f, 0.7f, 0.25f, 4f, 0.09f);
+                }
+                yield return null;
+            }
+            body.ReleaseShield();
+            clock.End();
+        }
+
+        // A friend's parry motion, replayed for show (one interpolation delay late like every replayed move).
+        IEnumerator RemoteParry()
+        {
+            if (interp.delay > 0f) yield return new WaitForSeconds(interp.delay);
+            yield return ParryRoutine();
+            act = null;
+        }
+
+        // A Roll replayed for a remote knight (the position glides on its own).
+        IEnumerator RemoteRoll(bool backwards)
+        {
+            if (interp.delay > 0f) yield return new WaitForSeconds(interp.delay);
+            yield return RollRoutine(backwards);
+            act = null;
         }
 
         // ---------------------------------------------------------------- click: the swing chain
@@ -448,6 +538,8 @@ namespace MedievalKnight
         void Click(bool rolling)
         {
             if (Dead || Airborne || rolling) return;
+            if (ParryLocked) return;                                      // the first part of a parry motion cannot be cut short
+            if (clock.act == Act.Parry && !clock.done) CancelAction();    // the end of it can: the swing starts at once
             if (IsAttacking)
             {
                 if (!queuedClick)
@@ -477,10 +569,10 @@ namespace MedievalKnight
             StartCoroutine(SwingRoutine(d, index, speed, chain ? KnightAnim.ChainPreScale : 1f));
         }
 
-        void DashFx(Vector3 dir)
+        void RollFx(Vector3 dir)
         {
             float yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
-            Fx.I.Streak(Ground(0.9f), yaw, DashDistance, 0.7f, new Color(0.8f, 0.92f, 1f, 0.85f), 0.25f);
+            Fx.I.Streak(Ground(0.9f), yaw, RollDistance, 0.7f, new Color(0.8f, 0.92f, 1f, 0.85f), 0.25f);
             Fx.I.Dust(transform.position, 8);
             Sfx.I.Play(Snd.Swing, 0.7f * Volume, 0.75f);
         }
@@ -489,11 +581,11 @@ namespace MedievalKnight
         // Shared by the local knight and by remote knights.
         void Pose(float dt, bool moving)
         {
-            body.Pose(dt, moving, IsAttacking, Dead, IsBlocking);
+            body.Pose(dt, moving, IsAttacking || (!clock.done && (clock.act == Act.Roll || clock.act == Act.Parry)), Dead, IsBlocking);
 
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
             if (Glowing && !Dead) body.SetTint(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
-            else if (!remote && Dashing && !Dead) body.SetTint(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
+            else if (!remote && Rolling && !Dead) body.SetTint(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
             else body.SetTint(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
 
             // the shield flashes pale blue while the parry window is open (a remote knight: for 0.2 s after his shield goes up)
@@ -622,6 +714,8 @@ namespace MedievalKnight
             act = null;
             IsAttacking = false; lockFacing = false;
             rigSpin = 0f;
+            if (clock.act == Act.Roll) { rigLean = 0f; rigHop = 0f; }
+            body.pivotY = 0f; body.ReleaseShield();
             clock.End();
         }
 
@@ -653,18 +747,27 @@ namespace MedievalKnight
         }
 
         // Replays a move of the remote player for show. kind: 0..2 = swing (target.x = 1: it chained straight on from the last one),
-        // 20 = roll. It starts one interpolation delay late, so it lines up with the delayed position on screen.
+        // 20 = roll, 22 = parry motion. It starts one interpolation delay late, so it lines up with the delayed position on screen.
         // A kind this build does not know is dropped quietly.
         public void PlayRemoteAct(int kind, float speed, Vector3 target)
         {
             if (!remote || Dead) return;
-            if (kind == 20)                                   // dash / roll: the position glides on its own, only the show is replayed
+            if (kind == 20)                                   // roll: the position glides on its own, only the show is replayed
             {
                 StopAct();
                 Vector3 dd = target - netPos; dd.y = 0f;
-                if (dd.sqrMagnitude > 0.01f) DashFx(dd.normalized);
-                LastAction = "Dash";
+                bool backwards = dd.sqrMagnitude <= 0.01f || Vector3.Dot(dd.normalized, transform.forward) < -0.5f;
+                if (dd.sqrMagnitude > 0.01f) RollFx(dd.normalized);
+                LastAction = "Roll";
                 ActionsSeen++;
+                act = StartCoroutine(RemoteRoll(backwards));
+                return;
+            }
+            if (kind == 22)                                   // a parry motion
+            {
+                if (act != null) StopCoroutine(act);
+                body.ReleaseShield();
+                act = StartCoroutine(RemoteParry());
                 return;
             }
             if (kind < 0 || kind >= KnightAnim.Swings.Length) return;
@@ -698,6 +801,12 @@ namespace MedievalKnight
             BeginSwing(false);
         }
         public int NextSwing { get { return swingIndex; } }                       // test hook: the swing the next click starts
+        public bool DebugRoll(Vector2 dir)                                          // test hook: Space with a direction held; true when the roll started
+        {
+            int a0 = ActionsSeen;
+            if (!Dead) TryRoll(new KnightInput { move = dir });
+            return ActionsSeen > a0;
+        }
 
         void Deny(string what)
         {
@@ -883,7 +992,7 @@ namespace MedievalKnight
         public void TakeDamage(float damage, Vector3 from, string source, float knockback = 6f, Enemy by = null, bool heavy = false)
         {
             if (remote || Dead) return;
-            if (Dashing)
+            if (Rolling)
             {
                 // the blow passes through: a small "DODGE" (not on every hit of a flurry)
                 if (Time.time - lastDodgeFx > 0.3f)
@@ -927,13 +1036,25 @@ namespace MedievalKnight
 
             if (IsBlocking && facing)
             {
-                // the shield costs no stamina any more: a frontal blow is always blocked
-                blocked = true;
-                damage *= 1f - progress.BlockReduction;
-                Sfx.I.Play(Snd.Clash);
-                if (heavy) { HeavyBlockCount++; Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "HEAVY", new Color(0.78f, 0.28f, 0.23f), 28); }
-                else Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
-                Fx.I.Burst(chestPos + srcDir * 0.6f, 12, new Color(1f, 0.92f, 0.6f), 3f, 8f, srcDir + Vector3.up * 0.4f, 0.7f, 0.25f, 5f, 0.1f);
+                // the shield costs stamina: 10 per blow, 4% less per DEF point. With too little left it does not hold: the blow lands in full.
+                float cost = BlockStaminaCost * (1f - BlockCostPerDef * progress.Points(Attr.Block));
+                if (stamina + 0.001f < cost)
+                {
+                    Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "GUARD BROKEN", new Color(1f, 0.5f, 0.4f), 26);
+                    Sfx.I.Play(Snd.ArmorImpact, 0.5f, 0.7f);
+                    StaminaDeniedTime = Time.unscaledTime;
+                }
+                else
+                {
+                    stamina -= cost;
+                    lastSpendTime = Time.time;                                       // the stamina does not come back for 0.6 s
+                    blocked = true;
+                    damage *= 1f - progress.BlockReduction;
+                    Sfx.I.Play(Snd.Clash);
+                    if (heavy) { HeavyBlockCount++; Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "HEAVY", new Color(0.78f, 0.28f, 0.23f), 28); }
+                    else Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "BLOCK", new Color(1f, 0.9f, 0.45f), 26);
+                    Fx.I.Burst(chestPos + srcDir * 0.6f, 12, new Color(1f, 0.92f, 0.6f), 3f, 8f, srcDir + Vector3.up * 0.4f, 0.7f, 0.25f, 5f, 0.1f);
+                }
             }
 
             float toArmor = Mathf.Min(armor, damage);
@@ -968,6 +1089,7 @@ namespace MedievalKnight
             if (parry)
             {
                 ParryCount++;
+                StartParryMotion();
                 Sfx.I.Play(Snd.Clash, 1f, 1.35f);
                 Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "PARRY!", new Color(0.81f, 0.91f, 1f), 32);
                 Fx.I.Burst(mid, 18, new Color(0.81f, 0.91f, 1f), 3f, 9f, srcDir + Vector3.up * 0.4f, 0.9f, 0.3f, 4f, 0.1f);
@@ -1009,7 +1131,7 @@ namespace MedievalKnight
             Dead = true;
             ClearActionFlags();                             // (not CancelAction: that would stop this very coroutine)
             IsBlocking = false; Airborne = false;
-            jumpY = 0f; dashMoveEnd = 0f; dashInvulnUntil = 0f;
+            jumpY = 0f; rollMoveEnd = 0f; rollInvulnUntil = 0f;
             bool online = Net.Multiplayer;
             bool coop = Game.I.Coop;
             reviveAt = Time.time + (online ? Game.ReviveDelayCoop : Game.ReviveDelaySingle);

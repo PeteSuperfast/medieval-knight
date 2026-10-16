@@ -44,6 +44,9 @@ namespace MedievalKnight
 
         public float swYaw = RestYaw, swPitch = RestPitch, swHand = RestHand;
         public float rigLean, rigHop, rigSpin, walkPhase;
+        public float pivotY;                    // the body turns about this height (0 = about the feet; a roll turns about the middle)
+        bool shieldDriven;                      // a move (the parry motion) places the shield itself
+        ShieldKey shieldKey;
 
         Transform legL, legR, swordPivot, armR, shieldNode;
         Tint tint, shieldTint;
@@ -129,6 +132,7 @@ namespace MedievalKnight
             legR.localRotation = Quaternion.Slerp(legR.localRotation, Quaternion.Euler(-swing, 0f, 0f), 1f - Mathf.Exp(-18f * dt));
 
             // shield
+            if (shieldDriven) return;
             float sk = 1f - Mathf.Exp(-18f * dt);
             Vector3 sPos = blocking ? KnightGear.ShieldBlockPos : KnightGear.ShieldRestPos;
             Quaternion sRot = blocking ? Quaternion.Euler(-12f, 5f, 0f) : Quaternion.Euler(-18f, -72f, 0f);
@@ -138,11 +142,30 @@ namespace MedievalKnight
             shieldNode.localScale = Vector3.Lerp(shieldNode.localScale, Vector3.one * sScale, sk);
         }
 
+        // The parry motion places the shield itself (DriveShield each frame); ReleaseShield hands it back to the idle / block pose.
+        public void DriveShield(ShieldKey k)
+        {
+            shieldDriven = true;
+            shieldKey = k;
+            shieldNode.localPosition = k.pos;
+            shieldNode.localRotation = Quaternion.Euler(k.euler);
+            shieldNode.localScale = Vector3.one * k.scale;
+        }
+
+        public void ReleaseShield() { shieldDriven = false; }
+
+        public ShieldKey CurrentShieldKey()
+        {
+            return new ShieldKey(shieldNode.localPosition, shieldNode.localRotation.eulerAngles, shieldNode.localScale.x);
+        }
+
         // Writes the numbers into the transforms (after everything else moved this frame).
         public void LateApply(bool dead)
         {
-            Root.localPosition = new Vector3(0f, rigHop, 0f);
-            if (!dead) Root.localRotation = Quaternion.Euler(rigLean, rigSpin, 0f);
+            Quaternion rot = Quaternion.Euler(rigLean, rigSpin, 0f);
+            Vector3 piv = new Vector3(0f, pivotY, 0f);
+            Root.localPosition = new Vector3(0f, rigHop, 0f) + (piv - rot * piv);          // (pivotY 0: exactly as before)
+            if (!dead) Root.localRotation = rot;
             swordPivot.localRotation = Quaternion.Euler(swPitch, swYaw, 0f);
             SwordMount.localPosition = new Vector3(0f, 0f, swHand);
             armR.localPosition = new Vector3(0f, 0f, swHand * 0.5f);

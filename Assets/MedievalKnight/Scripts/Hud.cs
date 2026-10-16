@@ -1025,15 +1025,15 @@ namespace MedievalKnight
         {
             float max = k.MaxStamina;
             float width = staminaBar.frame.rectTransform.sizeDelta.x;
-            int crossed = Mathf.FloorToInt(k.stamina / Knight.DashCost + 0.0001f);
-            if (crossed > Mathf.FloorToInt(lastStamina / Knight.DashCost + 0.0001f) && crossed >= 1) { tickFlash = crossed - 1; tickFlashAt = Time.unscaledTime; }
+            int crossed = Mathf.FloorToInt(k.stamina / Knight.RollCost + 0.0001f);
+            if (crossed > Mathf.FloorToInt(lastStamina / Knight.RollCost + 0.0001f) && crossed >= 1) { tickFlash = crossed - 1; tickFlashAt = Time.unscaledTime; }
             lastStamina = k.stamina;
             bool denied = Time.unscaledTime - k.StaminaDeniedTime < 0.35f;
-            int next = Mathf.FloorToInt(k.stamina / Knight.DashCost + 0.0001f);       // the divider that is still out of reach
+            int next = Mathf.FloorToInt(k.stamina / Knight.RollCost + 0.0001f);       // the divider that is still out of reach
             for (int i = 0; i < staminaTicks.Length; i++)
             {
                 Image t = staminaTicks[i];
-                float at = (i + 1) * Knight.DashCost;
+                float at = (i + 1) * Knight.RollCost;
                 bool on = at < max - 0.01f;
                 if (t.gameObject.activeSelf != on) t.gameObject.SetActive(on);
                 if (!on) continue;

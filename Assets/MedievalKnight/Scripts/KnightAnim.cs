@@ -23,6 +23,18 @@ namespace MedievalKnight
         }
     }
 
+    // The shield of the coded body at a key moment of a move (local position / euler angles / scale).
+    public struct ShieldKey
+    {
+        public Vector3 pos, euler;
+        public float scale;
+        public ShieldKey(Vector3 pos, Vector3 euler, float scale) { this.pos = pos; this.euler = euler; this.scale = scale; }
+        public static ShieldKey Lerp(ShieldKey a, ShieldKey b, float t)
+        {
+            return new ShieldKey(Vector3.Lerp(a.pos, b.pos, t), Quaternion.Slerp(Quaternion.Euler(a.euler), Quaternion.Euler(b.euler), t).eulerAngles, Mathf.Lerp(a.scale, b.scale, t));
+        }
+    }
+
     // What the body shows this frame.
     public struct BodyState
     {
@@ -42,6 +54,7 @@ namespace MedievalKnight
         public float[] phaseTime;          // swing: wind-up, strike, follow-through, recovery
         public bool[] scaledBySpeed;       // is this phase divided by the weapon speed (recovery is not)
         public PoseKey[] keys;             // phase count + 1 key poses (the coded body blends between them)
+        public ShieldKey[] shieldKeys;     // the same for the shield (only moves that drive it, like the parry motion)
         public Color fx = Color.white;
 
         public int Phases { get { return phaseTime.Length; } }
@@ -174,6 +187,15 @@ namespace MedievalKnight
             return PoseKey.Lerp(a, d.keys[p + 1], e);
         }
 
+        // The same for the shield: the key poses of the move, the first phase starting from where the shield really was.
+        public static ShieldKey ShieldPose(ActDef d, int phase, float t, ShieldKey start)
+        {
+            if (d == null || d.shieldKeys == null || d.shieldKeys.Length < 2) return start;
+            int p = Mathf.Clamp(phase, 0, d.shieldKeys.Length - 2);
+            ShieldKey a = p == 0 ? start : d.shieldKeys[p];
+            return ShieldKey.Lerp(a, d.shieldKeys[p + 1], Ease(d, p, t));
+        }
+
         static float Ease(ActDef d, int phase, float t)
         {
             t = Mathf.Clamp01(t);
@@ -264,7 +286,15 @@ namespace MedievalKnight
                 new PoseKey(80f, -55f, 0.36f, -4f, 0f, 0f),             // shield up in front of the chest
                 new PoseKey(60f, -40f, 0.50f, 8f, 0f, 14f),             // the shield pushes the blow to the side
                 new PoseKey(100f, -30f, 0.44f, 4f, 0f, 10f),            // arms a little wide, holding
-                new PoseKey(55f, -25f, 0.36f, 0f, 0f, 0f),
+                new PoseKey(80f, -55f, 0.36f, 0f, 0f, 0f),              // back to the raised guard
+            },
+            shieldKeys = new[]
+            {
+                new ShieldKey(new Vector3(-0.05f, 1.12f, 0.55f), new Vector3(-12f, 5f, 0f), 1.3f),
+                new ShieldKey(new Vector3(-0.05f, 1.12f, 0.55f), new Vector3(-12f, 5f, 0f), 1.3f),     // up in front of the chest
+                new ShieldKey(new Vector3(-0.40f, 1.12f, 0.70f), new Vector3(-10f, 60f, 0f), 1.35f),   // pushed out to the side: the blow is knocked aside
+                new ShieldKey(new Vector3(-0.62f, 1.10f, 0.45f), new Vector3(-4f, 78f, 0f), 1.2f),     // arms a little wide, holding
+                new ShieldKey(new Vector3(-0.05f, 1.12f, 0.55f), new Vector3(-12f, 5f, 0f), 1.3f),     // pulled back
             },
         };
 

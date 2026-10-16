@@ -613,7 +613,7 @@ namespace MedievalKnight
                 k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest");
                 Log("block: blocking=" + k.IsBlocking + " armor " + F(a0) + " -> " + F(k.armor) + ", stamina " + F(s0) + " -> " + F(k.stamina)
                     + ", sword_clash +" + (Snds(Snd.Clash) - cl0) + ", armor_impact +" + (Snds(Snd.ArmorImpact) - ai0));
-                Check("frontal block (right mouse button) cuts 20 damage to 4 and costs no stamina", k.IsBlocking && Mathf.Abs(a0 - k.armor - 4f) < 0.01f && Mathf.Abs(s0 - k.stamina) < 0.6f);
+                Check("frontal block (right mouse button) cuts 20 damage to 4 and costs 10 stamina", k.IsBlocking && Mathf.Abs(a0 - k.armor - 4f) < 0.01f && Mathf.Abs(s0 - k.stamina - 10f) < 0.6f);
                 Check("a successful block plays sword_clash (and nothing else)", Snds(Snd.Clash) - cl0 == 1 && Snds(Snd.ArmorImpact) == ai0);
                 yield return W(0.1f);
                 Shot("block");
@@ -656,14 +656,14 @@ namespace MedievalKnight
                 Check("Left Shift runs about 1.5x faster and costs no stamina", wasRunning && runDist / walkDist > 1.35f && runDist / walkDist < 1.65f && k.stamina >= stRun0 - 0.01f);
 
                 {
-                    int want = Mathf.FloorToInt(k.MaxStamina / Knight.DashCost) - 1;
+                    int want = Mathf.FloorToInt(k.MaxStamina / Knight.RollCost) - 1;
                     bool placed = g.hud.StaminaTicksShown == want && want >= 1;
                     for (int i = 0; i < want && placed; i++)
-                        placed &= Mathf.Abs(g.hud.StaminaTickX(i) - (3f + 282f * (i + 1) * Knight.DashCost / k.MaxStamina)) < 1.5f;
+                        placed &= Mathf.Abs(g.hud.StaminaTickX(i) - (3f + 282f * (i + 1) * Knight.RollCost / k.MaxStamina)) < 1.5f;
                     Check("the stamina bar has a divider every 25 points (" + g.hud.StaminaTicksShown + " dividers for max " + F(k.MaxStamina) + ")", placed);
                 }
 
-                // dash: 6 m, -25 stamina, 0.5 s untouchable, 0.8 s cooldown
+                // roll: 6 m in 0.4 s, -25 stamina, 0.5 s untouchable, 0.8 s cooldown
                 k.transform.position = home; Heal(); yield return W(1.0f);
                 k.aimOverride = home + new Vector3(0f, 0f, 8f);       // looking north
                 Vector3 q0 = k.transform.position;
@@ -674,37 +674,41 @@ namespace MedievalKnight
                 Keys();
                 float stAfter = k.stamina;
                 yield return W(0.12f);
-                bool dashing = k.Dashing;
-                yield return W(0.2f);
-                float dashDist = (k.transform.position - q0).magnitude;
+                bool dashing = k.Rolling;
+                bool rollClock = k.clock.act == Act.Roll && !k.clock.done;
                 float hpD = k.hp, arD = k.armor;
                 int dodge0 = k.DodgeCount;
-                k.TakeDamage(30f, k.transform.position + Vector3.forward * 2f, "selftest dash");
+                k.TakeDamage(30f, k.transform.position + Vector3.forward * 2f, "selftest roll");
                 bool unhurt = Mathf.Approximately(k.hp, hpD) && Mathf.Approximately(k.armor, arD);
                 int popups = k.DodgeCount - dodge0;
-                Log("dash: " + F(dashDist) + " m sideways, stamina " + F(stD0) + " -> " + F(stAfter) + ", dashing=" + dashing + ", " + F(Time.time - tDash) + " s in, blow ignored=" + unhurt + " (DODGE popup " + popups + "), swing sound +" + (Snds(Snd.Swing) - sw0));
-                Check("Space dashes ~6 m in the pressed direction and costs 25 stamina", dashDist > 5.4f && dashDist < 6.6f && Mathf.Abs(stD0 - stAfter - Knight.DashCost) < 1.5f && k.ActionsSeen == acts0 + 1);
-                Check("a blow during the dash does no damage and shows DODGE", dashing && unhurt && popups == 1);
-                float tPass = Time.time - tDash;
+                float tReach = -1f;                                     // when 95% of the 6 m are covered
+                while (Time.time - tDash < 0.56f)
+                {
+                    if (tReach < 0f && (k.transform.position - q0).magnitude >= 5.7f) tReach = Time.time - tDash;
+                    yield return null;
+                }
+                float dashDist = (k.transform.position - q0).magnitude;
+                Log("roll: " + F(dashDist) + " m sideways in " + F(tReach) + " s, stamina " + F(stD0) + " -> " + F(stAfter) + ", rolling=" + dashing + " (roll clock " + rollClock + "), blow ignored=" + unhurt + " (DODGE popup " + popups + "), swing sound +" + (Snds(Snd.Swing) - sw0));
+                Check("Space rolls ~6 m in the pressed direction in about 0.4 s and costs 25 stamina", dashDist > 5.4f && dashDist < 6.6f && tReach > 0.30f && tReach < 0.55f && Mathf.Abs(stD0 - stAfter - Knight.RollCost) < 1.5f && k.ActionsSeen == acts0 + 1);
+                Check("a blow during the roll does no damage and shows DODGE", dashing && rollClock && unhurt && popups == 1);
+                // after 0.5 s the protection is over
+                float hpE = k.hp, arE = k.armor;
+                k.TakeDamage(10f, k.transform.position + Vector3.forward * 2f, "selftest after roll");
+                Check("0.5 s after the roll started the knight can be hurt again", !k.Rolling && (k.hp < hpE - 0.01f || k.armor < arE - 0.01f));
                 // second Space inside the 0.8 s cooldown is refused
                 Vector3 qMid = k.transform.position; float stMid = k.stamina;
                 yield return Tap(Key.Space);
-                Check("a second dash inside the 0.8 s cooldown is refused", Mathf.Abs(k.stamina - stMid) < 3f && (k.transform.position - qMid).magnitude < 0.5f && k.ActionsSeen == acts0 + 1);
-                // after 0.55 s the protection is over
-                while (Time.time - tDash < 0.56f) yield return null;
-                float hpE = k.hp, arE = k.armor;
-                k.TakeDamage(10f, k.transform.position + Vector3.forward * 2f, "selftest after dash");
-                Check("0.5 s after the dash the knight can be hurt again", !k.Dashing && (k.hp < hpE - 0.01f || k.armor < arE - 0.01f));
+                Check("a second roll inside the 0.8 s cooldown is refused", Mathf.Abs(k.stamina - stMid) < 3f && (k.transform.position - qMid).magnitude < 0.5f && k.ActionsSeen == acts0 + 1);
                 Heal(); yield return W(1.0f);
 
-                // no direction held: a hop backwards (away from the cursor)
+                // no direction held: a roll backwards (away from the cursor)
                 k.transform.position = home; k.aimOverride = home + new Vector3(0f, 0f, 8f); yield return W(0.3f);
                 Vector3 b0 = k.transform.position;
                 yield return Tap(Key.Space);
-                yield return W(0.35f);
+                yield return W(0.55f);
                 Vector3 bd = k.transform.position - b0;
-                Log("dash without direction: moved (" + F(bd.x) + ", " + F(bd.z) + ")");
-                Check("a dash with no direction moves backwards from the cursor", bd.z < -5f && Mathf.Abs(bd.x) < 0.8f);
+                Log("roll without direction: moved (" + F(bd.x) + ", " + F(bd.z) + ")");
+                Check("a roll with no direction goes backwards from the cursor", bd.z < -5f && Mathf.Abs(bd.x) < 0.8f);
 
                 // not enough stamina: refused, the bar flashes red
                 Heal(); yield return W(1.0f);
@@ -712,10 +716,10 @@ namespace MedievalKnight
                 Vector3 n0 = k.transform.position; int acts1 = k.ActionsSeen;
                 yield return Tap(Key.Space);
                 yield return W(0.2f);
-                Check("a dash with less than 25 stamina is refused", (k.transform.position - n0).magnitude < 0.5f && k.ActionsSeen == acts1 && Time.unscaledTime - k.StaminaDeniedTime < 0.6f);
+                Check("a roll with less than 25 stamina is refused", (k.transform.position - n0).magnitude < 0.5f && k.ActionsSeen == acts1 && Time.unscaledTime - k.StaminaDeniedTime < 0.6f);
                 Heal(); yield return W(1.0f);
 
-                // Space does not swing; a dash cuts a swing short
+                // Space does not swing; a roll cuts a swing short
                 int comboBefore = k.ActionsSeen;
                 k.aimOverride = home + new Vector3(0f, 0f, 8f);
                 k.DebugAttack(1);                                       // the sweep: 0.5 s long, easy to catch
@@ -723,12 +727,12 @@ namespace MedievalKnight
                 bool swinging = k.IsAttacking;
                 yield return Tap(Key.Space);
                 yield return null;
-                Check("a dash cancels a sword swing in progress", swinging && !k.IsAttacking && k.Dashing);
+                Check("a roll cancels a sword swing in progress", swinging && !k.IsAttacking && k.Rolling);
                 yield return W(0.9f);
                 int actsB = k.ActionsSeen;
                 yield return Tap(Key.Space);
                 yield return W(0.3f);
-                Check("Space only dashes: it never starts a sword attack", k.LastAction == "Dash" && k.ActionsSeen == actsB + 1);
+                Check("Space only rolls: it never starts a sword attack", k.LastAction == "Roll" && k.ActionsSeen == actsB + 1);
                 Heal(); yield return W(1.0f);
                 k.transform.position = new Vector3(2f, 0f, -5f);
                 k.aimOverride = d.transform.position;
@@ -1810,11 +1814,169 @@ namespace MedievalKnight
                 int a1 = k.ActionsSeen;
                 yield return Tap(Key.Space);
                 yield return W(0.5f);
-                Check("Space only dashes: no Dash Slash follows a click right after it", k.LastAction == "Dash" && k.ActionsSeen == a1 + 1);
+                Check("Space only rolls: no special swing follows a click after it", k.LastAction == "Roll" && k.ActionsSeen == a1 + 1);
                 yield return ClickLeft();
                 yield return null;
-                Check("a click right after the dash is the first swing (" + k.LastAction + ")", k.LastAction == "Diagonal Slash" && k.ActionsSeen == a1 + 2);
+                Check("a click after the roll has landed is the first swing (" + k.LastAction + ")", k.LastAction == "Diagonal Slash" && k.ActionsSeen == a1 + 2);
                 yield return WaitIdle(2f);
+            }
+
+            // 7) the roll: the body turns over once, cuts the chain, and the next swing is swing 1 again
+            {
+                yield return W(1.0f);
+                Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                yield return W(0.3f);
+                yield return ClickLeft();                              // swing 1
+                while (k.clock.phase < 3 && !k.clock.done) yield return null;
+                yield return ClickLeft();                              // kept: swing 2 would follow
+                yield return Tap(Key.Space);                           // the roll cuts it all
+                yield return null;
+                bool cut = !k.IsAttacking && k.Rolling;
+                float maxLean = 0f;
+                float t0 = Time.time;
+                while (Time.time - t0 < 0.5f)
+                {
+                    maxLean = Mathf.Max(maxLean, Mathf.Abs(k.BodyLean));
+                    yield return null;
+                }
+                bool upright = Mathf.Abs(k.BodyLean) < 1f || Mathf.Abs(Mathf.Abs(k.BodyLean) - 360f) < 1f;
+                Check("a roll cuts the swing and the kept click (nothing swings after it), and the body turns over (lean up to " + F(maxLean) + " deg)", cut && maxLean > 270f);
+                yield return W(0.5f);
+                Check("after the roll the body stands upright again (lean " + F(k.BodyLean) + ")", upright);
+                int a0 = k.ActionsSeen;
+                yield return ClickLeft();
+                yield return null;
+                Check("the swing after a roll is swing 1 again (" + k.LastAction + ")", k.LastAction == "Diagonal Slash" && k.ActionsSeen == a0 + 1);
+                yield return WaitIdle(2f);
+                yield return W(0.9f);
+
+                // a click while the roll is on is dropped
+                Heal();
+                yield return Tap(Key.Space);
+                int a1 = k.ActionsSeen;
+                yield return W(0.1f);
+                yield return ClickLeft();
+                yield return W(0.1f);
+                Check("a click in the middle of a roll is dropped (no swing, no kept click)", k.ActionsSeen == a1 && !k.IsAttacking);
+                yield return W(0.6f);
+                Check("...and nothing starts by itself after the roll", k.ActionsSeen == a1 && !k.IsAttacking);
+                yield return W(0.5f);
+            }
+
+            // 8) the shield costs stamina: 10 a blow, -4% per DEF point, nothing left = the blow lands in full
+            {
+                Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                yield return W(0.5f);
+                Vector3 srcPos = k.transform.position + k.Forward * 2f;
+                ShieldUp();
+                yield return W(0.5f);
+                float s0 = k.stamina, a0 = k.armor;
+                k.TakeDamage(20f, srcPos, "selftest");
+                float cost1 = s0 - k.stamina;
+                Check("a blow on the raised shield costs 10 stamina (armor -4) and the stamina does not come back for 0.6 s (cost " + F(cost1) + ")",
+                    Near(cost1, 10f, 0.4f) && Near(a0 - k.armor, 4f, 0.01f));
+                float sAfter = k.stamina;
+                yield return W(0.4f);
+                Check("...no regeneration inside 0.6 s of the block (" + F(k.stamina - sAfter) + ")", k.stamina - sAfter < 0.5f);
+                yield return W(0.9f);
+
+                k.progress.attr[(int)Attr.Block] = 10;                 // DEF 10: the cost is 40% lower and the shield stops 92%
+                Heal();
+                yield return W(0.8f);
+                s0 = k.stamina; a0 = k.armor;
+                k.TakeDamage(20f, srcPos, "selftest");
+                Check("with DEF 10 the block costs 6 stamina (" + F(s0 - k.stamina) + ") and 20 damage cost 1.6 armor (" + F(a0 - k.armor) + ")", Near(s0 - k.stamina, 6f, 0.4f) && Near(a0 - k.armor, 1.6f, 0.01f));
+                k.progress.attr[(int)Attr.Block] = 0;
+                Heal();
+                yield return W(0.8f);
+
+                k.stamina = 4f;                                        // not enough: the shield does not hold
+                a0 = k.armor;
+                int cl0 = Snds(Snd.Clash);
+                k.TakeDamage(20f, srcPos, "selftest");
+                Check("with less than 10 stamina the shield does not hold: the blow lands in full (armor -20, stamina kept, no block sound)",
+                    Near(a0 - k.armor, 20f, 0.01f) && k.stamina >= 3.9f && Snds(Snd.Clash) == cl0);
+                ShieldDown();
+                Heal();
+                yield return W(0.5f);
+            }
+
+            // 9) the parry motion: 4 phases 0.15 / 0.12 / 0.25 / 0.20 s; the first two cannot be cut short
+            {
+                Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                ShieldDown();
+                yield return W(1.0f);
+                int pm0 = k.ParryMotionCount, par0 = k.ParryCount;
+                Slime s = P7Slime(0, north);
+                yield return W(0.4f);
+                ShieldUp();
+                yield return W(0.05f);
+                float tStrike = Time.time;
+                g.DebugStrike(s, k, false);
+                float[] at = { -1f, -1f, -1f, -1f };
+                int lastPhase = -1;
+                bool clickDropped = false, rollRefused = false;
+                int actsP = k.ActionsSeen;
+                float stP = k.stamina;
+                bool doneSeen = false;
+                while (Time.time - tStrike < 1.3f)
+                {
+                    if (k.ParryActive)
+                    {
+                        if (k.clock.phase != lastPhase) { lastPhase = k.clock.phase; at[lastPhase] = Time.time - tStrike; }
+                        if (k.clock.phase == 0 && !clickDropped)         // in the first phase: a click and a roll are both refused
+                        {
+                            yield return ClickLeft();
+                            clickDropped = k.ActionsSeen == actsP && !k.IsAttacking && k.ParryActive;
+                            yield return Tap(Key.Space);
+                            rollRefused = k.ActionsSeen == actsP && Mathf.Abs(k.stamina - stP) < 4f && !k.Rolling;
+                        }
+                    }
+                    else if (lastPhase >= 3) { doneSeen = true; break; }
+                    yield return null;
+                }
+                Log("parry motion: phase starts after the blow (s) " + F(at[0]) + " / " + F(at[1]) + " / " + F(at[2]) + " / " + F(at[3]) + ", motions +" + (k.ParryMotionCount - pm0));
+                Check("a parry plays the motion once (ParryCount +" + (k.ParryCount - par0) + ", motions +" + (k.ParryMotionCount - pm0) + ")", k.ParryCount == par0 + 1 && k.ParryMotionCount == pm0 + 1);
+                bool timing = at[0] >= 0f && at[1] >= 0f && at[2] >= 0f && at[3] >= 0f
+                    && Near(at[1] - at[0], 0.15f, 0.06f) && Near(at[2] - at[1], 0.12f, 0.06f) && Near(at[3] - at[2], 0.25f, 0.06f);
+                Check("the four phases run in order: raise 0.15 s, knock aside 0.12 s, arms wide 0.25 s (then pull back 0.20 s)", timing && doneSeen);
+                Check("a click and a roll in the first part of the motion are refused", clickDropped && rollRefused);
+                Destroy(s.gameObject);
+                ShieldDown();
+                yield return W(0.8f);
+
+                // after phase 2 a click cuts it short and the swing starts at once
+                Slime s2 = P7Slime(0, north);
+                yield return W(0.4f);
+                ShieldUp();
+                yield return W(0.05f);
+                float t2 = Time.time;
+                g.DebugStrike(s2, k, false);
+                while (Time.time - t2 < 0.6f && !(k.ParryActive && k.clock.phase >= 2)) yield return null;
+                bool atPhase = k.ParryActive && k.clock.phase >= 2;
+                ShieldDown();
+                yield return null;
+                int a2 = k.ActionsSeen;
+                yield return ClickLeft();
+                yield return null;
+                Check("after the knock-aside phases a click ends the parry motion and swings at once", atPhase && k.ActionsSeen == a2 + 1 && !k.ParryActive && k.IsAttacking);
+                yield return WaitIdle(2f);
+                Destroy(s2.gameObject);
+
+                // a plain block (late press) plays no parry motion
+                yield return W(1.0f);
+                Slime s3 = P7Slime(0, north);
+                yield return W(0.3f);
+                Heal();
+                int pm1 = k.ParryMotionCount;
+                ShieldUp();
+                yield return W(0.4f);
+                g.DebugStrike(s3, k, false);
+                yield return W(0.5f);
+                Check("a plain block (no parry) plays no parry motion", k.ParryMotionCount == pm1 && !k.ParryActive);
+                ShieldDown();
+                Destroy(s3.gameObject);
+                yield return W(0.5f);
             }
 
             k.transform.position = home;
