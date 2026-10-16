@@ -307,7 +307,6 @@ namespace MedievalKnight
                   .Append(";ac").Append(p.pid).Append('=').Append(p.ActionsSeen)
                   .Append(";an").Append(p.pid).Append('=').Append(p.LastAction)
                   .Append(";blk").Append(p.pid).Append('=').Append(p.IsBlocking ? 1 : 0)
-                  .Append(";chg").Append(p.pid).Append('=').Append(p.ShowsCharge ? 1 : 0)
                   .Append(";hp").Append(p.pid).Append('=').Append(F1(p.hp))
                   .Append(";par").Append(p.pid).Append('=').Append(p.ParryCount)
                   .Append(";cla").Append(p.pid).Append('=').Append(p.ClashCount)
@@ -430,6 +429,7 @@ namespace MedievalKnight
                     yield return WaitIdle(2f);
                     yield return W(0.5f);
                     k.DebugAttack(0);
+                    yield return W(0.15f);                            // (the clash window of the diagonal slash is open from 0.1 s to 0.42 s)
                     Net.SendTest("c|pr" + (++probeId) + "|H|strike|" + Net.LocalPid + "|0");
                     Reply(id, "ok");
                     yield return W(0.4f);
@@ -449,18 +449,24 @@ namespace MedievalKnight
                     break;
                 }
 
-                case "holdon":                                        // phase 6: the left button goes down and stays (a charge)
-                    k.attackHeldOverride = true;
-                    Reply(id, "ok");
-                    break;
-
-                case "holdoff":                                       // the button comes up: a full charge swings the Heavy Strike
-                    k.attackHeldOverride = false;
-                    yield return null; yield return null;
+                case "clicks":                                        // n gap: n left clicks (button down 2 frames), gap seconds apart, through the real click path
+                {
+                    int n = int.Parse(a[0]);
+                    float gap = P(a[1]);
                     yield return WaitIdle(3f);
+                    for (int c = 0; c < n; c++)
+                    {
+                        k.attackHeldOverride = true;
+                        yield return null; yield return null;
+                        k.attackHeldOverride = false;
+                        if (c < n - 1) yield return W(gap);
+                    }
+                    yield return null; yield return null;
+                    yield return WaitIdle(4f);
                     k.attackHeldOverride = null;
                     Reply(id, "an=" + k.LastAction + ";ac=" + k.ActionsSeen);
                     break;
+                }
 
                 case "atk":
                     yield return WaitIdle(2f);
@@ -890,9 +896,10 @@ namespace MedievalKnight
             }
             int hits0 = d.hits;
             float tot0 = d.totalDamage;
-            for (int i = 0; i < 1; i++)                                // one sword attack proves the replication path; per-attack damage is not a network matter
+            for (int i = 0; i < KnightAnim.Swings.Length; i++)         // the three swings; per-swing damage is not a network matter but the replay of each one is
             {
-                AttackDef atk = Knight.Attacks[i];
+                SwingDef atk = KnightAnim.Swings[i];
+                yield return W(0.5f);
                 yield return Tp(A, dp.x - (d.radius + 1.3f), dp.z, dp.x, dp.z);
                 yield return Sum();
                 float ac0 = N("H", "ac" + pidA), acB0 = N(B, "ac" + pidA);
@@ -900,11 +907,12 @@ namespace MedievalKnight
                 yield return Cmd(A, "atk", i.ToString());
                 yield return W(0.45f);
                 yield return Sum();
+                float want = KnightAnim.BaseDamage * atk.damageMul;
                 bool seenAll = Eq("an" + pidA) && S("H", "an" + pidA) == atk.name;
-                Ck(seenAll && N("H", "ac" + pidA) == ac0 + 1 && N(B, "ac" + pidA) == acB0 + 1, "attack " + (i + 1) + " " + atk.name + " by " + A + " is replayed once on every screen");
-                Check("attack " + (i + 1) + ": the client's hit took exactly " + atk.damage + " from the host's dummy (hits +" + (d.hits - h0) + ", damage +" + F1(d.totalDamage - dt0) + ")",
-                    d.hits - h0 == 1 && Mathf.Abs(d.totalDamage - dt0 - atk.damage) < 0.01f);
-                Ck(Near("dummy", 0.6f), "attack " + (i + 1) + ": the dummy's health + armor is the same everywhere");
+                Ck(seenAll && N("H", "ac" + pidA) == ac0 + 1 && N(B, "ac" + pidA) == acB0 + 1, "swing " + (i + 1) + " " + atk.name + " by " + A + " is replayed once on every screen");
+                Check("swing " + (i + 1) + ": the client's hit took exactly " + F1(want) + " from the host's dummy (hits +" + (d.hits - h0) + ", damage +" + F1(d.totalDamage - dt0) + ")",
+                    d.hits - h0 == 1 && Mathf.Abs(d.totalDamage - dt0 - want) < 0.01f);
+                Ck(Near("dummy", 0.6f), "swing " + (i + 1) + ": the dummy's health + armor is the same everywhere");
             }
             string[] skillNames = { "Whirlwind", "Dash Thrust", "Shield Bash", "Ground Slam" };
             for (int i = 0; i < 1; i++)                                // one skill (Whirlwind, 3 hits) is enough; the other three go through the same path
@@ -928,53 +936,30 @@ namespace MedievalKnight
             }
             Log("dummy took " + (d.hits - hits0) + " hits / " + F1(d.totalDamage - tot0) + " damage from " + A + " in total");
 
-            // ------------------------------------------------ 3b. phase 6: a new attack (Vault Chop), the charge flag, Heavy Strike, a cancelled charge
+            // ------------------------------------------------ 3b. knight-rig-slash: three clicks chain the three swings, each one is replayed once on every screen
             {
-                AttackDef vault = Knight.Attacks[9];
+                yield return W(1.0f);
                 yield return Tp(A, dp.x - (d.radius + 1.3f), dp.z, dp.x, dp.z);
                 yield return Sum();
                 float ac0 = N("H", "ac" + pidA), acB0 = N(B, "ac" + pidA);
-                int h0 = d.hits; float dt0 = d.totalDamage;
-                yield return Cmd(A, "atk", "9");
-                yield return W(0.5f);
-                yield return Sum();
-                Ck(Eq("an" + pidA) && S("H", "an" + pidA) == vault.name && N("H", "ac" + pidA) == ac0 + 1 && N(B, "ac" + pidA) == acB0 + 1,
-                    "new attack " + vault.name + " (net kind " + Knight.NetKind(9) + ") by " + A + " is replayed once on every screen");
-                Check("new attack " + vault.name + ": the host's dummy took exactly " + vault.damage + " (hits +" + (d.hits - h0) + ", damage +" + F1(d.totalDamage - dt0) + ")",
-                    d.hits - h0 == 1 && Mathf.Abs(d.totalDamage - dt0 - vault.damage) < 0.01f);
-
-                // charge: the flag is seen on every screen while held, and goes out with the release
-                yield return W(1.0f);
-                AttackDef heavy = Knight.Attacks[Knight.HeavyIndex];
-                yield return Cmd(A, "holdon");
-                yield return W(0.8f);
-                yield return Sum();
-                Ck(Eq("chg" + pidA) && S("H", "chg" + pidA) == "1", A + " holding a charge is seen on every screen");
-                yield return W(0.6f);
-                float acH = N("H", "ac" + pidA);
-                int h1 = d.hits; float dt1 = d.totalDamage;
-                yield return Cmd(A, "holdoff");
-                yield return W(0.3f);
-                yield return Sum();
-                Ck(Eq("an" + pidA) && S("H", "an" + pidA) == heavy.name && N("H", "ac" + pidA) == acH + 1 && Eq("chg" + pidA) && S("H", "chg" + pidA) == "0",
-                    A + " released a full charge: " + heavy.name + " is replayed once on every screen and the charge flag is out");
-                Check(heavy.name + ": the client's hit took exactly " + heavy.damage + " from the host's dummy (hits +" + (d.hits - h1) + ", damage +" + F1(d.totalDamage - dt1) + ")",
-                    d.hits - h1 == 1 && Mathf.Abs(d.totalDamage - dt1 - heavy.damage) < 0.01f);
-
-                // a charge dropped with the right mouse button: the flag goes out, nothing swings when the button comes up
-                yield return W(1.0f);
-                yield return Sum();
-                float acX = N("H", "ac" + pidA);
-                yield return Cmd(A, "holdon");
-                yield return W(0.7f);
-                yield return Cmd(A, "block", "0.5");
-                yield return W(0.3f);
-                yield return Sum();
-                Ck(Eq("chg" + pidA) && S("H", "chg" + pidA) == "0", A + " dropped the charge with the shield: the flag is out everywhere");
-                yield return Cmd(A, "holdoff");
+                int h0 = d.hits;
+                yield return Cmd(A, "clicks", "3", "0.3");
                 yield return W(0.4f);
                 yield return Sum();
-                Ck(Eq("ac" + pidA) && N("H", "ac" + pidA) == acX, "nothing swung when the button came up after the dropped charge");
+                Ck(Eq("ac" + pidA) && N("H", "ac" + pidA) == ac0 + 3 && N(B, "ac" + pidA) == acB0 + 3 && S("H", "an" + pidA) == "Thrust",
+                    "three clicks of " + A + " chain Diagonal Slash > Sweep Slash > Thrust: three actions on every screen, the last one seen is the Thrust");
+                Check("the chain hit the host's dummy three times (hits +" + (d.hits - h0) + ")", d.hits - h0 == 3);
+
+                // a click with the shield up swings nothing
+                yield return W(1.0f);
+                float acX = N("H", "ac" + pidA);
+                int bk = Send(A, "block", "0.9");
+                yield return W(0.3f);
+                yield return Cmd(A, "clicks", "1", "0.1");
+                yield return Wait(bk, A);
+                yield return W(0.3f);
+                yield return Sum();
+                Ck(Eq("ac" + pidA) && N("H", "ac" + pidA) == acX, "a click with the shield up swings nothing on any screen");
             }
 
             // ------------------------------------------------ 3c. phase 7: parry / clash / heavy blows across the network, damage number colours
@@ -1025,30 +1010,19 @@ namespace MedievalKnight
                 ParkSlimes();
                 yield return W(0.3f);
 
-                // e) a Heavy Strike on the dummy: every screen shows the same number colour (heavy, then crit + heavy)
+                // e) a critical swing on the dummy: every screen shows the same number colour (crit = 3)
                 {
                     float tw = RT;
                     while (g.dummy != null && g.dummy.Dead && RT - tw < 6f) yield return null;
                     Dummy dm = g.dummy;
                     Vector3 dpos = dm.transform.position;
                     yield return Tp(A, dpos.x - (dm.radius + 1.3f), dpos.z, dpos.x, dpos.z);
-                    yield return Cmd(A, "holdon");
-                    yield return W(1.5f);
-                    yield return Cmd(A, "holdoff");
-                    yield return W(0.4f);
-                    yield return Sum();
-                    Ck(Eq("dnum") && S("H", "dnum") == "2", "a Heavy Strike's damage number is the heavy kind (2) on every screen");
-                    tw = RT;
-                    while (g.dummy != null && g.dummy.Dead && RT - tw < 6f) yield return null;
-                    yield return W(0.8f);
                     yield return Cmd(A, "crit", "2");
-                    yield return Cmd(A, "holdon");
-                    yield return W(1.5f);
-                    yield return Cmd(A, "holdoff");
+                    yield return Cmd(A, "atk", "0");
                     yield return W(0.4f);
                     yield return Cmd(A, "crit", "1");
                     yield return Sum();
-                    Ck(Eq("dnum") && S("H", "dnum") == "4", "a critical Heavy Strike's number is the crit + heavy kind (4) on every screen");
+                    Ck(Eq("dnum") && S("H", "dnum") == "3", "a critical hit's damage number is the crit kind (3) on every screen");
                     yield return Tp(A, -3f, -8f, -3f, 0f);
                 }
             }
@@ -1219,18 +1193,17 @@ namespace MedievalKnight
                 yield return Tp(C, 6f, -14f, 6f, 0f);
                 for (int i = 0; i < peers.Length; i++) if (peers[i] != C) yield return Tp(peers[i], 2f + i, -11f, 6f, -14f);
                 yield return Cmd(C, "autoheal", "0");
-                yield return Cmd(C, "holdon");                           // phase 6: he is charging when he falls
-                yield return W(0.8f);
                 yield return Sum();
-                Ck(Eq("chg" + pidC) && S("H", "chg" + pidC) == "1", C + " charging is seen on every screen before he falls");
                 float acC0 = N("H", "ac" + pidC);
+                int swC = Send(C, "atk", "0");                           // knight-rig-slash: he is in the middle of a swing when he falls
+                yield return W(0.15f);
                 yield return Cmd(C, "die");
                 Check(C + " took a deadly blow", Parse(Rep(last, C)).G("dead") == "True");
-                yield return Cmd(C, "holdoff");
+                yield return Wait(swC, C);
                 yield return W(1.0f);
                 yield return Sum();
                 Ck(Eq("dead" + pidC) && S("H", "dead" + pidC) == "1", C + " is down, and down on every screen");
-                Ck(Eq("chg" + pidC) && S("H", "chg" + pidC) == "0" && N("H", "ac" + pidC) == acC0, C + " fell while charging: the charge flag is out everywhere and nothing swung");
+                Ck(Eq("ac" + pidC) && N("H", "ac" + pidC) == acC0 + 1, C + " fell in the middle of a swing: that swing was seen once and nothing else swung");
                 yield return Cmd("all", "shot", "knight_down");
                 yield return W(Game.ReviveDelayCoop + 1.2f);
                 yield return Cmd(C, "autoheal", "1");

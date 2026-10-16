@@ -199,7 +199,6 @@ namespace MedievalKnight
             g.camPitch = g.camPitchTarget = Game.CamPitchDefault;       // (a saved camera angle of this PC must not change the screenshots / aiming below; it is never written here)
             Dummy d = g.dummy;
             Random.InitState(12345);
-            Knight.TestHoldSeconds = 0.4f;                              // a click may be up to 0.4 s here (a busy PC can need that for three frames)
             g.foodOverride = 0;                                         // no random food: the food test decides when some falls
             yield return W(1.3f);
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-looponly") >= 0)   // quick run of the Phase 1 cases only
@@ -223,21 +222,6 @@ namespace MedievalKnight
                 Application.Quit();
                 yield break;
             }
-
-            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-p6only") >= 0)     // quick run of the phase 6 cases only
-            {
-                g.packsOff = true;
-                Progress.ForceCrit = 1;
-                ParkSlimes();
-                yield return Phase6Moves(d);
-                yield return Phase6Clicks(d);
-                yield return Phase6Charge(d);
-                yield return W(0.5f);
-                Log("done (phase 6 cases only), screenshots=" + shot + ", failed checks=" + fails);
-                Application.Quit();
-                yield break;
-            }
-
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-p7only") >= 0)     // quick run of the phase 7 cases only
             {
                 g.packsOff = true;
@@ -539,14 +523,14 @@ namespace MedievalKnight
             Check("WASD moves the knight on X and Z", p1.z - p0.z > 1.5f && p1.x - p0.x > 1.5f);
             Shot("moved");
 
-            // ------------------------------------------------ basic attacks on the dummy
+            // ------------------------------------------------ the three swings on the dummy
             Progress.ForceCrit = 1;
             float sideSlashTime = 0f;
             int swingSounds = 0, grunt0 = Snds(Snd.Grunt);
             bool firstHitSound = false;
-            for (int i = 0; i < Knight.ComboLen; i++)
+            for (int i = 0; i < KnightAnim.Swings.Length; i++)
             {
-                AttackDef a = Knight.Attacks[i];
+                SwingDef a = KnightAnim.Swings[i];
                 Heal();
                 StandNear(d, 1.3f);
                 yield return W(0.35f);
@@ -557,23 +541,26 @@ namespace MedievalKnight
                 k.DebugAttack(i);
                 yield return null;
                 bool noSoundYet = Snds(Snd.Swing) == sw0;              // the whoosh belongs to the strike, not the wind-up
-                yield return W(a.windupTime + a.strikeTime * 0.7f);
+                yield return W(a.phaseTime[0] + a.phaseTime[1] * 0.7f);
                 Shot("attack" + (i + 1) + "_" + a.name.Replace(" ", ""));
                 yield return WaitIdle(2f);
                 float took = Time.time - t0;
                 if (i == 0) sideSlashTime = took;
-                Log("attack " + (i + 1) + " " + a.name + ": stamina " + F(s0) + " -> " + F(k.stamina) + ", dummy armor " + F(ar0) + " -> " + F(d.armor)
+                Log("swing " + (i + 1) + " " + a.name + ": stamina " + F(s0) + " -> " + F(k.stamina) + ", dummy armor " + F(ar0) + " -> " + F(d.armor)
                     + ", hp " + F(hp0) + " -> " + F(d.hp) + ", hits +" + (d.hits - h0) + ", last " + d.lastHit + ", duration " + F(took) + "s");
-                Check("attack " + (i + 1) + " hits the dummy for base damage " + a.damage + " and costs no stamina", d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - a.damage) < 0.01f && k.stamina >= s0 - 0.01f);
+                float want = KnightAnim.BaseDamage * a.damageMul;
+                Check("swing " + (i + 1) + " hits the dummy once for base damage " + F(want) + " (14 x " + a.damageMul + ") and costs no stamina",
+                    d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - want) < 0.01f && k.stamina >= s0 - 0.01f && k.LastHitCount == 1);
+                Check("swing " + (i + 1) + " lasts " + F(ActClock.Total(a, 1f)) + " s at weapon speed 1.0 (measured " + F(took) + " s)", took > ActClock.Total(a, 1f) - 0.04f && took < ActClock.Total(a, 1f) + 0.25f);
                 if (Snds(Snd.Swing) - sw0 == 1 && noSoundYet) swingSounds++;
                 if (i == 0) firstHitSound = Snds(Snd.ArmorImpact) - ai0 == 1 && Snds(Snd.Slice) == sl0;
                 Log("  sounds: swing +" + (Snds(Snd.Swing) - sw0) + " (silent during wind-up: " + noSoundYet + "), armor_impact +" + (Snds(Snd.ArmorImpact) - ai0)
                     + ", slice +" + (Snds(Snd.Slice) - sl0) + ", grunts so far " + (Snds(Snd.Grunt) - grunt0) + ", hit split armor " + F(d.lastToArmor) + " / hp " + F(d.lastToHp));
                 yield return W(0.15f);
             }
-            Check("each of the " + Knight.ComboLen + " combo attacks plays sword_swing once, at the strike", swingSounds == Knight.ComboLen);
+            Check("each of the 3 swings plays sword_swing once, at the strike", swingSounds == 3);
             Check("a hit soaked by the dummy's armor plays armor_impact (not slice)", firstHitSound);
-            Check("heavy attacks (chop / spin / thrust) make the knight grunt, light slashes do not always", Snds(Snd.Grunt) - grunt0 >= 2 && Snds(Snd.Grunt) - grunt0 <= 5);
+            Check("the thrust always makes the knight grunt, the slashes only sometimes", Snds(Snd.Grunt) - grunt0 >= 1 && Snds(Snd.Grunt) - grunt0 <= 3);
             {
                 // same slash on bare straw: the slice sound instead
                 yield return W(0.4f);
@@ -588,32 +575,30 @@ namespace MedievalKnight
                 d.ResetAll();
             }
 
-            yield return Phase6Moves(d);
-
-            // ------------------------------------------------ combo through real input (J key + mouse button)
+            // ------------------------------------------------ the chain through real input (J key + mouse button)
             {
                 Heal(); StandNear(d, 1.3f);
-                yield return W(1.0f);
+                yield return W(1.0f);                                  // (more than 0.4 s since the last swing: the chain starts over at swing 1)
                 int h0 = d.hits;
                 yield return Tap(Key.J);
                 bool atk1 = k.IsAttacking; string n1 = k.LastAction;
                 yield return WaitIdle(2f);
-                yield return W(0.3f);                                  // phase 6: a click inside the 0.5 s delay between swings is only queued
+                yield return W(0.2f);                                  // inside the 0.4 s chain window
                 Vector2 scr = g.cam.WorldToScreenPoint(d.transform.position);
                 k.aimOverride = null;                                  // real mouse aim from here
                 SetMouse(scr, false);
                 yield return null; yield return null;
                 SetMouse(scr, true);
                 yield return null; yield return null; yield return null;
-                SetMouse(scr, false);                                  // phase 6: a click is decided when the button comes up
+                bool atk2 = k.IsAttacking; string n2 = k.LastAction;   // the swing starts when the button goes DOWN
+                SetMouse(scr, false);
                 yield return null; yield return null;
-                bool atk2 = k.IsAttacking; string n2 = k.LastAction;
                 yield return WaitIdle(2f);
                 yield return W(0.1f);
                 Vector3 toD = d.transform.position - k.transform.position; toD.y = 0f;
                 Log("input: J -> attacking=" + atk1 + " (" + n1 + "), left click -> attacking=" + atk2 + " (" + n2 + "), dummy hits +" + (d.hits - h0)
                     + ", facing-vs-cursor angle " + Vector3.Angle(k.Forward, toD).ToString("0") + " deg");
-                Check("J and left click run the combo (Side Slash then Overhead Chop)", atk1 && atk2 && n1 == "Side Slash" && n2 == "Overhead Chop");
+                Check("J and left click run the chain (Diagonal Slash then Sweep Slash)", atk1 && atk2 && n1 == "Diagonal Slash" && n2 == "Sweep Slash");
                 Check("knight faces the mouse cursor", Vector3.Angle(k.Forward, toD) < 15f);
                 k.aimOverride = d.transform.position;
             }
@@ -733,12 +718,12 @@ namespace MedievalKnight
                 // Space does not swing; a dash cuts a swing short
                 int comboBefore = k.ActionsSeen;
                 k.aimOverride = home + new Vector3(0f, 0f, 8f);
-                k.DebugAttack(1);                                       // Overhead Chop: slow enough to catch
+                k.DebugAttack(1);                                       // the sweep: 0.5 s long, easy to catch
                 yield return W(0.08f);
                 bool swinging = k.IsAttacking;
                 yield return Tap(Key.Space);
                 yield return null;
-                Check("a dash cancels a sword swing in progress", swinging && !k.IsAttacking && k.Dashing && !k.Charging);
+                Check("a dash cancels a sword swing in progress", swinging && !k.IsAttacking && k.Dashing);
                 yield return W(0.9f);
                 int actsB = k.ActionsSeen;
                 yield return Tap(Key.Space);
@@ -749,9 +734,8 @@ namespace MedievalKnight
                 k.aimOverride = d.transform.position;
             }
 
-            yield return Phase6Clicks(d);
-            yield return Phase6Charge(d);
             yield return Phase7(d);
+            yield return SlashTests(d);
             k.moveOverride = null;
             k.transform.position = new Vector3(2f, 0f, -5f);
             k.aimOverride = d.transform.position;
@@ -759,7 +743,7 @@ namespace MedievalKnight
             // ------------------------------------------------ sword drop, pickup, inventory panel, the six swords
             {
                 Inventory inv = k.inventory;
-                AttackDef slash = Knight.Attacks[0];
+                SwingDef slash = KnightAnim.Swings[0];
                 ParkSlimes();
                 Check("the knight starts with only the Iron Sword, equipped", inv.OwnedCount == 1 && inv.equipped == Weapons.Iron && k.SwordModel.name == "Iron Sword");
 
@@ -940,16 +924,16 @@ namespace MedievalKnight
                     for (int n = 0; n < Rolls; n++) { bool c; k.RollDamage(-1, 10f, out c); if (c) crits++; }
                     float chance = crits / (float)Rolls;
 
-                    float wantPlain = slash.damage * w.damage, wantCrit = wantPlain * (Progress.BaseCritMult + w.critMult), wantCost = 0f;                         // stamina is for the dash only
-                    float wantChance = Progress.BaseCritChance + w.critChance, speedSeen = ironTime / took;
+                    float wantPlain = KnightAnim.BaseDamage * slash.damageMul * w.damage, wantCrit = wantPlain * (Progress.BaseCritMult + w.critMult), wantCost = 0f;                         // stamina is for the dash only
+                    float wantChance = Progress.BaseCritChance + w.critChance, wantTook = ActClock.Total(slash, w.speed), speedSeen = ironTime / took;
                     Log("sword " + (id + 1) + " " + w.name + " [" + w.rarity + "]: model '" + k.SwordModel.name + "' " + parts + " parts, hand-to-tip " + F(tipDist[id]) + " m"
                         + " | hit " + F(plain) + " (want " + F(wantPlain) + ") | crit hit " + F(critHit) + " (want " + F(wantCrit) + ")"
-                        + " | swing " + F(took) + "s = x" + F(speedSeen) + " of iron (want x" + F(w.speed) + ") | stamina " + F(cost) + " (want " + F(wantCost) + ")"
+                        + " | swing " + F(took) + "s (want " + F(wantTook) + "s at speed x" + F(w.speed) + ") | stamina " + F(cost) + " (want " + F(wantCost) + ")"
                         + " | crit chance over " + Rolls + " rolls " + F(chance * 100f) + "% (want " + F(wantChance * 100f) + "%)"
                         + " | reach " + F(k.Reach(slash)) + " m (want " + F(slash.reach * w.reach) + ")");
                     bool ok = k.SwordModel.name == w.name && tip != null && Mathf.Abs(plain - wantPlain) < 0.01f && Mathf.Abs(critHit - wantCrit) < 0.01f
                         && Mathf.Abs(cost - wantCost) < 0.05f && Mathf.Abs(chance - wantChance) < 0.03f && Mathf.Abs(k.Reach(slash) - slash.reach * w.reach) < 0.001f
-                        && Mathf.Abs(speedSeen - w.speed) < 0.15f * w.speed;
+                        && Mathf.Abs(took - wantTook) < 0.08f;
                     Check("sword " + (id + 1) + " " + w.name + ": model, damage x" + w.damage + ", speed x" + w.speed + ", crit +" + (w.critChance * 100f) + "% / +" + w.critMult + "x, reach x" + w.reach, ok);
                     if (!string.IsNullOrEmpty(w.modelPath))
                     {
@@ -983,7 +967,7 @@ namespace MedievalKnight
                 // reach on the field: from 3.6 m the Iron Sword misses the dummy, the Greatsword reaches it
                 ParkSlimes();
                 g.EquipWeapon(Weapons.Iron);
-                d.ResetAll(); Heal(); StandNear(d, 3.05f);
+                d.ResetAll(); Heal(); StandNear(d, 2.5f);
                 yield return W(0.4f);
                 Progress.ForceCrit = 1;
                 int hr = d.hits;
@@ -991,12 +975,12 @@ namespace MedievalKnight
                 yield return WaitIdle(3f);
                 bool ironMiss = d.hits == hr;
                 g.EquipWeapon(Weapons.Greatsword);
-                Heal(); StandNear(d, 3.05f);
+                Heal(); StandNear(d, 2.5f);
                 yield return W(0.4f);
                 k.DebugAttack(0);
                 yield return WaitIdle(3f);
                 bool greatHit = d.hits == hr + 1;
-                Log("reach from 3.6 m: Iron Sword hit=" + !ironMiss + ", Iron Greatsword hit=" + greatHit
+                Log("reach with the dummy 2.5 m from the sword hand: Iron Sword hit=" + !ironMiss + ", Iron Greatsword hit=" + greatHit
                     + "; with the Greatsword: Whirlwind dmg x" + F(k.DamageMult(0)) + ", Shield Bash dmg x" + F(k.DamageMult(2)) + " (shield, no sword bonus)");
                 Check("the Greatsword's longer reach hits where the Iron Sword misses", ironMiss && greatHit);
                 Check("sword damage applies to sword skills but not to Shield Bash", Mathf.Abs(k.DamageMult(0) - 1.7f) < 0.001f && Mathf.Abs(k.DamageMult(2) - 1f) < 0.001f);
@@ -1511,11 +1495,11 @@ namespace MedievalKnight
                 k.DebugAttack(0);
                 yield return WaitIdle(2f);
                 float took = Time.time - tA;
-                float expect = Knight.Attacks[0].damage * k.DamageMult(-1);
-                Log("after upgrades, Side Slash (no crit): dealt " + F(d.lastDamage) + ", expected 10 x " + F(k.DamageMult(-1)) + " = " + F(expect)
+                float expect = KnightAnim.BaseDamage * KnightAnim.Swings[0].damageMul * k.DamageMult(-1);
+                Log("after upgrades, Diagonal Slash (no crit): dealt " + F(d.lastDamage) + ", expected 14 x " + F(k.DamageMult(-1)) + " = " + F(expect)
                     + "; duration " + F(took) + "s vs " + F(sideSlashTime) + "s at level 1 (sword speed x" + F(pr.BasicSpeed()) + ")");
                 Check("damage upgrade multiplies the hit (Iron Sword equipped: " + (k.Weapon.id == Weapons.Iron) + ")", Mathf.Abs(d.lastDamage - expect) < 0.01f && k.Weapon.id == Weapons.Iron);
-                if (pr.BasicSpeed() > 1.01f) Check("attack speed upgrade shortens the swing", took < sideSlashTime * 0.9f);
+                if (pr.BasicSpeed() > 1.01f) Check("attack speed upgrade shortens the swing", took < sideSlashTime);
                 else Log("no ALL attack-speed upgrade was rolled, swing time check skipped");
 
                 yield return W(0.7f);
@@ -1546,8 +1530,8 @@ namespace MedievalKnight
                 g.camZoom = 1f;
                 float bossDmg = k.inventory.DamageOf(Weapons.Boss);
                 float comboCrit = Mathf.Min(Progress.CritMultCap, pr.CritMult(-1) + 0.5f);
-                float comboWant = 10f * pr.DamageMult(-1) * bossDmg * comboCrit;
-                Log("level-up totals x sword: forced crit with " + k.inventory.NameOf(Weapons.Boss) + " dealt " + F(d.lastDamage) + ", want 10 x " + F(pr.DamageMult(-1)) + " (upgrades) x " + F(bossDmg) + " (sword) x "
+                float comboWant = KnightAnim.BaseDamage * KnightAnim.Swings[0].damageMul * pr.DamageMult(-1) * bossDmg * comboCrit;
+                Log("level-up totals x sword: forced crit with " + k.inventory.NameOf(Weapons.Boss) + " dealt " + F(d.lastDamage) + ", want 14 x " + F(pr.DamageMult(-1)) + " (upgrades) x " + F(bossDmg) + " (sword) x "
                     + F(comboCrit) + " (crit " + F(pr.CritMult(-1)) + " + 0.5) = " + F(comboWant)
                     + "; crit chance " + F(k.CritChance(-1) * 100f) + "% = " + F(pr.CritChance(-1) * 100f) + "% + 10%, swing speed x" + F(k.SwingSpeed) + " = " + F(pr.BasicSpeed()) + " x 1.1");
                 Check("sword stats multiply / add on top of the level-up upgrades", Mathf.Abs(d.lastDamage - comboWant) < 0.02f
@@ -1579,12 +1563,12 @@ namespace MedievalKnight
                 int owned0 = k.inventory.OwnedCount, equipped0 = k.inventory.equipped, ready0 = Snds(Snd.Ready);
                 int lvBefore = g.progress.level, souls0 = k.souls, kills0 = g.progress.kills;
                 float tDie = Time.realtimeSinceStartup;
-                Keys(Key.J);                                         // phase 6: he is charging when he falls
-                yield return WaitCharging(1.5f);
-                bool chargingBefore = k.Charging;
+                Keys(Key.J);                                         // he is in the middle of a swing when he falls
+                yield return W(0.15f);
+                bool swingingBefore = k.IsAttacking;
                 k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
                 bool dead = k.Dead;
-                bool chargeGone = !k.Charging;
+                bool swingGone = !k.IsAttacking;
                 yield return null;
                 Keys();                                              // the button comes up while he is down: nothing swings
                 int actsDown = k.ActionsSeen;
@@ -1603,8 +1587,8 @@ namespace MedievalKnight
                 Log("death: dead=" + dead + " -> revived=" + !k.Dead + " after " + F(downTime) + "s, hp " + F(k.hp) + "/" + F(k.MaxHp) + " at " + V(k.transform.position)
                     + ", level " + lvBefore + " -> " + g.progress.level + ", overlay \"" + lose.Replace("\n", " / ") + "\" \"" + keep + "\" \"" + count1 + "\" then \"" + count2 + "\"");
                 Check("knight dies and revives after about 3 seconds with full health", dead && !k.Dead && k.hp >= k.MaxHp - 0.01f && downTime > 2.5f && downTime < 4.2f);
-                Check("falling while charging clears the charge, and nothing swings when he stands up (was charging " + chargingBefore + ")",
-                    chargingBefore && chargeGone && !k.Charging && k.ActionsSeen == actsDown);
+                Check("falling in the middle of a swing ends the swing, and nothing swings when he stands up (was swinging " + swingingBefore + ")",
+                    swingingBefore && swingGone && !k.IsAttacking && k.ActionsSeen == actsDown);
                 Check("dying sends the level, EXP, upgrades and stat points back to level 1",
                     lvBefore == Progress.MaxLevel && g.progress.level == 1 && g.progress.exp == 0f && g.progress.statPoints == 0 && g.progress.pendingChoices == 0
                     && g.progress.Points(Attr.Hp) + g.progress.Points(Attr.Block) + g.progress.Points(Attr.Stamina) == 0
@@ -1696,41 +1680,216 @@ namespace MedievalKnight
                 ModelLib.Model("Models/NoSuchModelFile") == null && ModelLib.Clip("Models/NoSuchClipFile") == null && !EffectLib.Play("no-such-effect", Vector3.zero, Quaternion.identity));
         }
 
-        IEnumerator SlashTests(Dummy d)
+        // One click of the left button through the real click path: down for two frames, then up.
+        IEnumerator ClickLeft()
         {
+            k.attackHeldOverride = true;
+            yield return null; yield return null;
+            k.attackHeldOverride = false;
             yield return null;
         }
 
-        // ================================================================ Phase 6 (combo moves, charge). Also run alone with -p6only.
-        IEnumerator Phase6Moves(Dummy d)
+        // A harmless target in the open (frozen, very tough, no armor): counts hits and damage without dying.
+        Slime Post(Vector3 pos)
         {
-            // ------------------------------------------------ phase 6: the seven new attacks (table data, DebugMove, net kinds)
+            Slime s = Slime.Spawn(0, pos, g.transform);
+            s.Frozen = true;
+            s.hp = s.maxHp = 100000f; s.armor = s.maxArmor = 0f;
+            return s;
+        }
+
+        // The new moves: swing chain, hit shapes, damage, shield, (later) roll, parry motion, eating, stat cards.
+        IEnumerator SlashTests(Dummy d)
+        {
+            g.packsOff = true;
+            k.moveOverride = Vector2.zero;
+            ShieldDown();
+            Progress.ForceCrit = 1;
+            ParkSlimes();
+            Vector3 home = new Vector3(80f, 0f, 40f);                  // far from the slimes parked in the south-west corner
+            Vector3 north = new Vector3(0f, 0f, 1f);
+            Heal(); d.ResetAll();
+            k.transform.position = home;
+            k.aimOverride = home + north * 10f;
+            yield return W(1.0f);
+
+            // 1) the chain: click, click, click, click = swings 1, 2, 3, 1 (each click after the last swing ended, inside 0.4 s)
             {
-                bool allOk = Knight.Attacks.Length == Knight.ComboLen + 7 && Knight.Attacks[Knight.HeavyIndex].heavy && Knight.Attacks[Knight.HeavyIndex].name == "Heavy Strike";
-                for (int i = 0; i < Knight.Attacks.Length; i++)
-                    allOk &= Knight.AttackFromNetKind(Knight.NetKind(i)) == i && (i < Knight.ComboLen || Knight.NetKind(i) >= 30);
-                Check("phase 6 table: 12 attacks, Heavy Strike last, net kinds 0..4 and 30..36 map back to the same attack (no clash with skills 10..13 / dash 20)", allOk);
-                for (int i = Knight.ComboLen; i < Knight.Attacks.Length; i++)
+                string seq = "";
+                bool startedByClick = true;
+                for (int i = 0; i < 4; i++)
                 {
-                    AttackDef a = Knight.Attacks[i];
-                    yield return W(0.5f);
-                    Heal(); d.ResetAll();
-                    StandNear(d, 1.3f);
-                    yield return W(0.35f);
-                    float s0 = k.stamina; int h0 = d.hits; int acts0 = k.ActionsSeen;
-                    k.DebugMove(i, 1);
-                    yield return W(a.windupTime + a.strikeTime * 0.7f);
-                    Shot("attack_new_" + a.name.Replace(" ", ""));
+                    int a0 = k.ActionsSeen;
+                    yield return ClickLeft();
+                    yield return null;
+                    startedByClick &= k.ActionsSeen == a0 + 1;
+                    seq += (i > 0 ? " > " : "") + k.LastAction;
                     yield return WaitIdle(2f);
-                    Log("new attack " + a.name + ": hits +" + (d.hits - h0) + ", damage " + F(d.lastDamage) + " (base " + a.damage + "), stamina " + F(s0) + " -> " + F(k.stamina));
-                    Check("new attack '" + a.name + "' hits the dummy once for base damage " + a.damage + ", costs no stamina, counts as one action",
-                        d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - a.damage) < 0.01f && k.stamina >= s0 - 0.01f && k.LastAction == a.name && k.ActionsSeen == acts0 + 1);
+                    yield return W(0.15f);
                 }
-                d.ResetAll();
-                yield return W(0.4f);
+                Check("a left click starts the swing at once and the clicks chain Diagonal > Sweep > Thrust > Diagonal (" + seq + ")",
+                    startedByClick && seq == "Diagonal Slash > Sweep Slash > Thrust > Diagonal Slash");
+                yield return WaitIdle(2f);
+                yield return W(0.7f);                                  // more than 0.4 s after the recovery: back to swing 1
+                yield return ClickLeft();
+                yield return null;
+                Check("the chain starts over at swing 1 after 0.4 s without a click (got " + k.LastAction + ")", k.LastAction == "Diagonal Slash");
+                yield return WaitIdle(2f);
+                yield return W(0.7f);
             }
 
+            // 2) a click in the follow-through skips the recovery; a click in the recovery waits for it; a click in the wind-up is kept
+            {
+                Heal();
+                yield return ClickLeft();                              // swing 1 (reset by the pause)
+                float t0 = Time.time, start1 = k.LastAttackStart;
+                while (Time.time - t0 < 0.36f) yield return null;      // 0.32 - 0.47 s = the follow-through of the Diagonal Slash
+                int a0 = k.ActionsSeen;
+                yield return ClickLeft();
+                while (k.ActionsSeen == a0 && Time.time - t0 < 1.5f) yield return null;
+                float gap = k.LastAttackStart - start1;
+                Log("click in the follow-through: the next swing (" + k.LastAction + ") started " + F(gap) + " s after the first (recovery would end at 0.72)");
+                Check("a click during the follow-through starts the next swing when it ends, skipping the recovery (" + F(gap) + " s < 0.62 s)", k.LastAction == "Sweep Slash" && gap > 0.40f && gap < 0.62f);
+                yield return WaitIdle(2f);
+                yield return W(0.7f);
+
+                yield return ClickLeft();                              // swing 1 again
+                t0 = Time.time; start1 = k.LastAttackStart;
+                while (Time.time - t0 < 0.6f) yield return null;       // inside the recovery (0.47 - 0.72 s)
+                a0 = k.ActionsSeen;
+                yield return ClickLeft();
+                bool notYet = k.ActionsSeen == a0;
+                while (k.ActionsSeen == a0 && Time.time - t0 < 1.5f) yield return null;
+                float gap2 = k.LastAttackStart - start1;
+                Check("a click during the recovery is kept and starts the next swing when the recovery ends (" + F(gap2) + " s, about 0.72)", notYet && k.LastAction == "Sweep Slash" && gap2 > 0.66f && gap2 < 0.95f);
+                yield return WaitIdle(2f);
+                yield return W(0.7f);
+
+                yield return ClickLeft();                              // a click in the wind-up is kept for the end of the follow-through
+                t0 = Time.time; start1 = k.LastAttackStart;
+                a0 = k.ActionsSeen;
+                yield return ClickLeft();
+                yield return ClickLeft();                              // a third one is not kept: one click at most
+                while (k.ActionsSeen < a0 + 1 && Time.time - t0 < 1.5f) yield return null;
+                float gap3 = k.LastAttackStart - start1;
+                yield return W(0.35f);
+                Check("one click is kept during the wind-up (a second one is dropped): swing 2 follows once, at about 0.47 s (" + F(gap3) + ")",
+                    k.ActionsSeen == a0 + 1 && gap3 > 0.4f && gap3 < 0.62f && k.LastAction == "Sweep Slash");
+                yield return WaitIdle(2f);
+                yield return W(0.7f);
+            }
+
+            // 3) the shield up at the click: no swing
+            {
+                int a0 = k.ActionsSeen;
+                ShieldUp();
+                yield return W(0.2f);
+                yield return ClickLeft();
+                yield return W(0.2f);
+                Check("a click with the shield held swings nothing", k.ActionsSeen == a0 && !k.IsAttacking && k.IsBlocking);
+                ShieldDown();
+                yield return W(0.3f);
+            }
+
+            // 4) hit shapes. The knight stands at "home" facing north; the targets are frozen posts.
+            {
+                float r = 0.5f;                                        // a green slime's radius
+                Vector3 Rel(float along, float side) { return home + north * along + new Vector3(side, 0f, 0f); }
+                Vector3 Ang(float deg, float dist) { return home + Quaternion.Euler(0f, deg, 0f) * north * dist; }
+
+                // each swing: one hit, base 14 x multiplier, nothing is hit twice
+                for (int i = 0; i < 3; i++)
+                {
+                    yield return W(0.6f);
+                    Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                    Slime p = Post(Rel(1.6f, 0f));
+                    yield return W(0.2f);
+                    k.DebugAttack(i);
+                    yield return WaitIdle(2f);
+                    float want = KnightAnim.BaseDamage * KnightAnim.Swings[i].damageMul;
+                    Check("swing " + (i + 1) + " hits a post in front exactly once for " + F(want) + " (hits " + p.hits + ", damage " + F(p.lastDamage) + ")",
+                        p.hits == 1 && Mathf.Abs(p.lastDamage - want) < 0.01f && k.LastHitCount == 1);
+                    Destroy(p.gameObject);
+                }
+
+                // the arc: swing 1 is 100 deg wide, swing 2 is 150 deg
+                float[] angles = { 30f, 85f, 125f };                    // from straight ahead, on the right
+                bool[] want1 = { true, false, false }, want2 = { true, true, false };
+                for (int sw = 0; sw < 2; sw++)
+                {
+                    for (int a = 0; a < angles.Length; a++)
+                    {
+                        yield return W(0.6f);
+                        Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                        Slime p = Post(Ang(angles[a], 1.8f));
+                        yield return W(0.2f);
+                        k.DebugAttack(sw);
+                        yield return WaitIdle(2f);
+                        bool want = sw == 0 ? want1[a] : want2[a];
+                        Check("swing " + (sw + 1) + " (" + (sw == 0 ? "100" : "150") + " deg wide) " + (want ? "hits" : "misses") + " a post " + angles[a] + " deg off the aim at 1.8 m (hits " + p.hits + ")", (p.hits == 1) == want);
+                        Destroy(p.gameObject);
+                    }
+                }
+
+                // the reach: 2.2 m from the sword hand plus the radius of the target
+                {
+                    yield return W(0.6f);
+                    Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                    Slime near = Post(Rel(2.2f + r - 0.15f, 0f));
+                    yield return W(0.2f);
+                    k.DebugAttack(0);
+                    yield return WaitIdle(2f);
+                    bool hitNear = near.hits == 1;
+                    Destroy(near.gameObject);
+                    yield return W(0.6f);
+                    Heal(); k.transform.position = home;
+                    Slime far = Post(Rel(2.2f + r + 0.7f, 0f));                  // (the swing steps 0.4 m forward, so the edge is 2.9 m away)
+                    yield return W(0.2f);
+                    k.DebugAttack(0);
+                    yield return WaitIdle(2f);
+                    Check("swing 1 reaches about 2.2 m (a post whose edge is at 2.05 m is hit, one at 2.9 m is not)", hitNear && far.hits == 0);
+                    Destroy(far.gameObject);
+                }
+
+                // the thrust: a lane 0.8 m wide, 2.8 m long, through everything on it
+                {
+                    yield return W(0.6f);
+                    Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                    Slime a = Post(Rel(1.5f, 0f)), b = Post(Rel(2.9f, 0f)), side = Post(Rel(1.2f, 1.8f)), inside = Post(Rel(1.2f, -0.7f));
+                    yield return W(0.2f);
+                    k.DebugAttack(2);
+                    yield return WaitIdle(2f);
+                    Log("thrust lane: near " + a.hits + ", far " + b.hits + ", 1.8 m to the side " + side.hits + ", 0.7 m to the side " + inside.hits);
+                    Check("the thrust goes through two targets on the lane, hits one 0.7 m off the line and misses one 1.8 m off", a.hits == 1 && b.hits == 1 && inside.hits == 1 && side.hits == 0);
+                    Destroy(a.gameObject); Destroy(b.gameObject); Destroy(side.gameObject); Destroy(inside.gameObject);
+                }
+            }
+
+            // 5) the body steps with the swing: the thrust goes 1 m forward, the sweep stays put
+            {
+                yield return W(0.6f);
+                Heal(); k.transform.position = home; k.aimOverride = home + north * 10f;
+                yield return W(0.3f);
+                Vector3 p0 = k.transform.position;
+                k.DebugAttack(2);
+                yield return WaitIdle(2f);
+                float stepThrust = (k.transform.position - p0).magnitude;
+                yield return W(0.6f);
+                k.transform.position = home;
+                yield return W(0.3f);
+                p0 = k.transform.position;
+                k.DebugAttack(1);
+                yield return WaitIdle(2f);
+                float stepSweep = (k.transform.position - p0).magnitude;
+                Log("body step: thrust " + F(stepThrust) + " m, sweep " + F(stepSweep) + " m");
+                Check("the thrust steps about 1 m forward and the sweep does not move the body (" + F(stepThrust) + " / " + F(stepSweep) + " m)", stepThrust > 0.8f && stepThrust < 1.25f && stepSweep < 0.35f);
+            }
+
+            k.transform.position = home;
+            k.aimOverride = d.transform.position;
+            yield return W(0.3f);
         }
+
 
         // ================================================================ Phase 7 (clash / parry, number colours, camera scroll, map). Also run alone with -p7only.
         IEnumerator Phase7(Dummy d)
@@ -1743,34 +1902,31 @@ namespace MedievalKnight
                     && Enemy.NumberStyle(false, true, 0f, out c, out sz) == 2 && sz == 36
                     && Enemy.NumberStyle(false, false, 0f, out c, out sz) == 1 && sz == 22
                     && Enemy.NumberStyle(false, false, 5f, out c, out sz) == 0 && sz == 24;
-                Check("phase 7 number style table: crit+heavy 38 / crit 34 / heavy 36 / armor 22 / plain 24, crit beats heavy beats armor", table);
+                Check("number style table: crit+heavy 38 / crit 34 / heavy 36 / armor 22 / plain 24, crit beats heavy beats armor", table);
 
                 int crit0 = Progress.ForceCrit;
                 Heal(); d.ResetAll(); d.armor = d.maxArmor = 0f;                  // (the dummy regrows armor up to maxArmor)
                 StandNear(d, 1.3f);
                 yield return W(0.4f);
                 Progress.ForceCrit = 1;
-                k.DebugMove(0, 1);
+                k.DebugAttack(0);
                 yield return W(0.6f); yield return WaitIdle(2f);
                 int plain = d.lastNumberKind;
                 yield return W(0.3f);
-                k.DebugMove(Knight.HeavyIndex, 1);
-                yield return W(0.9f); yield return WaitIdle(2f);
-                int heavy = d.lastNumberKind;
                 Progress.ForceCrit = 2;
-                yield return W(0.3f);
-                k.DebugMove(Knight.HeavyIndex, 1);
-                yield return W(0.9f); yield return WaitIdle(2f);
-                int heavyCrit = d.lastNumberKind;
+                d.armor = d.maxArmor = 0f;
+                k.DebugAttack(0);
+                yield return W(0.6f); yield return WaitIdle(2f);
+                int crit = d.lastNumberKind;
                 Progress.ForceCrit = 1;
                 d.ResetAll();                                          // armor back: a plain blow is soaked up
                 yield return W(0.4f);
-                k.DebugMove(0, 1);
+                k.DebugAttack(0);
                 yield return W(0.6f); yield return WaitIdle(2f);
                 int soaked = d.lastNumberKind;
                 Progress.ForceCrit = crit0;
-                Log("number kinds: plain " + plain + ", heavy " + heavy + ", crit+heavy " + heavyCrit + ", armor " + soaked);
-                Check("number colour on the dummy: plain blow 0, Heavy Strike 2, crit Heavy Strike 4, armor-soaked 1", plain == 0 && heavy == 2 && heavyCrit == 4 && soaked == 1);
+                Log("number kinds: plain " + plain + ", crit " + crit + ", armor " + soaked);
+                Check("number colour on the dummy: plain blow 0, crit 3, armor-soaked 1 (the player no longer strikes heavy)", plain == 0 && crit == 3 && soaked == 1);
                 d.ResetAll();
             }
 
@@ -2050,18 +2206,6 @@ namespace MedievalKnight
                 yield return WaitIdle(2f);
                 Destroy(s.gameObject);
 
-                yield return W(0.8f);
-                s = P7Slime(0, north);
-                yield return W(0.2f);
-                Heal();
-                ar0 = k.armor;
-                k.DebugMove(Knight.HeavyIndex, 1);
-                yield return W(0.1f);
-                g.DebugStrike(s, k, false);
-                Check("a Heavy Strike never clashes: the blow lands (armor -20)", Mathf.Abs(ar0 - k.armor - 20f) < 0.01f && k.ClashCount == cl0 && !k.ClashOpen);
-                yield return WaitIdle(3f);
-                yield return W(0.5f);
-                if (s != null) Destroy(s.gameObject);                     // the Heavy Strike may have killed it
                 s = P7Slime(0, north);
                 yield return W(0.2f);
 
@@ -2171,351 +2315,6 @@ namespace MedievalKnight
             k.transform.position = home;
             k.aimOverride = d.transform.position;
             yield return W(0.5f);
-        }
-
-        bool holdSawCharging, holdSawFull;
-
-        // Holds J for that many real seconds, then lets go. Records whether the knight was charging / full during the hold.
-        IEnumerator HoldJ(float seconds)
-        {
-            holdSawCharging = holdSawFull = false;
-            Keys(Key.J);
-            float t0 = Time.realtimeSinceStartup;
-            while (Time.realtimeSinceStartup - t0 < seconds)
-            {
-                holdSawCharging |= k.Charging;
-                holdSawFull |= k.ChargeFull;
-                yield return null;
-            }
-            Keys();
-            yield return null; yield return null;
-        }
-
-        IEnumerator WaitCharging(float max)
-        {
-            float t0 = Time.realtimeSinceStartup;
-            while (!k.Charging && Time.realtimeSinceStartup - t0 < max) yield return null;
-        }
-
-        // Heavy Strike and the charge (local): click vs hold, damage, stun, no stamina, slow walk, cancels, combo position.
-        IEnumerator Phase6Charge(Dummy d)
-        {
-            float hold0 = Knight.TestHoldSeconds;
-            Knight.TestHoldSeconds = 0.4f;                         // a click is up to 0.4 s here: three frames can be slow on a busy PC
-            k.moveOverride = null;
-            Heal(); d.ResetAll();
-            StandNear(d, 1.3f);
-            yield return W(1.3f);
-            Vector3 mid = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f);
-
-            // a short press is a click
-            {
-                int a0 = k.ActionsSeen;
-                yield return HoldJ(0.1f);
-                Check("a press of 0.1 s is a click: Side Slash, no charge (got " + k.LastAction + ")", !holdSawCharging && !k.Charging && k.ActionsSeen == a0 + 1 && k.LastAction == "Side Slash");
-                yield return WaitIdle(1f);
-                yield return W(1.2f);
-            }
-
-            // held 0.7 s: charging but not full, released = the plain attack of that click; the combo goes on
-            {
-                int a0 = k.ActionsSeen;
-                yield return HoldJ(0.7f);
-                bool c1 = holdSawCharging && !holdSawFull && k.ActionsSeen == a0 + 1 && k.LastAction == "Side Slash";
-                yield return WaitIdle(1f);
-                yield return HoldJ(0.6f);
-                Check("held 0.7 s then released: charged but not full, and the normal attack of the click comes (" + k.LastAction + ")",
-                    c1 && holdSawCharging && !holdSawFull && k.ActionsSeen == a0 + 2 && k.LastAction == "Overhead Chop");
-                yield return WaitIdle(1f);
-                yield return W(1.2f);
-            }
-
-            // full charge: Heavy Strike, 40 damage, no stamina, and the ring is full (white) before the release
-            {
-                Heal();
-                int h0 = d.hits; float s0 = k.stamina; int a0 = k.ActionsSeen; int rd0 = Snds(Snd.Ready);
-                yield return HoldJ(1.4f);
-                bool full = holdSawFull;
-                yield return WaitIdle(2f);
-                Log("heavy: hits +" + (d.hits - h0) + ", damage " + F(d.lastDamage) + ", stamina " + F(s0) + " -> " + F(k.stamina) + ", ready sound +" + (Snds(Snd.Ready) - rd0));
-                Check("held 1.4 s then released: Heavy Strike hits the dummy once for 40, costs no stamina, the 'ready' sound played once",
-                    full && d.hits - h0 == 1 && Mathf.Abs(d.lastDamage - 40f) < 0.01f && k.stamina >= s0 - 0.01f && k.LastAction == "Heavy Strike"
-                    && k.ActionsSeen == a0 + 1 && Snds(Snd.Ready) - rd0 == 1);
-                yield return W(1.2f);
-            }
-
-            // the monster stops for 0.5 s (a slime has no stun resistance)
-            {
-                Heal();
-                Slime sl = Slime.Spawn(0, k.transform.position + k.Forward * 2.4f + new Vector3(0f, 0f, 0f), g.transform);
-                sl.maxHp = sl.hp = 5000f;
-                yield return W(0.1f);
-                float h0 = sl.hp;
-                bool sawStun = false;
-                yield return HoldJ(1.3f);
-                float t0 = Time.realtimeSinceStartup;
-                while (Time.realtimeSinceStartup - t0 < 0.7f) { sawStun |= sl.Stunned; yield return null; }
-                Check("a Heavy Strike stuns the monster it hits (slime lost " + F(h0 - sl.hp) + " hp)", sawStun && h0 - sl.hp >= 30f);
-                Destroy(sl.gameObject);
-                yield return WaitIdle(1f);
-                yield return W(1.2f);
-            }
-
-            // walking while charging is half speed; a blow does not stop the charge
-            {
-                Heal();
-                k.moveOverride = new Vector2(-1f, 0f);                    // away from the dummy (he stands west of it)
-                Keys(Key.J);
-                yield return WaitCharging(1.5f);
-                yield return W(0.1f);
-                Vector3 p1 = k.transform.position; float t1 = Time.realtimeSinceStartup;
-                bool during = k.Charging;
-                yield return W(0.4f);
-                Vector3 p2 = k.transform.position; float t2 = Time.realtimeSinceStartup;
-                float speed = (p2 - p1).magnitude / (t2 - t1);
-                k.moveOverride = null;
-                k.TakeDamage(3f, k.transform.position + k.Forward * 2f, "selftest charge");
-                yield return null; yield return null;
-                bool still = k.Charging;
-                Keys();
-                Log("charge walk speed " + F(speed) + " m/s (walking is 6.2), still charging after a blow: " + still);
-                Check("walking while charging is about half speed (" + F(speed) + " m/s)", during && speed > 2.4f && speed < 4.0f);
-                Check("a blow taken while charging does not cancel it", still);
-                yield return WaitIdle(2f);
-                yield return W(1.2f);
-                StandNear(d, 1.3f);
-            }
-
-            // cancels: right mouse, dash, a skill: no swing, and a held button does not start a new charge
-            {
-                Heal();
-                int a0 = k.ActionsSeen;
-                Keys(Key.J);
-                yield return WaitCharging(1.5f);
-                SetMouse(mid, false, true);
-                yield return null; yield return null; yield return null;
-                bool dropped = !k.Charging;
-                yield return W(0.6f);
-                bool noRestart = !k.Charging;
-                Keys();
-                SetMouse(mid, false, false);
-                yield return W(0.3f);
-                Check("right mouse drops the charge, a held button does not restart it, and nothing swings", dropped && noRestart && k.ActionsSeen == a0 && !k.IsAttacking);
-                yield return W(1.0f);
-
-                Heal();
-                int b0 = k.ActionsSeen;
-                Keys(Key.J);
-                yield return WaitCharging(1.5f);
-                Keys(Key.J, Key.Space);
-                yield return null; yield return null; yield return null;
-                Keys(Key.J);
-                yield return null;
-                bool dashed = k.LastAction == "Dash" && k.ActionsSeen == b0 + 1;
-                bool off = !k.Charging;
-                yield return W(0.5f);
-                bool noRestart2 = !k.Charging;
-                Keys();
-                yield return W(0.3f);
-                Check("a dash drops the charge: no swing, no new charge while the button stays down", dashed && off && noRestart2 && k.ActionsSeen == b0 + 1 && k.LastAction == "Dash");
-                yield return W(1.0f);
-                StandNear(d, 1.3f);
-                yield return W(0.3f);
-
-                Heal();
-                Keys(Key.J);
-                yield return WaitCharging(1.5f);
-                Keys(Key.J, Key.Q);
-                yield return null; yield return null; yield return null;
-                Keys(Key.J);
-                yield return null;
-                bool whirl = k.LastAction == "Whirlwind" && !k.Charging;
-                Keys();
-                yield return WaitIdle(2f);
-                yield return W(0.4f);
-                Check("a skill (Q) drops the charge and plays; the released button does not swing afterwards (" + k.LastAction + ")", whirl && k.LastAction == "Whirlwind");
-                yield return W(1.0f);
-            }
-
-            // combo position: Side Slash > charge (pressed during the swing) > Heavy > click = Rising Slash; Heavy first > click = Overhead Chop
-            {
-                Heal();
-                StandNear(d, 1.3f);
-                yield return W(1.3f);
-                yield return Swing();
-                string first = swingName;
-                yield return HoldJ(1.15f);
-                bool heavy = k.LastAction == "Heavy Strike";
-                yield return Swing();
-                Check("Side Slash > Heavy Strike > click = Rising Slash (" + first + " > " + (heavy ? "Heavy Strike" : "?") + " > " + swingName + ")",
-                    first == "Side Slash" && heavy && swingName == "Rising Slash");
-                yield return WaitIdle(2f);
-                yield return W(1.3f);
-                yield return HoldJ(1.3f);
-                bool heavy1 = k.LastAction == "Heavy Strike";
-                yield return Swing();
-                Check("Heavy Strike as the first click > click = Overhead Chop (" + swingName + ")", heavy1 && swingName == "Overhead Chop");
-                yield return WaitIdle(2f);
-                yield return W(1.3f);
-            }
-
-            // all six swords can use a new attack (reach is the sword's)
-            {
-                bool[] owned = (bool[])k.inventory.owned.Clone();
-                int equipped = k.inventory.equipped;
-                string line = "";
-                bool all = true;
-                for (int w = 0; w < Weapons.All.Length; w++)
-                {
-                    k.inventory.owned[w] = true;
-                    k.Equip(w);
-                    Heal(); d.ResetAll(); StandNear(d, 1.3f);
-                    yield return W(0.4f);
-                    int h0 = d.hits;
-                    k.DebugMove(6, 1);                                 // Advance Cleave
-                    yield return WaitIdle(2f);
-                    all &= d.hits - h0 == 1;
-                    line += " " + Weapons.All[w].name + "=" + (d.hits - h0);
-                    yield return W(0.3f);
-                }
-                for (int w = 0; w < owned.Length; w++) k.inventory.owned[w] = owned[w];
-                k.Equip(equipped);
-                Log("new attack with every sword:" + line);
-                Check("Advance Cleave hits the dummy once with each of the six swords", all);
-                d.ResetAll();
-            }
-
-            Knight.TestHoldSeconds = hold0;
-            k.transform.position = new Vector3(2f, 0f, -5f);
-            k.aimOverride = d.transform.position;
-        }
-
-        IEnumerator Phase6Clicks(Dummy d)
-        {
-            // ------------------------------------------------ phase 6: which attack a click starts (direction / dash), the 0.5 s delay, the click queue
-            {
-                ParkSlimes();
-                Heal(); d.ResetAll();
-                Vector3 home6 = new Vector3(20f, 0f, 12f);                  // in the clear central arena, 54 m from the parked slimes (they chase from 30 m)
-                k.transform.position = home6;
-                k.aimOverride = home6 + new Vector3(0f, 0f, 8f);          // facing north: W = +Z, S = -Z, D = +X, A = -X
-                k.moveOverride = null;
-                g.SnapCamera();
-                yield return W(1.2f);
-                {
-                    string near = "";
-                    foreach (Enemy e in Enemy.All)
-                        if (!e.Dead && (e.transform.position - home6).magnitude < 40f) near += " " + e.label + "@" + V(e.transform.position);
-                    Log("phase 6 click tests at " + V(home6) + "; live enemies within 40 m:" + (near.Length > 0 ? near : " none") + "; in town " + MapLayout.InTown(home6.x, home6.z));
-                }
-
-                // chains of clicks per direction (the clicks go in at once: the later ones wait in the queue)
-                string[][] want =
-                {
-                    new[] { "Side Slash", "Overhead Chop", "Rising Slash", "Spin Slash", "Thrust" },       // standing
-                    new[] { "Advance Cleave", "Overhead Chop", "Vault Chop" },                           // W
-                    new[] { "Shield Jab", "Overhead Chop", "Retreat Slash" },                            // S
-                    new[] { "Sidestep Slash", "Overhead Chop", "Rising Slash" },                         // A
-                    new[] { "Sidestep Slash", "Overhead Chop", "Rising Slash" },                         // D
-                };
-                Vector2[] dirs = { Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, -1f), new Vector2(-1f, 0f), new Vector2(1f, 0f) };
-                string[] dirNames = { "standing", "W", "S", "A", "D" };
-                for (int di = 0; di < dirs.Length; di++)
-                {
-                    k.transform.position = home6; k.aimOverride = home6 + new Vector3(0f, 0f, 8f);
-                    Heal(); k.moveOverride = null;
-                    yield return W(1.1f);                                  // combo timeout (0.9 s) + turn to north
-                    k.moveOverride = dirs[di];
-                    string got = "";
-                    bool okChain = true, delayOk = true;
-                    float prevStart = -10f;
-                    for (int c = 0; c < want[di].Length; c++)
-                    {
-                        yield return Swing();
-                        got += (c > 0 ? ", " : "") + swingName;
-                        okChain &= swingName == want[di][c];
-                        if (prevStart > 0f) delayOk &= k.LastAttackStart - prevStart >= 0.47f;
-                        prevStart = k.LastAttackStart;
-                    }
-                    yield return WaitIdle(1f);
-                    k.moveOverride = null;
-                    Log("direction " + dirNames[di] + ": " + got);
-                    Check("clicks while " + dirNames[di] + " is held start: " + string.Join(" > ", want[di]) + " (got " + got + ")", okChain);
-                    Check("there are at least 0.5 s between the starts of two swings while " + dirNames[di] + " is held", delayOk);
-                    yield return W(1.1f);
-                }
-
-                // how far the stepping attacks move the knight
-                string[] stepName = { "Sidestep Slash D", "Sidestep Slash A", "Shield Jab", "Retreat Slash" };
-                Vector2[] stepDir = { new Vector2(1f, 0f), new Vector2(-1f, 0f), new Vector2(0f, -1f), new Vector2(0f, -1f) };
-                float[] stepWant = { 2f, 2f, 1.5f, 2.5f };
-                for (int si = 0; si < 4; si++)
-                {
-                    k.transform.position = home6; k.aimOverride = home6 + new Vector3(0f, 0f, 8f);
-                    Heal(); k.moveOverride = null;
-                    yield return W(1.2f);
-                    if (si == 3)                                           // Retreat Slash is click 3: spend clicks 1 and 2 standing, then hold S
-                    {
-                        yield return Swing(); yield return Swing();
-                        yield return WaitIdle(1f);
-                        yield return W(0.55f);                             // past the 0.5 s delay, still inside the 0.9 s combo window
-                    }
-                    Vector3 s0 = k.transform.position;
-                    k.moveOverride = stepDir[si];
-                    yield return Swing();
-                    string nm = swingName;
-                    yield return WaitIdle(1f);
-                    k.moveOverride = null;
-                    Vector3 mv = k.transform.position - s0;
-                    float along = si < 2 ? Mathf.Abs(mv.x) : -mv.z;
-                    float across = si < 2 ? Mathf.Abs(mv.z) : Mathf.Abs(mv.x);
-                    bool rightWay = si == 0 ? mv.x > 0f : si == 1 ? mv.x < 0f : mv.z < 0f;
-                    Log("step " + stepName[si] + ": " + nm + ", moved (" + F(mv.x) + ", " + F(mv.z) + "), expected about " + stepWant[si] + " m");
-                    Check(stepName[si] + " (" + nm + ") steps " + stepWant[si] + " m the right way (plus normal walking, up to 1.2 m), not sideways",
-                        rightWay && along > stepWant[si] - 0.3f && along < stepWant[si] + 1.2f && across < 0.8f);
-                    yield return W(1.1f);
-                }
-
-                // dash > click = Dash Slash (counts as click 1: the next click is Overhead Chop); after 0.35 s it is the plain attack
-                {
-                    k.transform.position = home6; k.aimOverride = home6 + new Vector3(0f, 0f, 8f);
-                    Heal(); k.moveOverride = null;
-                    yield return W(1.5f);
-                    yield return Swing();                                  // Side Slash: starts the 0.5 s delay
-                    float swing0 = k.LastAttackStart;
-                    yield return Tap(Key.Space);                           // dash cancels the swing and clears the delay
-                    yield return Swing();
-                    Check("a click right after a dash is Dash Slash and starts at once, not 0.5 s after the last swing (got " + swingName + ", "
-                        + F(k.LastAttackStart - swing0) + " s after the first swing)", swingName == "Dash Slash" && k.LastAttackStart - swing0 < 0.5f);
-                    yield return WaitIdle(1f);
-                    yield return Swing();
-                    Check("after Dash Slash the next click is Overhead Chop (got " + swingName + ")", swingName == "Overhead Chop");
-                    yield return WaitIdle(1f);
-                    yield return W(1.2f);
-                    Heal();
-                    yield return Tap(Key.Space);
-                    yield return W(0.5f);                                  // longer than the 0.35 s window
-                    yield return Swing();
-                    Check("a click 0.5 s after a dash is the plain attack (got " + swingName + ")", swingName == "Side Slash");
-                    yield return WaitIdle(1f);
-                    yield return W(1.2f);
-                }
-
-                // spam: four clicks inside about 0.3 s -> the first swing, one kept in the queue (not lost), the rest dropped
-                {
-                    k.transform.position = home6; k.aimOverride = home6 + new Vector3(0f, 0f, 8f);
-                    yield return W(1.2f);
-                    int a0 = k.ActionsSeen;
-                    for (int c = 0; c < 4; c++) { Keys(Key.J); yield return null; Keys(); yield return null; yield return null; }
-                    yield return W(1.5f);
-                    Check("four clicks in a row: the first swings, one more is kept in the queue (" + (k.ActionsSeen - a0) + " swings)", k.ActionsSeen - a0 == 2);
-                    yield return W(1.2f);
-                }
-                d.ResetAll();
-                k.transform.position = new Vector3(2f, 0f, -5f);
-                k.aimOverride = d.transform.position;
-            }
-
         }
 
 
@@ -3156,19 +2955,19 @@ namespace MedievalKnight
                 one && k.Weapon.id == Weapons.Rapier && d.heldSlot == 1 && k.inventory.plus[Weapons.Rapier] == 1);
             Check("loop world: the weapon strip shows both weapons and \"no food\"", run.ui.StripText.Contains("[1] Iron Sword") && run.ui.StripText.Contains("[2] Swift Rapier +1") && run.ui.StripText.Contains("[C] no food"));
             {
-                // phase 6: a new attack and a full charge in the loop world leave the save and the carry alone
+                // knight-rig-slash: two swings in the loop world leave the save and the carry alone
                 string saveBefore = File.Exists(LoopSave.Path) ? File.ReadAllText(LoopSave.Path) : "";
                 int acts0 = k.ActionsSeen;
-                k.DebugMove(6, 1);
+                k.DebugAttack(2);
                 yield return W(0.15f);
-                bool cleave = k.LastAction == "Advance Cleave";
+                bool thrust = k.LastAction == "Thrust";
                 yield return WaitIdle(2f);
                 yield return W(0.6f);
-                yield return HoldJ(1.3f);
+                k.DebugAttack(1);
                 yield return WaitIdle(2f);
                 string saveAfter = File.Exists(LoopSave.Path) ? File.ReadAllText(LoopSave.Path) : "";
-                Check("loop world: Advance Cleave and a full charge (Heavy Strike) work in the world and change neither the save file nor the carry",
-                    cleave && k.LastAction == "Heavy Strike" && k.ActionsSeen == acts0 + 2 && saveBefore == saveAfter
+                Check("loop world: a Thrust and a Sweep Slash work in the world and change neither the save file nor the carry",
+                    thrust && k.LastAction == "Sweep Slash" && k.ActionsSeen == acts0 + 2 && saveBefore == saveAfter
                     && d.carry.weapons[1].id == Weapons.Rapier && d.heldSlot == 1 && !k.Dead);
             }
             yield return Tap(Key.Escape);

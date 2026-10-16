@@ -164,12 +164,14 @@ namespace MedievalKnight
         }
 
         // The pose of the coded body at a point of a move: an ease per phase between the key poses.
-        public static PoseKey Pose(ActDef d, int phase, float t)
+        // start = the pose the body really had when the move began (the first phase blends from it instead of from the rest key).
+        public static PoseKey Pose(ActDef d, int phase, float t, PoseKey? start = null)
         {
             if (d == null || d.keys == null || d.keys.Length < 2) return default(PoseKey);
             int p = Mathf.Clamp(phase, 0, d.keys.Length - 2);
             float e = Ease(d, p, t);
-            return PoseKey.Lerp(d.keys[p], d.keys[p + 1], e);
+            PoseKey a = p == 0 && start.HasValue ? start.Value : d.keys[p];
+            return PoseKey.Lerp(a, d.keys[p + 1], e);
         }
 
         static float Ease(ActDef d, int phase, float t)

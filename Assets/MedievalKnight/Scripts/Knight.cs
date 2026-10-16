@@ -4,35 +4,6 @@ using UnityEngine;
 
 namespace MedievalKnight
 {
-    public enum AttackKind { Slash, Chop, Spin, Thrust }
-
-    // One basic sword attack = wind-up pose -> fast strike -> recover.
-    // The sword turns around the knight: yaw 0 = straight ahead, +90 = to his right; pitch < 0 = tip up.
-    public class AttackDef
-    {
-        public string name = "Attack";
-        public AttackKind kind = AttackKind.Slash;
-        public float yawWind = 115f, yawStrike = -105f;
-        public float pitchWind = -8f, pitchStrike = 6f;
-        public float handWind = 0.3f, handStrike = 0.5f;     // how far the sword hand is pushed out
-        public float windupTime = 0.09f, strikeTime = 0.10f, recoverTime = 0.18f;
-        public float lunge = 2f;                // forward speed of the body during the strike
-        public float leanWind = -6f, leanStrike = 10f;        // body lean in degrees (+ = forwards)
-        public float hopWind = 0f, hopStrike = 0f;
-        public Color fxColor = Color.white;
-        public float reach = 2.7f, halfArc = 80f;
-        public float damage = 10f;
-        public float pierce = 0f;               // share of damage that ignores armor
-        public float shake = 0.1f, knock = 3.5f;
-        // phase 6 (0 / false = no effect: the five original attacks do not change)
-        public float sideStep = 0f;             // m: total sideways step during the strike (towards the pressed side)
-        public float backStep = 0f;             // m: total step backwards during the strike
-        public bool shieldJab;                  // the shield is pushed forward from the wind-up to the end of the strike
-        public float hitStop = 0f;              // s: 0 = the usual 0.05 / 0.075
-        public float stun = 0f;                 // s: stun sent with the hit
-        public bool heavy;                      // charged attack: not part of the combo table
-    }
-
     public class SkillDef
     {
         public string name, key, hint;
@@ -49,12 +20,12 @@ namespace MedievalKnight
         public bool block;          // right mouse button held: shield up
         public bool run;            // Left Shift held
         public bool dash;           // Space pressed this frame
-        public int request;        // -1 = nothing, Knight.SkillRequest + n = skill n (a click is decided from attackHeld, see UpdateHold)
+        public int request;        // -1 = nothing, Knight.SkillRequest + n = skill n (a click is the rising edge of attackHeld)
         public bool attackHeld;    // left mouse button / J held (read even while a panel is open, so a press that began there is not a click)
     }
 
-    // A player: top-down movement, health / armor / stamina, shield block, the 5-step sword combo
-    // (4 slashes + thrust) and the four active skills. He always faces the mouse cursor.
+    // A player: top-down movement, health / armor / stamina, shield block, the three-swing sword chain
+    // (diagonal, sweep, thrust) and, for now, the four active skills. He always faces the mouse cursor.
     // Everything that belongs to one player lives on this object: level / upgrades / stat points (progress)
     // and the owned + equipped swords (inventory).
     // A knight is either local (remote == false: driven by ReadInput + Simulate on this machine) or remote
@@ -64,9 +35,7 @@ namespace MedievalKnight
     {
         public const float BaseHp = 100f, HpPerLevel = 10f, BaseArmor = 60f, BaseStamina = 100f, StaminaRegen = 26f;
         public const float MinSwingSpeed = 0.4f, MaxSwingSpeed = 4f;
-        public const int ComboRequest = 100, HeavyRequest = 101, SkillRequest = 200;
-        public const float ChargeTime = 1f;                  // s from the press until the charge is full
-        public static float TestHoldSeconds = 0.15f;         // held longer than this = a charge, not a click (tests raise it: 3 frames can be slow)
+        public const int SkillRequest = 200;
         const float MoveSpeed = 6.2f;
         public const float RunMult = 1.5f;                  // Left Shift: 6.2 -> 9.3 m/s, costs nothing
         // Space: dash. Stamina is only used for this: one dash = 25 (one tick on the stamina bar).
@@ -83,97 +52,6 @@ namespace MedievalKnight
             new Color(0.85f, 0.13f, 0.12f), new Color(0.97f, 0.82f, 0.2f), new Color(0.93f, 0.93f, 0.96f), new Color(1f, 0.55f, 0.15f)
         };
         public static Color UiColor(int pid) { return Color.Lerp(MainColors[pid & 3], Color.white, 0.35f); }
-
-        // The combo cycles over the first five attacks only. Attacks[5..11] are direction / dash / charge variants that
-        // take the place of position 1 or 3 of the cycle; they are never appended to it.
-        public const int ComboLen = 5, HeavyIndex = 11;
-        // Net kind of an attack: 0..4 as before, 5..11 -> 30..36 (10..13 are skills, 20 is the dash; the same numbers go in Hit.src).
-        public static int NetKind(int index) { return index < ComboLen ? index : index + 25; }
-        // Attack index of a net kind / hit source, or -1 when it is not an attack.
-        public static int AttackFromNetKind(int kind)
-        {
-            if (kind >= 0 && kind < ComboLen) return kind;
-            return kind >= 30 && kind < 30 + Attacks.Length - ComboLen ? kind - 25 : -1;
-        }
-
-        public static readonly AttackDef[] Attacks =
-        {
-            new AttackDef { name = "Side Slash", damage = 10f, fxColor = new Color(1f, 1f, 1f) },
-
-            new AttackDef { name = "Overhead Chop", kind = AttackKind.Chop, yawWind = 8f, yawStrike = 0f, pitchWind = -118f, pitchStrike = 42f,
-                handWind = 0.3f, handStrike = 0.62f,
-                windupTime = 0.16f, strikeTime = 0.09f, recoverTime = 0.24f, lunge = 3.5f,
-                leanWind = -12f, leanStrike = 18f, hopWind = 0.35f,
-                fxColor = new Color(1f, 0.93f, 0.7f), reach = 3.0f, halfArc = 34f,
-                damage = 16f, shake = 0.2f, knock = 4.5f },
-
-            new AttackDef { name = "Rising Slash", yawWind = -115f, yawStrike = 105f, pitchWind = 28f, pitchStrike = -32f,
-                windupTime = 0.10f, strikeTime = 0.10f, recoverTime = 0.2f, lunge = 1.5f,
-                leanWind = 8f, leanStrike = -8f, hopStrike = 0.3f,
-                fxColor = new Color(0.75f, 1f, 0.88f),
-                damage = 12f, shake = 0.11f },
-
-            new AttackDef { name = "Spin Slash", kind = AttackKind.Spin, yawWind = 100f, yawStrike = 100f, pitchWind = -5f, pitchStrike = 0f,
-                handWind = 0.4f, handStrike = 0.6f,
-                windupTime = 0.17f, strikeTime = 0.3f, recoverTime = 0.28f, lunge = 0.6f,
-                leanWind = -4f, leanStrike = 0f, hopStrike = 0.15f,
-                fxColor = new Color(1f, 0.82f, 0.95f), reach = 2.9f, halfArc = 180f,
-                damage = 22f, shake = 0.22f, knock = 5f },
-
-            new AttackDef { name = "Thrust", kind = AttackKind.Thrust, yawWind = 4f, yawStrike = 0f, pitchWind = -4f, pitchStrike = 0f,
-                handWind = 0.05f, handStrike = 1.05f,
-                windupTime = 0.13f, strikeTime = 0.07f, recoverTime = 0.22f, lunge = 6f,
-                leanWind = -9f, leanStrike = 14f,
-                fxColor = new Color(0.7f, 0.92f, 1f), reach = 3.7f, halfArc = 18f,
-                damage = 20f, pierce = 0.5f, shake = 0.15f, knock = 6f },
-
-            // --- phase 6 (index 5..11). Net kind = 25 + index (30..36). Values: Docs/combat-tweaks/design-combo.md ---
-            new AttackDef { name = "Dash Slash", yawWind = 115f, yawStrike = -105f, pitchWind = 28f, pitchStrike = -32f,
-                windupTime = 0.05f, strikeTime = 0.10f, recoverTime = 0.20f, lunge = 5f,
-                leanWind = 4f, leanStrike = 16f,
-                fxColor = new Color(0.65f, 0.9f, 1f), reach = 3.4f, halfArc = 60f,
-                damage = 15f, shake = 0.14f, knock = 4f },
-
-            new AttackDef { name = "Advance Cleave", kind = AttackKind.Chop, yawWind = -60f, yawStrike = 35f, pitchWind = -95f, pitchStrike = 30f,
-                handWind = 0.3f, handStrike = 0.62f,
-                windupTime = 0.12f, strikeTime = 0.10f, recoverTime = 0.22f, lunge = 4f,
-                leanWind = -4f, leanStrike = 18f,
-                fxColor = new Color(1f, 0.85f, 0.6f), reach = 3.0f, halfArc = 50f,
-                damage = 13f, shake = 0.14f, knock = 4f },
-
-            new AttackDef { name = "Sidestep Slash", yawWind = -100f, yawStrike = 100f, pitchWind = 2f, pitchStrike = 4f,
-                windupTime = 0.08f, strikeTime = 0.10f, recoverTime = 0.18f, lunge = 0f, sideStep = 2f,
-                leanWind = -4f, leanStrike = 8f,
-                fxColor = new Color(0.8f, 1f, 0.7f), reach = 2.7f, halfArc = 100f,
-                damage = 11f, shake = 0.1f, knock = 3.5f },
-
-            new AttackDef { name = "Shield Jab", kind = AttackKind.Thrust, yawWind = 4f, yawStrike = 0f, pitchWind = -4f, pitchStrike = 0f,
-                handWind = 0.2f, handStrike = 0.5f,
-                windupTime = 0.08f, strikeTime = 0.08f, recoverTime = 0.16f, lunge = 0f, backStep = 1.5f, shieldJab = true,
-                leanWind = -4f, leanStrike = 10f,
-                fxColor = new Color(1f, 0.9f, 0.5f), reach = 2.2f, halfArc = 60f,
-                damage = 6f, shake = 0.16f, knock = 7f },
-
-            new AttackDef { name = "Vault Chop", kind = AttackKind.Chop, yawWind = 8f, yawStrike = 0f, pitchWind = -125f, pitchStrike = 45f,
-                handWind = 0.3f, handStrike = 0.62f,
-                windupTime = 0.20f, strikeTime = 0.09f, recoverTime = 0.30f, lunge = 4.5f,
-                leanWind = -14f, leanStrike = 22f, hopWind = 0.7f, hopStrike = 0.55f,
-                fxColor = new Color(1f, 0.8f, 0.55f), reach = 3.0f, halfArc = 40f,
-                damage = 20f, shake = 0.25f, knock = 5f },
-
-            new AttackDef { name = "Retreat Slash", yawWind = -115f, yawStrike = 105f, pitchWind = 28f, pitchStrike = -32f,
-                windupTime = 0.08f, strikeTime = 0.10f, recoverTime = 0.15f, lunge = 0f, backStep = 2.5f,
-                leanWind = 8f, leanStrike = -8f,
-                fxColor = new Color(0.8f, 0.85f, 1f), reach = 2.8f, halfArc = 90f,
-                damage = 11f, shake = 0.11f, knock = 5f },
-
-            new AttackDef { name = "Heavy Strike", kind = AttackKind.Chop, yawWind = 0f, yawStrike = 0f, pitchWind = -125f, pitchStrike = 50f,
-                handWind = 0.5f, handStrike = 0.7f,
-                windupTime = 0.04f, strikeTime = 0.10f, recoverTime = 0.40f, lunge = 2f,
-                leanWind = -16f, leanStrike = 22f,
-                fxColor = new Color(1f, 0.78f, 0.35f), reach = 3.4f, halfArc = 90f,
-                damage = 40f, pierce = 0.3f, shake = 0.4f, knock = 9f, hitStop = 0.1f, stun = 0.5f, heavy = true },
-        };
 
         public static readonly SkillDef[] Skills =
         {
@@ -196,10 +74,6 @@ namespace MedievalKnight
         public readonly float[] cd = new float[4], cdMax = new float[4];
         public bool IsAttacking { get; private set; }      // busy with a basic attack or a skill
         public bool IsBlocking { get; private set; }
-        public bool Charging { get; private set; }         // local: the left button is held past the click time and nothing else is going on
-        public float ChargeSeconds { get; private set; }   // seconds since the press while Charging (full at ChargeTime)
-        public bool ChargeFull { get { return Charging && chargeReady; } }
-        public bool ShowsCharge { get { return remote ? netCharging : Charging; } }      // the pose / glow of a charge (local or reported)
         public bool Dead { get; private set; }
         public bool Airborne { get; private set; }
         public bool Invulnerable { get { return invuln || Glowing || Dashing; } }
@@ -231,7 +105,7 @@ namespace MedievalKnight
         public float CritChance(int skill) { return Mathf.Min(Progress.CritChanceCap, progress.CritChance(skill) + (UsesSword(skill) ? Weapon.critChance : 0f)); }
         public float CritMult(int skill) { return Mathf.Min(Progress.CritMultCap, progress.CritMult(skill) + (UsesSword(skill) ? Weapon.critMult : 0f)); }
         public float SwingSpeed { get { return Mathf.Clamp(progress.BasicSpeed() * Weapon.speed, MinSwingSpeed, MaxSwingSpeed); } }
-        public float Reach(AttackDef a) { return a.reach * Weapon.reach; }
+        public float Reach(SwingDef a) { return a.reach * Weapon.reach; }
 
         // The one place where the knight's damage is rolled (multipliers, crit chance, crit multiplier).
         public float RollDamage(int skill, float baseDamage, out bool isCrit)
@@ -268,17 +142,12 @@ namespace MedievalKnight
         public int ParryCount { get; private set; }               // blows turned away by a parry (test counters)
         public int ClashCount { get; private set; }               // light blows traded in a clash
         public int HeavyBlockCount { get; private set; }          // heavy blows that came through a block / the parry window
-        int comboIndex, queued = -1;
-        float queuedTime;
-        float nextSwingAt, dashStartTime = -10f;             // phase 6: no new swing before nextSwingAt; when the last dash began
-        Vector2 lastMove;                                    // the walk input of this frame (picks the direction attack)
-        // charge (local knight): the button was pressed (holdPending), is held holdT seconds, and the charge runs once it passes TestHoldSeconds
-        bool leftWas, holdPending, holdNoCharge, chargeReady, netCharging;
-        float holdT, chargeFlashUntil;
-        Transform ring;                                      // the disc under his feet while charging (local knight only)
-        Renderer ringRenderer;
-        float netChargeSince;                                // remote: when his charge flag came up (for the glow)
-        Material ringGold, ringWhite;
+        // swing chain: swingIndex = the swing the next click starts (0..2); queuedClick = one click kept for the next swing
+        public readonly ActClock clock = new ActClock();
+        int swingIndex, queued = -1;                         // queued = a skill key pressed during a move (kept 0.6 s)
+        bool queuedClick, queueFromRecovery, leftWas;
+        float queuedTime, queuedClickTime;
+        Vector2 lastMove;                                    // the walk input of this frame
 
         // remote knights only
         Vector3 netPos, slamTarget;
@@ -318,14 +187,6 @@ namespace MedievalKnight
             swordModel.name = Weapon.name;
             body.RebuildTint();
 
-            if (!remote)                                           // the charge disc (phase 6): grows and turns pale when full
-            {
-                ringGold = Prims.Glow(new Color(0.96f, 0.76f, 0.35f));
-                ringWhite = Prims.Glow(new Color(0.85f, 0.8f, 0.69f));
-                ring = Prims.Part(transform, "ChargeRing", Prims.Cyl(28), new Vector3(0f, 0.05f, 0f), new Vector3(1f, 0.02f, 1f), ringGold, false);
-                ringRenderer = ring.GetComponent<Renderer>();
-                ring.gameObject.SetActive(false);
-            }
         }
 
         // ---------------------------------------------------------------- weapon slot / stat points
@@ -380,13 +241,12 @@ namespace MedievalKnight
             souls = 0;                                                   // F5 clears Soul too (dying does not)
             hp = MaxHp; armor = MaxArmor; stamina = MaxStamina;
             Dead = false; IsBlocking = false; Airborne = false;
-            comboIndex = 0; knockVel = Vector3.zero; hurtTint = 0f;
+            swingIndex = 0; knockVel = Vector3.zero; hurtTint = 0f;
             rigLean = 0f; rigHop = 0f; jumpY = 0f;
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             for (int i = 0; i < 4; i++) { cd[i] = 0f; cdMax[i] = 0f; }
             invulnUntil = 0f; protectUntil = 0f;
             dashInvulnUntil = 0f; dashMoveEnd = 0f; dashReadyAt = 0f;
-            nextSwingAt = 0f; dashStartTime = -10f;
             transform.position = at;
             transform.rotation = Quaternion.identity;
         }
@@ -410,9 +270,9 @@ namespace MedievalKnight
         void ClearActionFlags()
         {
             IsAttacking = false; lockFacing = false; whirl = false; shieldPush = false; invuln = false;
-            queued = -1; rigSpin = 0f;
+            queued = -1; queuedClick = false; rigSpin = 0f;
+            clock.End();
             clashFrom = clashTo = 0f;
-            CancelHold();
         }
 
         // Food: health only (not armor / stamina). Returns the health actually gained.
@@ -460,7 +320,7 @@ namespace MedievalKnight
         {
             float dt = Time.deltaTime;
             if (remote) { RemoteTick(dt); return; }
-            if (Game.I.Paused) { CancelHold(); leftWas = InputX.MouseHeld(0) || InputX.Held(KeyCode.J); return; }
+            if (Game.I.Paused) { leftWas = InputX.MouseHeld(0) || InputX.Held(KeyCode.J); return; }
 
             // --- resources ---
             if (!Dead)
@@ -512,11 +372,11 @@ namespace MedievalKnight
             lastMove = mv;
             aimPoint = inp.aim;
             bool dashMoving = Time.time < dashMoveEnd;
-            // left button: a click is decided when it comes up (<= TestHoldSeconds), holding it charges the Heavy Strike
-            if (canInput && (inp.request >= 0 || (Charging && inp.block))) CancelHold();         // a skill or the shield drops the charge, no swing
-            int holdReq = UpdateHold(inp.attackHeld, canInput, inp.block);
+            // left button: a click is the moment it goes down; a press that began while a panel was open never counts
+            bool click = inp.attackHeld && !leftWas && canInput && !Dead;
+            leftWas = inp.attackHeld;
             bool wasBlocking = IsBlocking;
-            IsBlocking = canInput && !IsAttacking && !Charging && inp.block && !dashMoving;      // the shield drops during a dash
+            IsBlocking = canInput && !IsAttacking && inp.block && !dashMoving;                   // the shield drops during a dash
             if (IsBlocking && !wasBlocking)                                                      // a fresh press: 0.2 s parry window, unless pressed again within 0.5 s
             {
                 float now = Time.time;
@@ -528,20 +388,22 @@ namespace MedievalKnight
             dashMoving = Time.time < dashMoveEnd;
             if (canInput)
             {
-                int req = inp.request >= 0 ? inp.request : holdReq;
-                if (req >= 0)
+                if (inp.request >= 0)
                 {
-                    // a buffered action: one click is kept while a swing runs or the 0.5 s delay between swings has not passed
-                    if (IsAttacking || (req == ComboRequest && Time.time < nextSwingAt)) { queued = req; queuedTime = Time.time; }
-                    else Request(req);
+                    // a buffered skill: one key press is kept while a move runs
+                    if (IsAttacking) { queued = inp.request; queuedTime = Time.time; }
+                    else Request(inp.request);
                 }
-                else if (!IsAttacking && queued >= 0 && (queued != ComboRequest || Time.time >= nextSwingAt))
+                else if (!IsAttacking && queued >= 0)
                 {
                     int q = queued;
                     queued = -1;
                     if (Time.time - queuedTime < 0.6f) Request(q);
                 }
+                if (click && !inp.block) Click(dashMoving);                                     // the shield held at the press = no swing
+                else if (!IsAttacking && queuedClick) { queuedClick = false; if (!inp.block) Click(dashMoving); }
             }
+            else queuedClick = false;
 
             // --- facing: always towards the cursor, unless an attack has committed to a direction ---
             if (!Dead && !lockFacing)
@@ -553,9 +415,10 @@ namespace MedievalKnight
             }
 
             // --- movement on the XZ plane ---
-            float speedMul = whirl ? 0.7f : IsAttacking ? 0.2f : IsBlocking ? 0.4f : Charging ? 0.5f : 1f;
-            if (lockFacing && IsAttacking && !whirl) speedMul = Airborne ? 0f : 0.15f;
-            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Charging && !Airborne && !Dead && !dashMoving;
+            float speedMul = whirl ? 0.7f : IsAttacking ? 0.2f : IsBlocking ? 0.4f : 1f;
+            if (clock.act == Act.Swing && !clock.done) speedMul = (clock.phase == 0 || clock.phase == 3) ? 0.3f : 0f;   // the strike and the follow-through are driven by the move
+            else if (lockFacing && IsAttacking && !whirl) speedMul = Airborne ? 0f : 0.15f;
+            bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Airborne && !Dead && !dashMoving;
             if (running) speedMul *= RunMult;
             Running = running;
             Vector3 p = transform.position;
@@ -600,13 +463,11 @@ namespace MedievalKnight
             if (Dead || Airborne || Time.time < dashReadyAt) return;
             if (stamina < DashCost - 0.001f) { Deny("Dash"); return; }
             if (IsAttacking || queued >= 0) CancelAction();
-            CancelHold();                                                         // a dash drops a charge (no swing)
             stamina -= DashCost;
             lastSpendTime = Time.time;
             dashReadyAt = Time.time + DashCooldown;
             dashMoveEnd = Time.time + DashMoveTime;
-            dashStartTime = Time.time;
-            nextSwingAt = 0f;                                                     // a dash clears the 0.5 s delay: Dash Slash can follow at once
+            swingIndex = 0; queuedClick = false;                                  // a roll starts the chain over
             dashInvulnUntil = Time.time + DashInvuln;
             knockVel = Vector3.zero;
             Vector3 dir = new Vector3(inp.move.x, 0f, inp.move.y);
@@ -618,86 +479,42 @@ namespace MedievalKnight
             DashFx(dashDir);
         }
 
-        // ---------------------------------------------------------------- click / charge (phase 6)
+        // ---------------------------------------------------------------- click: the swing chain
 
-        // Drops a charge or a pending press without any swing (right mouse, dash, skill, panel, fall). The button must come up
-        // before another press can start a new charge.
-        void CancelHold()
+        // A click of the left button (the moment it goes down). The shield held at the press never gets here.
+        //   idle: the next swing starts (back to swing 1 when the last one ended more than ChainWindow ago)
+        //   in a swing: one click is kept; used when the follow-through ends (the recovery is skipped, the next wind-up is
+        //   30% shorter), or, when it came during the recovery, when the recovery ends.
+        void Click(bool rolling)
         {
-            holdPending = false;
-            StopCharge();
-        }
-
-        void StopCharge()
-        {
-            Charging = false; chargeReady = false; ChargeSeconds = 0f;
-            if (ring != null && ring.gameObject.activeSelf) ring.gameObject.SetActive(false);
-        }
-
-        // One frame of the left button. Returns what it asks for: -1 nothing, ComboRequest = a click (the attack is
-        // picked when it starts), HeavyRequest = released on a full charge.
-        //   press .. release <= TestHoldSeconds = click; longer = charging (when nothing else is going on); full at ChargeTime
-        //   from the press; released early = the normal attack of that click; the shield held at the press = never a charge.
-        int UpdateHold(bool rawHeld, bool canInput, bool blockHeld)
-        {
-            bool press = rawHeld && !leftWas, release = !rawHeld && leftWas;
-            leftWas = rawHeld;
-            if (!canInput || Dead) { CancelHold(); return -1; }
-            if (press) { holdPending = true; holdT = 0f; holdNoCharge = blockHeld; }
-            if (!holdPending) return -1;
-            if (blockHeld) holdNoCharge = true;
-            if (rawHeld)
+            if (Dead || Airborne || rolling) return;
+            if (IsAttacking)
             {
-                if (!press) holdT += Time.unscaledDeltaTime;
-                if (!Charging && !holdNoCharge && holdT >= TestHoldSeconds)
+                if (!queuedClick)
                 {
-                    if (!IsAttacking)                            // a swing in progress first: the charge starts when it ends
-                    {
-                        Charging = true; chargeReady = false;
-                        queued = -1;
-                    }
+                    queuedClick = true;
+                    queuedClickTime = Time.time;
+                    queueFromRecovery = clock.act == Act.Swing && !clock.done && clock.phase >= 3;
                 }
-                if (Charging)
-                {
-                    ChargeSeconds = holdT;
-                    if (!chargeReady && ChargeSeconds >= ChargeTime)
-                    {
-                        chargeReady = true;
-                        chargeFlashUntil = Time.time + 0.15f;
-                        Sfx.I.Play(Snd.Ready, 0.6f);
-                    }
-                }
+                return;
             }
-            ChargeVisual();
-            if (release)
-            {
-                holdPending = false;
-                bool full = Charging && chargeReady;
-                StopCharge();
-                return full ? HeavyRequest : ComboRequest;
-            }
-            return -1;
+            if (Time.time - lastAttackEnd > KnightAnim.ChainWindow) swingIndex = 0;
+            BeginSwing(false);
         }
 
-        void ChargeVisual()
+        // Starts the swing that swingIndex points at (chain = it follows the last one at once).
+        void BeginSwing(bool chain)
         {
-            if (ring == null) return;
-            if (!Charging) { if (ring.gameObject.activeSelf) ring.gameObject.SetActive(false); return; }
-            if (!ring.gameObject.activeSelf) ring.gameObject.SetActive(true);
-            float p = Mathf.Clamp01(ChargeSeconds / ChargeTime);
-            float r = Mathf.Lerp(0.45f, 1.25f, p) * (Time.time < chargeFlashUntil ? 1.3f : 1f);
-            ring.localScale = new Vector3(r * 2f, 0.02f, r * 2f);
-            ringRenderer.sharedMaterial = chargeReady ? ringWhite : ringGold;
-        }
-
-        // Released on a full charge: the Heavy Strike counts as one click of the combo; the 0.5 s delay starts from here.
-        void StartHeavy()
-        {
-            if (Time.time - lastAttackEnd > 0.9f) comboIndex = 0;
-            int slot = comboIndex;
-            comboIndex = (slot + 1) % ComboLen;
-            nextSwingAt = Time.time + SwingDelay;
-            StartAttack(HeavyIndex, slot, 1);
+            int index = Mathf.Clamp(swingIndex, 0, KnightAnim.Swings.Length - 1);
+            swingIndex = (index + 1) % KnightAnim.Swings.Length;
+            SwingDef d = KnightAnim.Swings[index];
+            float speed = SwingSpeed;
+            LastAction = d.name;
+            LastAttackStart = Time.time;
+            ActionsSeen++;
+            Game.I.hud.Action((index + 1) + "  " + d.name, d.fx);
+            Net.SendAct(index, speed, new Vector3(chain ? 1f : 0f, 0f, 0f));
+            StartCoroutine(SwingRoutine(d, index, speed, chain ? KnightAnim.ChainPreScale : 1f));
         }
 
         void DashFx(Vector3 dir)
@@ -712,19 +529,11 @@ namespace MedievalKnight
         // Shared by the local knight and by remote knights.
         void Pose(float dt, bool moving)
         {
-            bool charge = ShowsCharge && !IsBlocking;          // sword held up over the head with both hands, leaning back, a little lower
-            body.Pose(dt, moving, IsAttacking, Dead, charge, IsBlocking, whirl, shieldPush);
+            body.Pose(dt, moving, IsAttacking, Dead, false, IsBlocking, whirl, shieldPush);
 
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
             if (Glowing && !Dead) body.SetTint(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
             else if (!remote && Dashing && !Dead) body.SetTint(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
-            else if (hurtTint < 0.05f && ShowsCharge && !Dead)       // the blade glows while charging, brighter when full
-            {
-                float shown = remote ? Time.time - netChargeSince : ChargeSeconds;
-                bool full = remote ? shown >= ChargeTime : ChargeFull;
-                body.SetTint(full ? new Color(1f, 0.93f, 0.7f) : new Color(1f, 0.78f, 0.35f),
-                    full ? 0.5f + 0.15f * Mathf.Sin(Time.time * 18f) : 0.12f + 0.3f * Mathf.Clamp01(shown / ChargeTime));
-            }
             else body.SetTint(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
 
             // the shield flashes pale blue while the parry window is open (a remote knight: for 0.2 s after his shield goes up)
@@ -740,11 +549,11 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- remote knight (another player)
 
         // State bits sent over the network.
-        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16, NetCharging = 32;      // NetFallen: Dead + Fallen = really dead (the loop online); NetCharging: holding a Heavy Strike charge (phase 6)
+        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16;      // NetFallen: Dead + Fallen = really dead (the loop online). Bit 32 was NetCharging (protocol 5): never reuse it in protocol 6
 
         public int NetFlags
         {
-            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0) | (ShowsCharge ? NetCharging : 0); }
+            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0); }
         }
 
         // The loop online: who this knight is reviving right now (pid), 255 = nobody. Travels with the state so the others see it.
@@ -816,9 +625,6 @@ namespace MedievalKnight
             if (IsBlocking && !wasUp) shieldFlashUntil = Time.time + ParryWindow;
             Airborne = (flags & NetAirborne) != 0;
             netGlow = (flags & NetGlow) != 0;
-            bool nowCharging = (flags & NetCharging) != 0 && !nowDead;
-            if (nowCharging && !netCharging) netChargeSince = Time.time;
-            netCharging = nowCharging;
 
             float before = hp + armor;
             hp = newHp; armor = newArmor; netMaxHp = newMaxHp; netMaxArmor = newMaxArmor;
@@ -855,8 +661,8 @@ namespace MedievalKnight
             if (act != null) StopCoroutine(act);
             act = null;
             IsAttacking = false; whirl = false; shieldPush = false; lockFacing = false;
-            netCharging = false;                              // an attack, a dash or a skill ends the charge he was holding
             rigSpin = 0f;
+            clock.End();
         }
 
         void RemoteDown()
@@ -885,9 +691,9 @@ namespace MedievalKnight
             Fx.I.Ring(new Vector3(netPos.x, 0.06f, netPos.z), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
             if (Net.IsHost && !Game.I.Loop) Game.I.PushEnemiesFrom(spawnPoint);       // same courtesy the local knight gets (not in the loop: he stands where he lay)
         }
-
-        // Replays an attack / skill of the remote player for show. kind: 0..4 and 30..36 = sword attack, 10..13 = skill; target.x < 0 = the sidestep goes left.
-        // It starts one interpolation delay late, so it lines up with the delayed position on screen.
+        // Replays a move of the remote player for show. kind: 0..2 = swing (target.x = 1: it chained straight on from the last one),
+        // 10..13 = skill (for now), 20 = dash / roll. It starts one interpolation delay late, so it lines up with the delayed
+        // position on screen. A kind this build does not know is dropped quietly.
         public void PlayRemoteAct(int kind, float speed, Vector3 target)
         {
             if (!remote || Dead) return;
@@ -900,21 +706,21 @@ namespace MedievalKnight
                 ActionsSeen++;
                 return;
             }
-            bool phase6 = kind >= 30 && kind < 30 + Attacks.Length - ComboLen;       // 30..36 = attack index 5..11
-            bool skill = !phase6 && kind >= 10;
-            int index = phase6 ? kind - 25 : skill ? kind - 10 : kind;
-            if (index < 0 || index >= (skill ? Skills.Length : Attacks.Length)) return;
+            bool skill = kind >= 10 && kind < 10 + Skills.Length;
+            bool swing = kind >= 0 && kind < KnightAnim.Swings.Length;
+            if (!skill && !swing) return;
+            int index = skill ? kind - 10 : kind;
             StopAct();
             slamTarget = target;
-            LastAction = skill ? Skills[index].name : Attacks[index].name;
+            LastAction = skill ? Skills[index].name : KnightAnim.Swings[index].name;
             ActionsSeen++;
-            act = StartCoroutine(RemoteAct(skill, index, Mathf.Clamp(speed, MinSwingSpeed, MaxSwingSpeed), target.x < 0f ? -1 : 1));
+            act = StartCoroutine(RemoteAct(skill, index, Mathf.Clamp(speed, MinSwingSpeed, MaxSwingSpeed), target.x > 0.5f ? KnightAnim.ChainPreScale : 1f));
         }
 
-        IEnumerator RemoteAct(bool skill, int index, float speed, int side)
+        IEnumerator RemoteAct(bool skill, int index, float speed, float preScale)
         {
             if (interp.delay > 0f) yield return new WaitForSeconds(interp.delay);
-            if (!skill) yield return AttackRoutine(Attacks[index], speed, side);
+            if (!skill) yield return SwingRoutine(KnightAnim.Swings[index], index, speed, preScale);
             else
             {
                 Sfx.I.Grunt(true, Volume);
@@ -939,78 +745,24 @@ namespace MedievalKnight
         void Request(int req)
         {
             if (req >= SkillRequest) TrySkill(req - SkillRequest);
-            else if (req == HeavyRequest) StartHeavy();
-            else TryStartAttack(req);
         }
 
         // Used by SelfTest to trigger actions without input devices.
-        public void DebugAttack(int index) { if (!Dead && !IsAttacking) TryStartAttack(index); }
-        // Plays Attacks[index] (also 5..11) right away, side = +1 right / -1 left (Sidestep Slash); skips the combo and any delay.
-        public void DebugMove(int index, int side = 1)
+        // Starts swing index (0..2) right away; the chain goes on from there (index + 1 next).
+        public void DebugAttack(int index)
         {
-            if (Dead || IsAttacking || index < 0 || index >= Attacks.Length) return;
-            StartAttack(index, index < ComboLen ? index : 0, side);
+            if (Dead || IsAttacking) return;
+            swingIndex = Mathf.Clamp(index, 0, KnightAnim.Swings.Length - 1);
+            BeginSwing(false);
         }
         public bool DebugSkill(int index) { return !Dead && !IsAttacking && TrySkill(index); }
+        public int NextSwing { get { return swingIndex; } }                       // test hook: the swing the next click starts
 
         void Deny(string what)
         {
             StaminaDeniedTime = Time.unscaledTime;
             Game.I.hud.Banner("Not enough stamina for " + what, new Color(1f, 0.5f, 0.4f));
             Sfx.I.Play(Snd.ArmorImpact, 0.35f, 0.7f);
-        }
-
-        void TryStartAttack(int request)
-        {
-            int index = request;
-            bool fromCombo = request == ComboRequest;
-            int slot = index < ComboLen ? index : 0, side = 1;
-            if (fromCombo)
-            {
-                if (Time.time - lastAttackEnd > 0.9f) comboIndex = 0;   // combo timed out
-                slot = comboIndex;
-                index = PickAttack(ref slot, out side);
-                comboIndex = (slot + 1) % ComboLen;
-                nextSwingAt = Time.time + SwingDelay;
-            }
-            StartAttack(index, slot, side);
-        }
-
-        public const float SwingDelay = 0.5f, DashSlashWindow = 0.35f;
-
-        // Which attack a click starts at combo position slot (0-based). Order: Dash Slash > direction > the plain attack.
-        // A new attack takes the place of position 1 or 3 and never lengthens the combo. The direction is the walk input
-        // compared with where the knight faces now: W = towards the cursor, S = away, A / D = to his left / right.
-        int PickAttack(ref int slot, out int side)
-        {
-            side = 1;
-            if (Time.time - dashStartTime <= DashSlashWindow)
-            {
-                dashStartTime = -10f;
-                slot = 0;                                               // counts as click 1: the next click is Overhead Chop
-                return 5;
-            }
-            if ((slot != 0 && slot != 2) || lastMove.sqrMagnitude < 0.01f) return slot;
-            Vector3 f = transform.forward; f.y = 0f;
-            Vector3 m = new Vector3(lastMove.x, 0f, lastMove.y);
-            float angle = Vector3.Angle(f, m);
-            bool fwd = angle < 45f, back = angle > 135f;
-            if (!fwd && !back) side = Vector3.Dot(Quaternion.Euler(0f, 90f, 0f) * f, m) >= 0f ? 1 : -1;
-            if (slot == 0) return fwd ? 6 : back ? 8 : 7;                  // Advance Cleave / Shield Jab / Sidestep Slash
-            return fwd ? 9 : back ? 10 : 2;                                // Vault Chop / Retreat Slash / Rising Slash
-        }
-
-        // slot = the combo position shown in the HUD (0-based); side = +1 / -1 for the sidestep.
-        void StartAttack(int index, int slot, int side)
-        {
-            AttackDef a = Attacks[index];
-            float speed = SwingSpeed;
-            LastAction = a.name;
-            LastAttackStart = Time.time;
-            ActionsSeen++;
-            Game.I.hud.Action((slot + 1) + "  " + a.name, a.fxColor);
-            Net.SendAct(NetKind(index), speed, new Vector3(side < 0 ? -1f : 1f, 0f, 0f));
-            StartCoroutine(AttackRoutine(a, speed, side));
         }
 
         bool TrySkill(int i)
@@ -1042,7 +794,7 @@ namespace MedievalKnight
         // Damages every enemy inside a sector. skill: -1 = basic attack, 0..3 = Q/E/R/F (picks the upgrade totals).
         // src is what the host is told: 0..4 = sword attack, 10..13 = skill. A remote knight's replay hits nothing.
         int HitArea(Vector3 origin, Vector3 dir, float reach, float halfArc, int skill, float baseDamage, float pierce,
-            float knock, float stun, string source, int src, HashSet<Enemy> once = null)
+            float knock, float stun, string source, int src, HashSet<Enemy> once = null, float capWidth = 0f)
         {
             if (remote) return 0;
             int n = 0;
@@ -1055,13 +807,23 @@ namespace MedievalKnight
                 if (e.Dead) continue;
                 Vector3 to = e.transform.position - origin; to.y = 0f;
                 float d = to.magnitude;
-                if (d - e.radius > reach) continue;
-                if (halfArc < 179f && d > e.radius + 0.25f)
+                if (capWidth > 0f)                                                    // a lane in front (the thrust): along dir 0..reach, across <= half the width
                 {
-                    float pad = Mathf.Asin(Mathf.Clamp01(e.radius / d)) * Mathf.Rad2Deg;
-                    if (Vector3.Angle(dir, to) > halfArc + pad) continue;
+                    float along = Vector3.Dot(to, dir);
+                    if (along < -e.radius || along - e.radius > reach) continue;
+                    float across = Mathf.Sqrt(Mathf.Max(0f, d * d - along * along));
+                    if (across > capWidth * 0.5f + e.radius) continue;
                 }
-                if (once != null && !once.Add(e)) continue;
+                else
+                {
+                    if (d - e.radius > reach) continue;
+                    if (halfArc < 179f && d > e.radius + 0.25f)
+                    {
+                        float pad = Mathf.Asin(Mathf.Clamp01(e.radius / d)) * Mathf.Rad2Deg;
+                        if (Vector3.Angle(dir, to) > halfArc + pad) continue;
+                    }
+                }
+                if (once != null && !once.Add(e)) continue;                          // one hit per target per swing
                 bool crit;
                 float dmg = RollDamage(skill, baseDamage, out crit);
                 Game.I.HitEnemy(this, e, dmg, pierce, origin, crit, knock, stun, source, src);
@@ -1069,7 +831,7 @@ namespace MedievalKnight
                 else flesh = true;
                 n++;
             }
-            LastHitCount = n;
+            if (skill >= 0) LastHitCount = n;                                     // (a swing totals its own hits)
             // one sound per kind for the whole swing, however many enemies it went through
             if (skill == 2) { if (n > 0) Sfx.I.Play(Snd.ArmorImpact, 1f, 0.8f); }              // the shield, not the blade
             else
@@ -1102,123 +864,102 @@ namespace MedievalKnight
 
         Vector3 Ground(float y) { return new Vector3(transform.position.x, y, transform.position.z); }
 
-        // ---------------------------------------------------------------- basic attacks
+        // ---------------------------------------------------------------- swings
 
-        IEnumerator AttackRoutine(AttackDef a, float speed, int side = 1)
+        void SetPose(PoseKey k)
+        {
+            swYaw = k.yaw; swPitch = k.pitch; swHand = k.hand; rigLean = k.lean; rigHop = k.hop; rigSpin = k.twist;
+        }
+
+        PoseKey CurrentKey() { return new PoseKey(swYaw, swPitch, swHand, rigLean, rigHop, rigSpin); }
+
+        // The three swings: wind-up, strike, follow-through, recovery. The ActClock (KnightAnim.cs) keeps the time; this
+        // routine does what each phase means: facing, the pose, the lunge, the hitbox, the sounds, the click chain.
+        // Remote knights run the same routine for show (their hits are skipped in HitArea).
+        IEnumerator SwingRoutine(SwingDef d, int index, float speed, float preScale)
         {
             IsAttacking = true;
             IsBlocking = false;
             lockFacing = true;
-            Vector3 dir = transform.forward;
-            float mir = a.sideStep > 0f && side < 0 ? -1f : 1f;           // the Sidestep Slash is drawn for the right; mirrored for the left
-            float yawW = a.yawWind * mir, yawS = a.yawStrike * mir;
-            if (a.shieldJab) shieldPush = true;
-            if (!a.heavy)                                                 // clash window: the strike +-0.1 s (a Heavy Strike never clashes)
+            queueFromRecovery = false;
+            if (!remote)                                                  // face the cursor at once and keep that heading for the whole swing
             {
-                clashFrom = Time.time + a.windupTime / speed - ClashPad;
-                clashTo = Time.time + (a.windupTime + a.strikeTime) / speed + ClashPad;
+                Vector3 toAim = aimPoint - transform.position; toAim.y = 0f;
+                if (toAim.sqrMagnitude > 0.05f) transform.rotation = Quaternion.LookRotation(toAim);
             }
+            clock.Begin(Act.Swing, index, d, speed, preScale);
+            float hitFrom, hitTo;
+            ActClock.HitWindow(d, speed, preScale, out hitFrom, out hitTo);
+            float strikeFrom = ActClock.PhaseStart(d, 1, speed, preScale), strikeLen = ActClock.Duration(d, 1, speed, preScale);
+            clashFrom = Time.time + strikeFrom - ClashPad;                 // the strike +-0.1 s can clash with a light blow
+            clashTo = Time.time + strikeFrom + strikeLen + ClashPad;
 
-            // 1) wind-up
-            float y0 = swYaw, p0 = swPitch, h0 = swHand, lean0 = rigLean, hop0 = rigHop;
-            for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.windupTime)
+            Vector3 dir = transform.forward; dir.y = 0f;
+            var once = new HashSet<Enemy>();
+            PoseKey start = CurrentKey();
+            bool fxDone = false, juiced = false, chain = false;
+            int total = 0;
+            float lungeDone = 0f;
+            SetPose(ActClock.Pose(d, 0, 0f, start));
+            yield return null;
+            while (!clock.done)
             {
-                float e = 1f - (1f - t) * (1f - t);                       // ease out
-                swYaw = Mathf.Lerp(y0, yawW, e);
-                swPitch = Mathf.Lerp(p0, a.pitchWind, e);
-                swHand = Mathf.Lerp(h0, a.handWind, e);
-                rigLean = Mathf.Lerp(lean0, a.leanWind, e);
-                rigHop = Mathf.Lerp(hop0, a.hopWind, e);
-                yield return null;
-            }
-
-            // 2) strike
-            dir = transform.forward;
-            SpawnAttackFx(a, mir);
-            SwingSound();
-            Sfx.I.Grunt(a.damage >= 16f, Volume);                     // chop / spin / thrust always, light slashes sometimes
-            if (a.lunge > 2.5f) Fx.I.Dust(transform.position, 5);
-            Vector3 sideDir = Quaternion.Euler(0f, 90f, 0f) * dir * (side < 0 ? -1f : 1f);
-            bool hitDone = false;
-            for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.strikeTime)
-            {
-                float e = a.kind == AttackKind.Spin ? t : t * t;          // spin turns evenly, the rest accelerate
-                swYaw = Mathf.Lerp(yawW, yawS, e);
-                swPitch = Mathf.Lerp(a.pitchWind, a.pitchStrike, e);
-                swHand = Mathf.Lerp(a.handWind, a.handStrike, e);
-                rigLean = Mathf.Lerp(a.leanWind, a.leanStrike, e);
-                rigHop = Mathf.Lerp(a.hopWind, 0f, e) + Mathf.Sin(t * Mathf.PI) * a.hopStrike;
-                if (a.kind == AttackKind.Spin) rigSpin = -360f * t;       // whole body turns once
-                Push(dir * a.lunge * Time.deltaTime);
-                if (a.sideStep > 0f || a.backStep > 0f)                   // metres in total over the strike
+                float prev = clock.elapsed;
+                clock.Tick(Time.deltaTime);
+                if (clock.phase >= 1 && !fxDone)
                 {
-                    float frac = Mathf.Min(Time.deltaTime * speed / a.strikeTime, 1f - t);
-                    Push(sideDir * a.sideStep * frac - dir * a.backStep * frac);
+                    fxDone = true;
+                    dir = transform.forward; dir.y = 0f;
+                    SwingFx(d, dir);
+                    SwingSound();
+                    Sfx.I.Grunt(index == 2, Volume);                       // the thrust always, the slashes sometimes
                 }
-
-                if (!hitDone && t > (a.kind == AttackKind.Spin ? 0.2f : 0.35f)) { DoHit(a, dir); hitDone = true; }
+                if (d.lunge > 0f && clock.elapsed > strikeFrom)            // the body steps forward over the strike
+                {
+                    float p = Mathf.Clamp01((clock.elapsed - strikeFrom) / strikeLen);
+                    Push(dir * d.lunge * (p - lungeDone));
+                    lungeDone = p;
+                }
+                if (!remote && clock.elapsed >= hitFrom && prev <= hitTo)  // (a slow frame cannot jump over the window)
+                {
+                    float baseDmg = KnightAnim.BaseDamage * d.damageMul;
+                    int n = d.capsule
+                        ? HitArea(transform.position, dir, d.length * Weapon.reach, 180f, -1, baseDmg, 0f, d.knock, 0f, d.name, index, once, d.width)
+                        : HitArea(transform.position, dir, Reach(d), d.halfArc, -1, baseDmg, 0f, d.knock, 0f, d.name, index, once);
+                    total += n;
+                    if (n > 0 && !juiced) { juiced = true; Juice(d.shake, 0.16f, d.hitStop); }
+                }
+                SetPose(ActClock.Pose(d, clock.phase, clock.t, start));
+                if (clock.phase >= 3 && queuedClick && !queueFromRecovery) { chain = true; break; }   // a click in the follow-through skips the recovery
                 yield return null;
             }
-            if (!hitDone) DoHit(a, dir);
-            shieldPush = false;
-            rigSpin = 0f;
-            if (a.kind == AttackKind.Chop)   // overhead chop slams the ground
+            LastHitCount = total;
+            if (chain)
             {
-                Vector3 g = Ground(0.05f) + dir * 2.2f;
-                Fx.I.Dust(g, 10);
-                Fx.I.Ring(g, 0.3f, 1.3f, new Color(1f, 0.95f, 0.75f, 0.7f), 0.25f);
-                Juice(a.shake * 0.5f, 0.12f, 0f);
-            }
-
-            // 3) recover
-            lockFacing = false;
-            float ys = swYaw, ps = swPitch, hs = swHand;
-            for (float t = 0; t < 1f; t += Time.deltaTime * speed / a.recoverTime)
-            {
-                float e = t * t * (3f - 2f * t);                          // smoothstep
-                swYaw = Mathf.Lerp(ys, RestYaw, e);
-                swPitch = Mathf.Lerp(ps, RestPitch, e);
-                swHand = Mathf.Lerp(hs, RestHand, e);
-                rigLean = Mathf.Lerp(a.leanStrike, 0f, e);
-                rigHop = Mathf.Lerp(rigHop, 0f, e);
-                if (queued >= 0 && t > 0.45f) break;                       // a buffered action cancels the tail
-                yield return null;
+                queuedClick = false;
+                BeginSwing(true);                                          // IsAttacking stays up: the next swing takes over at once
+                yield break;
             }
             IsAttacking = false;
+            lockFacing = false;
+            clashFrom = clashTo = 0f;
+            queueFromRecovery = false;
             lastAttackEnd = Time.time;
         }
 
-        void SpawnAttackFx(AttackDef a, float mir = 1f)
+        // The streak of the blade: a ground arc across the cone for the slashes, a lane for the thrust (#EEF3F8, 0.15 s).
+        void SwingFx(SwingDef d, Vector3 dir)
         {
             float yaw = transform.eulerAngles.y;
             Vector3 pos = Ground(1.05f);
-            Color c = Color.Lerp(a.fxColor, Weapon.uiColor, Weapon.id == Weapons.Iron ? 0f : 0.45f); c.a = 0.9f;
-            float reach = Reach(a);
-            switch (a.kind)
+            Color c = d.fx; c.a = 0.9f;
+            if (d.capsule)
             {
-                case AttackKind.Thrust:
-                    Fx.I.Streak(pos + transform.forward * 0.6f, yaw, reach - 0.3f, 0.45f, c, 0.2f);
-                    Fx.I.Burst(pos + transform.forward * 1.2f, 7, new Color(0.75f, 0.92f, 1f), 6f, 13f, transform.forward, 0.15f, 0.18f, 0f, 0.08f);
-                    break;
-                case AttackKind.Spin:
-                    Fx.I.Arc(pos, yaw, 1.1f, reach, 360f, 0f, c, 0.36f, 0.1f, -500f, transform);
-                    Fx.I.Dust(transform.position, 10);
-                    break;
-                case AttackKind.Chop:
-                    Fx.I.Streak(pos + transform.forward * 0.5f, yaw, reach - 0.2f, 0.8f, c, 0.22f);
-                    if (a.heavy) Fx.I.Arc(pos, yaw, 1.0f, reach, 95f, -95f, c, 0.3f, 0.14f);      // the charged blow also sweeps wide
-                    break;
-                default:
-                    Fx.I.Arc(pos, yaw, 1.0f, reach, a.yawWind * mir, a.yawStrike * mir, c, 0.22f, 0.12f);
-                    break;
+                float len = d.length * Weapon.reach;
+                Fx.I.Streak(pos + dir * 0.6f, yaw, len - 0.6f, 0.45f, c, 0.15f);
+                Fx.I.Burst(pos + dir * 1.2f, 7, new Color(0.75f, 0.92f, 1f), 6f, 13f, dir, 0.15f, 0.18f, 0f, 0.08f);
             }
-        }
-
-        void DoHit(AttackDef a, Vector3 dir)
-        {
-            int n = HitArea(transform.position, dir, Reach(a), a.halfArc, -1, a.damage, a.pierce, a.knock, a.stun, a.name, NetKind(System.Array.IndexOf(Attacks, a)));
-            if (n == 0) return;
-            Juice(a.shake, 0.16f, a.hitStop > 0f ? a.hitStop : a.damage >= 16f ? 0.075f : 0.05f);
+            else Fx.I.Arc(pos, yaw, 1.0f, Reach(d), -d.halfArc, d.halfArc, c, 0.15f, 0.12f);
         }
 
         // ---------------------------------------------------------------- skills
