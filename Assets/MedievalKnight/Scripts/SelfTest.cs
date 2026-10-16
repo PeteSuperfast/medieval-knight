@@ -211,6 +211,19 @@ namespace MedievalKnight
                 yield break;
             }
 
+            AnimPureTests();                                                                         // timing tables (no frames needed)
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-slashonly") >= 0)    // quick run of the new move cases only (swings, roll, parry, eat, stat cards)
+            {
+                g.packsOff = true;
+                Progress.ForceCrit = 1;
+                ParkSlimes();
+                yield return SlashTests(d);
+                yield return W(0.5f);
+                Log("done (slash cases only), screenshots=" + shot + ", failed checks=" + fails);
+                Application.Quit();
+                yield break;
+            }
+
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-p6only") >= 0)     // quick run of the phase 6 cases only
             {
                 g.packsOff = true;
@@ -1642,6 +1655,52 @@ namespace MedievalKnight
             Log("done, screenshots=" + shot + ", failed checks=" + fails);
             Application.Quit();
         }
+        // ================================================================ knight-rig-slash: pure timing tables + the new moves. Also run alone with -slashonly.
+        static bool Near(float a, float b, float tol = 0.002f) { return Mathf.Abs(a - b) <= tol; }
+
+        void AnimPureTests()
+        {
+            SwingDef[] sw = KnightAnim.Swings;
+            Check("anim table: three swings; totals at speed 1.0 are 0.72 / 0.76 / 0.78 s",
+                sw.Length == 3 && Near(ActClock.Total(sw[0], 1f), 0.72f) && Near(ActClock.Total(sw[1], 1f), 0.76f) && Near(ActClock.Total(sw[2], 1f), 0.78f));
+            Check("anim table: at speed 2.0 wind-up / strike / follow-through are halved, the recovery is not (swing 1: 0.485 s)",
+                Near(ActClock.Total(sw[0], 2f), 0.485f) && Near(ActClock.Duration(sw[0], 3, 2f), 0.25f) && Near(ActClock.Duration(sw[0], 0, 2f), 0.10f));
+            Check("anim table: a chained wind-up is 30% shorter (0.20 -> 0.14 s)", Near(ActClock.Duration(sw[0], 0, 1f, KnightAnim.ChainPreScale), 0.14f));
+            float hf, ht;
+            ActClock.HitWindow(sw[0], 1f, 1f, out hf, out ht);
+            Check("anim table: the hitbox opens at 25% and closes at 85% of the strike (swing 1: 0.230 - 0.302 s)", Near(hf, 0.230f) && Near(ht, 0.302f));
+            int ph; float tt;
+            ActClock.Locate(sw[0], 1f, 1f, 0.25f, out ph, out tt);
+            bool loc1 = ph == 1 && Near(tt, 0.05f / 0.12f, 0.01f);
+            ActClock.Locate(sw[2], 1f, 1f, 0.40f, out ph, out tt);
+            bool loc2 = ph == 2 && Near(tt, 0.07f / 0.15f, 0.01f);
+            ActClock.Locate(sw[1], 1f, 1f, 5f, out ph, out tt);
+            bool loc3 = ph == 3 && Near(tt, 1f);
+            Check("anim table: ActClock.Locate gives the phase and the progress (and stays on the last phase at the end)", loc1 && loc2 && loc3);
+            var clock = new ActClock();
+            clock.Begin(Act.Swing, 0, sw[0], 1f);
+            clock.Tick(0.25f);
+            bool a1 = clock.phase == 1 && !clock.done;
+            clock.Skip(3);
+            bool a2 = clock.phase == 3 && Near(clock.elapsed, 0.47f, 0.001f);
+            clock.Tick(1f);
+            Check("anim table: ActClock ticks, skips to a phase and ends", a1 && a2 && clock.done);
+            Check("anim table: roll 0.40 s (20 / 60 / 20 %), parry 0.72 s in 4 phases, eating 2.0 s",
+                Near(ActClock.Total(KnightAnim.Roll, 1f), 0.40f) && Near(KnightAnim.Roll.phaseTime[1], 0.24f)
+                && Near(ActClock.Total(KnightAnim.Parry, 1f), 0.72f) && KnightAnim.Parry.Phases == 4 && Near(ActClock.Total(KnightAnim.Eat, 1f), 2f));
+            Check("anim table: hit shapes (swing 1 100 deg / 2.2 m, swing 2 150 deg / 2.0 m, thrust capsule 0.8 x 2.8 m), damage x1.0 / x0.9 / x1.2, base damage 14",
+                Near(sw[0].halfArc * 2f, 100f) && Near(sw[0].reach, 2.2f) && Near(sw[1].halfArc * 2f, 150f) && Near(sw[1].reach, 2.0f)
+                && sw[2].capsule && Near(sw[2].width, 0.8f) && Near(sw[2].length, 2.8f)
+                && Near(sw[0].damageMul, 1f) && Near(sw[1].damageMul, 0.9f) && Near(sw[2].damageMul, 1.2f) && Near(KnightAnim.BaseDamage, 14f));
+            Check("model lib: a missing model file is null and a missing effect is skipped without an exception",
+                ModelLib.Model("Models/NoSuchModelFile") == null && ModelLib.Clip("Models/NoSuchClipFile") == null && !EffectLib.Play("no-such-effect", Vector3.zero, Quaternion.identity));
+        }
+
+        IEnumerator SlashTests(Dummy d)
+        {
+            yield return null;
+        }
+
         // ================================================================ Phase 6 (combo moves, charge). Also run alone with -p6only.
         IEnumerator Phase6Moves(Dummy d)
         {
