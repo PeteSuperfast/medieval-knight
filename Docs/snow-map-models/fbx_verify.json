@@ -1,0 +1,3768 @@
+{
+ "snow_bridge_s1_v01": {
+  "tris": 1140,
+  "bytes": 37100,
+  "size_m": [
+   18.7,
+   4.9,
+   3.8
+  ],
+  "bbox_min": [
+   -9.35,
+   -2.45,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_bridge_s2_v01": {
+  "tris": 1052,
+  "bytes": 35276,
+  "size_m": [
+   14.7,
+   4.9,
+   3.8
+  ],
+  "bbox_min": [
+   -7.35,
+   -2.45,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_bridge_s3_v01": {
+  "tris": 1072,
+  "bytes": 36348,
+  "size_m": [
+   10.7,
+   4.9,
+   3.8
+  ],
+  "bbox_min": [
+   -5.35,
+   -2.45,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_building_house_v01": {
+  "tris": 1095,
+  "bytes": 41564,
+  "size_m": [
+   8.86,
+   8.0,
+   13.62
+  ],
+  "bbox_min": [
+   -4.43,
+   -4.0,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "flower_w",
+   "flower_y",
+   "glow",
+   "iron",
+   "plaster",
+   "roof_red",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_building_house_v02": {
+  "tris": 1167,
+  "bytes": 43404,
+  "size_m": [
+   10.44,
+   8.0,
+   13.62
+  ],
+  "bbox_min": [
+   -5.22,
+   -4.0,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "flower_w",
+   "flower_y",
+   "glow",
+   "iron",
+   "plaster",
+   "red_deep",
+   "roof_purple",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_building_house_v03": {
+  "tris": 1129,
+  "bytes": 41868,
+  "size_m": [
+   8.86,
+   8.0,
+   13.62
+  ],
+  "bbox_min": [
+   -4.43,
+   -4.0,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "flower_w",
+   "flower_y",
+   "glow",
+   "iron",
+   "red_deep",
+   "roof_red",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_building_windmillbody_v01": {
+  "tris": 649,
+  "bytes": 33372,
+  "size_m": [
+   6.82,
+   7.51,
+   14.7
+  ],
+  "bbox_min": [
+   -3.41,
+   -3.76,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "iron",
+   "plaster",
+   "red_deep",
+   "roof_purple",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_building_windmillsails_v01": {
+  "tris": 474,
+  "bytes": 25372,
+  "size_m": [
+   14.38,
+   1.2,
+   14.38
+  ],
+  "bbox_min": [
+   -7.19,
+   -0.95,
+   -7.19
+  ],
+  "materials": [
+   "iron",
+   "plaster",
+   "red_deep",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_castle_base_v01": {
+  "tris": 64,
+  "bytes": 26988,
+  "size_m": [
+   39.69,
+   40.57,
+   9.5
+  ],
+  "bbox_min": [
+   -19.84,
+   -20.29,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "red_deep",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_castle_keep_v01": {
+  "tris": 1141,
+  "bytes": 43772,
+  "size_m": [
+   32.38,
+   36.69,
+   38.02
+  ],
+  "bbox_min": [
+   -16.19,
+   -18.34,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "red_deep",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_castle_walls_v01": {
+  "tris": 1724,
+  "bytes": 43948,
+  "size_m": [
+   35.28,
+   37.02,
+   21.85
+  ],
+  "bbox_min": [
+   -17.64,
+   -18.51,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "red_deep",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_campfire_v01": {
+  "tris": 301,
+  "bytes": 32028,
+  "size_m": [
+   5.08,
+   5.37,
+   2.08
+  ],
+  "bbox_min": [
+   -2.54,
+   -2.69,
+   0.0
+  ],
+  "materials": [
+   "ember",
+   "glow",
+   "iron",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_chains_v01": {
+  "tris": 780,
+  "bytes": 28876,
+  "size_m": [
+   42.93,
+   26.57,
+   13.59
+  ],
+  "bbox_min": [
+   252.65,
+   231.27,
+   37.36
+  ],
+  "materials": [
+   "iron"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_crystal_v01": {
+  "tris": 80,
+  "bytes": 22028,
+  "size_m": [
+   4.65,
+   4.08,
+   6.23
+  ],
+  "bbox_min": [
+   -2.33,
+   -2.04,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_crystal_v02": {
+  "tris": 65,
+  "bytes": 21532,
+  "size_m": [
+   3.38,
+   3.77,
+   5.19
+  ],
+  "bbox_min": [
+   -1.69,
+   -1.89,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_crystal_v03": {
+  "tris": 50,
+  "bytes": 21004,
+  "size_m": [
+   3.38,
+   2.46,
+   4.18
+  ],
+  "bbox_min": [
+   -1.69,
+   -1.23,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_crystal_v04": {
+  "tris": 65,
+  "bytes": 21484,
+  "size_m": [
+   5.25,
+   3.85,
+   7.26
+  ],
+  "bbox_min": [
+   -2.63,
+   -1.93,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_crystal_v05": {
+  "tris": 80,
+  "bytes": 22028,
+  "size_m": [
+   2.92,
+   3.5,
+   3.59
+  ],
+  "bbox_min": [
+   -1.46,
+   -1.75,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_icecave_v01": {
+  "tris": 439,
+  "bytes": 37132,
+  "size_m": [
+   10.75,
+   10.86,
+   7.32
+  ],
+  "bbox_min": [
+   -5.37,
+   -5.43,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_icecave_v02": {
+  "tris": 411,
+  "bytes": 36380,
+  "size_m": [
+   10.75,
+   10.82,
+   7.32
+  ],
+  "bbox_min": [
+   -5.37,
+   -5.41,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_icelake_v01": {
+  "tris": 440,
+  "bytes": 29180,
+  "size_m": [
+   64.43,
+   44.83,
+   2.12
+  ],
+  "bbox_min": [
+   -32.21,
+   -22.42,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_igloo_v01": {
+  "tris": 363,
+  "bytes": 28716,
+  "size_m": [
+   7.0,
+   8.3,
+   3.38
+  ],
+  "bbox_min": [
+   -3.5,
+   -4.15,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_igloo_v02": {
+  "tris": 363,
+  "bytes": 28700,
+  "size_m": [
+   7.84,
+   9.27,
+   3.74
+  ],
+  "bbox_min": [
+   -3.92,
+   -4.63,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_igloo_v03": {
+  "tris": 329,
+  "bytes": 27852,
+  "size_m": [
+   6.3,
+   7.34,
+   3.07
+  ],
+  "bbox_min": [
+   -3.15,
+   -3.67,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_light",
+   "ice_mid",
+   "iron",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_sled_v01": {
+  "tris": 316,
+  "bytes": 21756,
+  "size_m": [
+   3.36,
+   1.67,
+   1.1
+  ],
+  "bbox_min": [
+   -1.68,
+   -0.84,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "red_deep",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_deco_snowman_v01": {
+  "tris": 414,
+  "bytes": 30508,
+  "size_m": [
+   4.21,
+   1.88,
+   4.17
+  ],
+  "bbox_min": [
+   -2.11,
+   -0.94,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "red_deep",
+   "roof_red",
+   "snow_light",
+   "snow_shadow",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_path_icechunks_v01": {
+  "tris": 337,
+  "bytes": 32604,
+  "size_m": [
+   88.26,
+   105.44,
+   43.88
+  ],
+  "bbox_min": [
+   252.61,
+   232.61,
+   37.31
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_path_icesteps_v01": {
+  "tris": 2260,
+  "bytes": 55228,
+  "size_m": [
+   93.47,
+   105.9,
+   45.78
+  ],
+  "bbox_min": [
+   247.95,
+   231.64,
+   35.13
+  ],
+  "materials": [
+   "ice_dark",
+   "ice_light",
+   "ice_mid",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_path_stones_v01": {
+  "tris": 642,
+  "bytes": 43212,
+  "size_m": [
+   200.81,
+   192.57,
+   33.17
+  ],
+  "bbox_min": [
+   43.55,
+   44.63,
+   -0.27
+  ],
+  "materials": [
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_path_surface_v01": {
+  "tris": 3200,
+  "bytes": 99084,
+  "size_m": [
+   219.31,
+   208.66,
+   37.05
+  ],
+  "bbox_min": [
+   32.32,
+   39.19,
+   -0.44
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "plaster",
+   "sand",
+   "snow_light",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_bush_v01": {
+  "tris": 114,
+  "bytes": 20604,
+  "size_m": [
+   3.23,
+   2.32,
+   1.61
+  ],
+  "bbox_min": [
+   -1.62,
+   -1.16,
+   0.0
+  ],
+  "materials": [
+   "ember",
+   "grass_mid",
+   "leaf_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_flower_purple_v01": {
+  "tris": 15,
+  "bytes": 17660,
+  "size_m": [
+   0.68,
+   0.66,
+   0.43
+  ],
+  "bbox_min": [
+   -0.34,
+   -0.33,
+   0.0
+  ],
+  "materials": [
+   "flower_p",
+   "grass_mid",
+   "leaf_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_flower_red_v01": {
+  "tris": 15,
+  "bytes": 17660,
+  "size_m": [
+   0.68,
+   0.66,
+   0.43
+  ],
+  "bbox_min": [
+   -0.34,
+   -0.33,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "grass_mid",
+   "leaf_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_flower_white_v01": {
+  "tris": 15,
+  "bytes": 17660,
+  "size_m": [
+   0.68,
+   0.66,
+   0.43
+  ],
+  "bbox_min": [
+   -0.34,
+   -0.33,
+   0.0
+  ],
+  "materials": [
+   "flower_w",
+   "grass_mid",
+   "leaf_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_flower_yellow_v01": {
+  "tris": 15,
+  "bytes": 17660,
+  "size_m": [
+   0.68,
+   0.66,
+   0.43
+  ],
+  "bbox_min": [
+   -0.34,
+   -0.33,
+   0.0
+  ],
+  "materials": [
+   "flower_y",
+   "grass_mid",
+   "leaf_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_mushroom_v01": {
+  "tris": 22,
+  "bytes": 17852,
+  "size_m": [
+   0.71,
+   0.49,
+   0.42
+  ],
+  "bbox_min": [
+   -0.35,
+   -0.25,
+   0.0
+  ],
+  "materials": [
+   "ember",
+   "plaster",
+   "roof_red"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_plant_tuft_v01": {
+  "tris": 15,
+  "bytes": 16748,
+  "size_m": [
+   0.4,
+   0.41,
+   0.69
+  ],
+  "bbox_min": [
+   -0.2,
+   -0.21,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "leaf_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_banner_v01": {
+  "tris": 58,
+  "bytes": 20284,
+  "size_m": [
+   1.72,
+   0.87,
+   5.8
+  ],
+  "bbox_min": [
+   -0.86,
+   -0.43,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "plaster",
+   "red_deep",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_barrel_v01": {
+  "tris": 112,
+  "bytes": 18060,
+  "size_m": [
+   1.14,
+   1.14,
+   0.9
+  ],
+  "bbox_min": [
+   -0.57,
+   -0.57,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_chainpost_v01": {
+  "tris": 48,
+  "bytes": 18972,
+  "size_m": [
+   0.5,
+   0.5,
+   1.3
+  ],
+  "bbox_min": [
+   -0.25,
+   -0.25,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "snow_light",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_crate_v01": {
+  "tris": 72,
+  "bytes": 16556,
+  "size_m": [
+   0.9,
+   0.9,
+   0.86
+  ],
+  "bbox_min": [
+   -0.45,
+   -0.45,
+   0.0
+  ],
+  "materials": [
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_dock_v01": {
+  "tris": 412,
+  "bytes": 20972,
+  "size_m": [
+   8.33,
+   2.7,
+   3.4
+  ],
+  "bbox_min": [
+   -4.16,
+   -1.35,
+   0.0
+  ],
+  "materials": [
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_fence_v01": {
+  "tris": 108,
+  "bytes": 18844,
+  "size_m": [
+   4.08,
+   0.3,
+   1.55
+  ],
+  "bbox_min": [
+   -2.04,
+   -0.15,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_fountain_v01": {
+  "tris": 298,
+  "bytes": 24012,
+  "size_m": [
+   8.0,
+   8.0,
+   5.15
+  ],
+  "bbox_min": [
+   -4.0,
+   -4.0,
+   0.0
+  ],
+  "materials": [
+   "ice_light",
+   "iron",
+   "stone_light",
+   "stone_mid",
+   "water",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_icelamp_v01": {
+  "tris": 111,
+  "bytes": 23932,
+  "size_m": [
+   1.0,
+   0.8,
+   3.19
+  ],
+  "bbox_min": [
+   -0.5,
+   -0.4,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_mid",
+   "iron",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_lamp_v01": {
+  "tris": 142,
+  "bytes": 19724,
+  "size_m": [
+   1.38,
+   0.57,
+   3.8
+  ],
+  "bbox_min": [
+   -0.69,
+   -0.28,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "iron",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_signcastle_v01": {
+  "tris": 134,
+  "bytes": 23004,
+  "size_m": [
+   4.99,
+   1.5,
+   8.05
+  ],
+  "bbox_min": [
+   -2.49,
+   -0.75,
+   0.0
+  ],
+  "materials": [
+   "glow",
+   "ice_dark",
+   "ice_light",
+   "iron",
+   "plaster",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_signmountain_v01": {
+  "tris": 95,
+  "bytes": 20396,
+  "size_m": [
+   4.99,
+   1.19,
+   7.89
+  ],
+  "bbox_min": [
+   -2.49,
+   -0.6,
+   0.0
+  ],
+  "materials": [
+   "iron",
+   "plaster",
+   "snow_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_signpine_v01": {
+  "tris": 134,
+  "bytes": 21996,
+  "size_m": [
+   4.99,
+   2.23,
+   7.89
+  ],
+  "bbox_min": [
+   -2.49,
+   -1.12,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "iron",
+   "pine_dark",
+   "plaster",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_signsnow_v01": {
+  "tris": 200,
+  "bytes": 21500,
+  "size_m": [
+   4.99,
+   1.25,
+   7.89
+  ],
+  "bbox_min": [
+   -2.49,
+   -0.62,
+   0.0
+  ],
+  "materials": [
+   "ice_dark",
+   "iron",
+   "plaster",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_slabarc_v01": {
+  "tris": 72,
+  "bytes": 17308,
+  "size_m": [
+   1.59,
+   3.17,
+   0.09
+  ],
+  "bbox_min": [
+   -0.79,
+   -1.58,
+   0.0
+  ],
+  "materials": [
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_stall_v01": {
+  "tris": 120,
+  "bytes": 23084,
+  "size_m": [
+   3.8,
+   2.2,
+   2.95
+  ],
+  "bbox_min": [
+   -1.9,
+   -1.1,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "flower_y",
+   "leaf_light",
+   "plaster",
+   "red_deep",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_stall_v02": {
+  "tris": 120,
+  "bytes": 21996,
+  "size_m": [
+   3.8,
+   2.2,
+   2.95
+  ],
+  "bbox_min": [
+   -1.9,
+   -1.1,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "flower_y",
+   "leaf_light",
+   "plaster",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_prop_stall_v03": {
+  "tris": 120,
+  "bytes": 23084,
+  "size_m": [
+   3.8,
+   2.2,
+   2.95
+  ],
+  "bbox_min": [
+   -1.9,
+   -1.1,
+   0.0
+  ],
+  "materials": [
+   "flower_r",
+   "flower_y",
+   "leaf_light",
+   "plaster",
+   "roof_purple",
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillar_v01": {
+  "tris": 101,
+  "bytes": 19900,
+  "size_m": [
+   6.43,
+   6.01,
+   12.2
+  ],
+  "bbox_min": [
+   -3.21,
+   -3.0,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillar_v02": {
+  "tris": 101,
+  "bytes": 19916,
+  "size_m": [
+   6.15,
+   6.44,
+   12.6
+  ],
+  "bbox_min": [
+   -3.08,
+   -3.22,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillar_v03": {
+  "tris": 101,
+  "bytes": 19900,
+  "size_m": [
+   6.46,
+   6.18,
+   13.18
+  ],
+  "bbox_min": [
+   -3.23,
+   -3.09,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillar_v04": {
+  "tris": 101,
+  "bytes": 19916,
+  "size_m": [
+   6.16,
+   6.4,
+   13.62
+  ],
+  "bbox_min": [
+   -3.08,
+   -3.2,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillarsnow_v01": {
+  "tris": 116,
+  "bytes": 22716,
+  "size_m": [
+   6.43,
+   6.01,
+   12.2
+  ],
+  "bbox_min": [
+   -3.21,
+   -3.0,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillarsnow_v02": {
+  "tris": 116,
+  "bytes": 22716,
+  "size_m": [
+   6.15,
+   6.44,
+   12.6
+  ],
+  "bbox_min": [
+   -3.08,
+   -3.22,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillarsnow_v03": {
+  "tris": 116,
+  "bytes": 22716,
+  "size_m": [
+   6.46,
+   6.18,
+   13.18
+  ],
+  "bbox_min": [
+   -3.23,
+   -3.09,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_pillarsnow_v04": {
+  "tris": 116,
+  "bytes": 22716,
+  "size_m": [
+   6.16,
+   6.4,
+   13.62
+  ],
+  "bbox_min": [
+   -3.08,
+   -3.2,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_small_v01": {
+  "tris": 46,
+  "bytes": 18540,
+  "size_m": [
+   1.29,
+   1.12,
+   0.69
+  ],
+  "bbox_min": [
+   -0.64,
+   -0.56,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_small_v02": {
+  "tris": 54,
+  "bytes": 18764,
+  "size_m": [
+   1.8,
+   1.41,
+   0.89
+  ],
+  "bbox_min": [
+   -0.9,
+   -0.71,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_small_v03": {
+  "tris": 51,
+  "bytes": 18796,
+  "size_m": [
+   2.64,
+   1.85,
+   1.1
+  ],
+  "bbox_min": [
+   -1.32,
+   -0.93,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_small_v04": {
+  "tris": 54,
+  "bytes": 18796,
+  "size_m": [
+   2.79,
+   2.4,
+   1.29
+  ],
+  "bbox_min": [
+   -1.39,
+   -1.2,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_small_v05": {
+  "tris": 46,
+  "bytes": 18540,
+  "size_m": [
+   3.3,
+   2.79,
+   1.57
+  ],
+  "bbox_min": [
+   -1.65,
+   -1.39,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_small_v06": {
+  "tris": 54,
+  "bytes": 18780,
+  "size_m": [
+   4.0,
+   3.37,
+   1.83
+  ],
+  "bbox_min": [
+   -2.0,
+   -1.69,
+   0.0
+  ],
+  "materials": [
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_smallsnow_v01": {
+  "tris": 46,
+  "bytes": 20732,
+  "size_m": [
+   1.29,
+   1.12,
+   0.69
+  ],
+  "bbox_min": [
+   -0.64,
+   -0.56,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_smallsnow_v02": {
+  "tris": 54,
+  "bytes": 20956,
+  "size_m": [
+   1.8,
+   1.41,
+   0.89
+  ],
+  "bbox_min": [
+   -0.9,
+   -0.71,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_smallsnow_v03": {
+  "tris": 46,
+  "bytes": 20716,
+  "size_m": [
+   2.37,
+   1.85,
+   1.1
+  ],
+  "bbox_min": [
+   -1.19,
+   -0.93,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_smallsnow_v04": {
+  "tris": 54,
+  "bytes": 20972,
+  "size_m": [
+   2.79,
+   2.4,
+   1.29
+  ],
+  "bbox_min": [
+   -1.39,
+   -1.2,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_smallsnow_v05": {
+  "tris": 46,
+  "bytes": 20732,
+  "size_m": [
+   3.3,
+   2.79,
+   1.57
+  ],
+  "bbox_min": [
+   -1.65,
+   -1.39,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_rock_smallsnow_v06": {
+  "tris": 54,
+  "bytes": 20972,
+  "size_m": [
+   4.0,
+   3.37,
+   1.83
+  ],
+  "bbox_min": [
+   -2.0,
+   -1.69,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_scene_cloud_v01": {
+  "tris": 128,
+  "bytes": 21996,
+  "size_m": [
+   182.76,
+   118.21,
+   21.89
+  ],
+  "bbox_min": [
+   191.47,
+   109.24,
+   13.98
+  ],
+  "materials": [
+   "ice_light",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_scene_mist_v01": {
+  "tris": 240,
+  "bytes": 25996,
+  "size_m": [
+   76.74,
+   66.57,
+   17.33
+  ],
+  "bbox_min": [
+   254.71,
+   250.94,
+   44.34
+  ],
+  "materials": [
+   "ice_light",
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r0c0_v01": {
+  "tris": 2870,
+  "bytes": 95724,
+  "size_m": [
+   95.0,
+   95.0,
+   17.74
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r0c1_v01": {
+  "tris": 2660,
+  "bytes": 88044,
+  "size_m": [
+   95.0,
+   95.0,
+   25.92
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r0c2_v01": {
+  "tris": 2660,
+  "bytes": 92476,
+  "size_m": [
+   95.0,
+   95.0,
+   36.61
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r0c3_v01": {
+  "tris": 2870,
+  "bytes": 96380,
+  "size_m": [
+   95.0,
+   95.0,
+   39.6
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r1c0_v01": {
+  "tris": 2660,
+  "bytes": 93068,
+  "size_m": [
+   95.0,
+   95.0,
+   33.21
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r1c1_v01": {
+  "tris": 2450,
+  "bytes": 90508,
+  "size_m": [
+   95.0,
+   95.0,
+   18.56
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   12.07
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r1c2_v01": {
+  "tris": 2450,
+  "bytes": 86636,
+  "size_m": [
+   95.0,
+   95.0,
+   15.94
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   24.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r1c3_v01": {
+  "tris": 2660,
+  "bytes": 92684,
+  "size_m": [
+   95.0,
+   95.0,
+   42.07
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r2c0_v01": {
+  "tris": 2660,
+  "bytes": 96012,
+  "size_m": [
+   95.0,
+   95.0,
+   61.56
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r2c1_v01": {
+  "tris": 2450,
+  "bytes": 92044,
+  "size_m": [
+   95.0,
+   95.0,
+   31.4
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   23.33
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r2c2_v01": {
+  "tris": 2452,
+  "bytes": 81628,
+  "size_m": [
+   380.0,
+   380.0,
+   64.87
+  ],
+  "bbox_min": [
+   -237.5,
+   -237.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r2c3_v01": {
+  "tris": 2660,
+  "bytes": 91740,
+  "size_m": [
+   95.0,
+   95.0,
+   63.54
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r3c0_v01": {
+  "tris": 2870,
+  "bytes": 99356,
+  "size_m": [
+   95.0,
+   95.0,
+   84.6
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r3c1_v01": {
+  "tris": 2660,
+  "bytes": 95596,
+  "size_m": [
+   95.0,
+   95.0,
+   81.61
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r3c2_v01": {
+  "tris": 2660,
+  "bytes": 93740,
+  "size_m": [
+   95.0,
+   95.0,
+   74.71
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_chunk_r3c3_v01": {
+  "tris": 2870,
+  "bytes": 95308,
+  "size_m": [
+   95.0,
+   95.0,
+   92.51
+  ],
+  "bbox_min": [
+   -47.5,
+   -47.5,
+   0.0
+  ],
+  "materials": [
+   "dirt",
+   "grass_light",
+   "grass_mid",
+   "ice_light",
+   "leaf_light",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "stone_deep",
+   "stone_light",
+   "stone_mid",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_drifts_v01": {
+  "tris": 1560,
+  "bytes": 83196,
+  "size_m": [
+   171.96,
+   357.62,
+   49.56
+  ],
+  "bbox_min": [
+   202.91,
+   18.52,
+   21.73
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_mountain_v01": {
+  "tris": 250,
+  "bytes": 24940,
+  "size_m": [
+   2.12,
+   1.93,
+   1.03
+  ],
+  "bbox_min": [
+   -1.06,
+   -0.96,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_mountain_v02": {
+  "tris": 250,
+  "bytes": 24940,
+  "size_m": [
+   2.18,
+   1.85,
+   1.03
+  ],
+  "bbox_min": [
+   -1.09,
+   -0.92,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_mountain_v03": {
+  "tris": 250,
+  "bytes": 24924,
+  "size_m": [
+   2.15,
+   1.8,
+   1.03
+  ],
+  "bbox_min": [
+   -1.07,
+   -0.9,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_terrain_mountain_v04": {
+  "tris": 250,
+  "bytes": 24908,
+  "size_m": [
+   2.16,
+   2.05,
+   1.03
+  ],
+  "bbox_min": [
+   -1.08,
+   -1.02,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_bare_v01": {
+  "tris": 90,
+  "bytes": 19324,
+  "size_m": [
+   3.5,
+   2.56,
+   5.68
+  ],
+  "bbox_min": [
+   -1.75,
+   -1.28,
+   0.0
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_blossom_v01": {
+  "tris": 113,
+  "bytes": 21484,
+  "size_m": [
+   4.93,
+   4.08,
+   6.18
+  ],
+  "bbox_min": [
+   -2.47,
+   -2.04,
+   0.0
+  ],
+  "materials": [
+   "flower_y",
+   "leaf_light",
+   "plaster",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_log_v01": {
+  "tris": 40,
+  "bytes": 16524,
+  "size_m": [
+   1.63,
+   0.45,
+   0.52
+  ],
+  "bbox_min": [
+   -0.81,
+   -0.23,
+   0.0
+  ],
+  "materials": [
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pine_v01": {
+  "tris": 138,
+  "bytes": 23468,
+  "size_m": [
+   6.52,
+   6.51,
+   10.0
+  ],
+  "bbox_min": [
+   -3.26,
+   -3.25,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "leaf_light",
+   "pine_dark",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pine_v02": {
+  "tris": 114,
+  "bytes": 22540,
+  "size_m": [
+   7.57,
+   7.35,
+   8.2
+  ],
+  "bbox_min": [
+   -3.78,
+   -3.67,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "leaf_light",
+   "pine_dark",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pine_v03": {
+  "tris": 101,
+  "bytes": 22076,
+  "size_m": [
+   4.88,
+   4.85,
+   7.0
+  ],
+  "bbox_min": [
+   -2.44,
+   -2.43,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "leaf_light",
+   "pine_dark",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pine_v04": {
+  "tris": 138,
+  "bytes": 23564,
+  "size_m": [
+   5.63,
+   5.51,
+   8.4
+  ],
+  "bbox_min": [
+   -2.82,
+   -2.76,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "leaf_light",
+   "pine_dark",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pinesnow_v01": {
+  "tris": 135,
+  "bytes": 24508,
+  "size_m": [
+   6.43,
+   6.58,
+   10.0
+  ],
+  "bbox_min": [
+   -3.22,
+   -3.29,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pinesnow_v02": {
+  "tris": 111,
+  "bytes": 23612,
+  "size_m": [
+   7.4,
+   7.43,
+   8.2
+  ],
+  "bbox_min": [
+   -3.7,
+   -3.72,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pinesnow_v03": {
+  "tris": 99,
+  "bytes": 23148,
+  "size_m": [
+   5.02,
+   4.84,
+   7.0
+  ],
+  "bbox_min": [
+   -2.51,
+   -2.42,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_pinesnow_v04": {
+  "tris": 135,
+  "bytes": 24572,
+  "size_m": [
+   5.59,
+   5.53,
+   8.4
+  ],
+  "bbox_min": [
+   -2.8,
+   -2.76,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "pine_dark",
+   "snow_light",
+   "snow_shadow",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_round_v01": {
+  "tris": 113,
+  "bytes": 20396,
+  "size_m": [
+   4.94,
+   4.03,
+   6.18
+  ],
+  "bbox_min": [
+   -2.47,
+   -2.01,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "leaf_light",
+   "wood_dark"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_stump_v01": {
+  "tris": 76,
+  "bytes": 17068,
+  "size_m": [
+   1.13,
+   1.1,
+   0.59
+  ],
+  "bbox_min": [
+   -0.57,
+   -0.55,
+   0.0
+  ],
+  "materials": [
+   "wood_dark",
+   "wood_light"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_tree_tall_v01": {
+  "tris": 113,
+  "bytes": 21404,
+  "size_m": [
+   3.22,
+   3.0,
+   9.59
+  ],
+  "bbox_min": [
+   -1.61,
+   -1.5,
+   0.0
+  ],
+  "materials": [
+   "grass_mid",
+   "iron",
+   "leaf_light",
+   "plaster"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_village_lane_v01": {
+  "tris": 32,
+  "bytes": 15836,
+  "size_m": [
+   6.19,
+   22.04,
+   3.75
+  ],
+  "bbox_min": [
+   17.92,
+   38.09,
+   0.2
+  ],
+  "materials": [
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_village_plazapaving_v01": {
+  "tris": 120,
+  "bytes": 19148,
+  "size_m": [
+   18.0,
+   18.0,
+   0.0
+  ],
+  "bbox_min": [
+   19.83,
+   23.02,
+   0.3
+  ],
+  "materials": [
+   "plaster",
+   "stone_light",
+   "stone_mid"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_branch_v01": {
+  "tris": 54,
+  "bytes": 16108,
+  "size_m": [
+   20.94,
+   48.94,
+   0.0
+  ],
+  "bbox_min": [
+   13.65,
+   62.55,
+   0.4
+  ],
+  "materials": [
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_foam_v01": {
+  "tris": 260,
+  "bytes": 25852,
+  "size_m": [
+   17.68,
+   22.18,
+   21.38
+  ],
+  "bbox_min": [
+   296.0,
+   230.26,
+   29.42
+  ],
+  "materials": [
+   "snow_light",
+   "snow_shadow"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_lakeoutlet_v01": {
+  "tris": 4,
+  "bytes": 14956,
+  "size_m": [
+   14.2,
+   12.08,
+   0.0
+  ],
+  "bbox_min": [
+   300.69,
+   244.09,
+   50.2
+  ],
+  "materials": [
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_pool_v01": {
+  "tris": 8,
+  "bytes": 15180,
+  "size_m": [
+   16.4,
+   14.0,
+   0.0
+  ],
+  "bbox_min": [
+   296.8,
+   231.0,
+   29.4
+  ],
+  "materials": [
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_river_v01": {
+  "tris": 140,
+  "bytes": 17628,
+  "size_m": [
+   157.5,
+   120.53,
+   0.0
+  ],
+  "bbox_min": [
+   -1.86,
+   -2.05,
+   0.3
+  ],
+  "materials": [
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_stream_v01": {
+  "tris": 64,
+  "bytes": 16188,
+  "size_m": [
+   81.61,
+   55.04,
+   0.0
+  ],
+  "bbox_min": [
+   300.11,
+   185.96,
+   29.4
+  ],
+  "materials": [
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_waterfall0_v01": {
+  "tris": 90,
+  "bytes": 18172,
+  "size_m": [
+   14.0,
+   13.5,
+   20.77
+  ],
+  "bbox_min": [
+   298.0,
+   238.5,
+   29.72
+  ],
+  "materials": [
+   "ice_light",
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_waterfall1_v01": {
+  "tris": 90,
+  "bytes": 18188,
+  "size_m": [
+   12.2,
+   13.5,
+   20.77
+  ],
+  "bbox_min": [
+   298.9,
+   238.5,
+   29.92
+  ],
+  "materials": [
+   "ice_light",
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_waterfall2_v01": {
+  "tris": 90,
+  "bytes": 18172,
+  "size_m": [
+   10.4,
+   13.5,
+   20.79
+  ],
+  "bbox_min": [
+   299.8,
+   238.5,
+   30.12
+  ],
+  "materials": [
+   "ice_light",
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ },
+ "snow_water_waterfall3_v01": {
+  "tris": 90,
+  "bytes": 18060,
+  "size_m": [
+   8.6,
+   13.5,
+   20.8
+  ],
+  "bbox_min": [
+   300.7,
+   238.5,
+   30.32
+  ],
+  "materials": [
+   "ice_light",
+   "water"
+  ],
+  "gs": {
+   "UpAxis": 1,
+   "UpAxisSign": 1,
+   "FrontAxis": 2,
+   "FrontAxisSign": 1,
+   "CoordAxis": 0,
+   "CoordAxisSign": 1,
+   "UnitScaleFactor": 100.0
+  }
+ }
+}

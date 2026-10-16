@@ -102,3 +102,141 @@ material: `MK_wood_dark` #715332, `MK_leaf_light` #A0B85B (หน้าที่
 - **emission ไม่ติดมาใน FBX**: ใน Unity ต้องตั้ง Emission สี #F5C25A (ความแรง ~1.6) ที่ material `window_glow` เอง (ใช้กับกระจกหน้าต่างและ dormer)
 - material `opening_dark` #3A3A3A (ช่องมืดหลังประตู/หน้าต่าง), `roof_purple` #5E5878, `window_glow` #F5C25A, ที่เหลือใช้สี kit เดิม (`plaster_cream` #D8CCB0, `wood_dark` #715332, `wood_light` #A1773D, `barrel_iron` #3A3A3A, `rock_top` / `rock_side`)
 - ของประดับในภาพ preview ไม่รวมใน FBX: ควัน 3 ก้อน (`cottage_smoke()` ไม่ export), ถัง 2 ใบ (`Props/Barrel_*.fbx`), หินแผ่น (`Props/Stepping_Stone.fbx`), เห็ด (`Props/Mushroom_Red_Cluster.fbx`), หญ้า (`Props/Grass_Tuft.fbx`) — ใช้ไฟล์ใน kit วางเอง
+
+## Snow map (โมเดลแมพหิมะ)
+
+เจ้าของอนุมัติ 2026-10-16 (peatengkrub) — ทั้งชุด 123 ไฟล์ รวม 73,730 tris (3.97 MB) ที่ `Assets/Models/Snow/` สร้างจาก `Docs/snow-map-models/make_snow_map.py -- --exportall` (ตรวจไฟล์ด้วย `verify_snow_fbx.py`)
+
+ตั้งชื่อ `snow_<หมวด>_<ชื่อ>_<vNN>.fbx` | ภูมิประเทศ chunk 4x4 (95x95 ม.) | ชิ้นซ้ำ export 1 ชิ้น วางตาม `Docs/snow-map-models/layout.json` | กังหันแยกใบพัด (pivot = แกนใบพัด)
+
+**แกน Blender -> Unity** (ตรวจจากไฟล์ .fbx จริง): vertex เก็บแกน Blender ดิบ + root Lcl Rotation (-90,0,0), UnitScale 100 -> หลัง import (x,y,z)_blender = (-x, z, -y)_unity (X กลับด้านเหมือนกระท่อม/รั้วเดิม) | ตำแหน่งโลก (E,N,Z)_blender = (E,Z,N)_unity | ใส่ FBX ใน child หมุน Y=180 (เหมือน FrontYaw) | yaw Unity = -rz | รายละเอียดเต็มใน `layout.json` > `unity_axis_mapping`
+
+material = สีล้วนตามจานสี (ไม่มี texture/UV), pivot = กลางฐาน (chunk = กลาง chunk ที่ z=-12 ม.; ไฟล์ world mesh/merged = pivot ที่ origin โลก 0,0,0), flat shading
+
+| ไฟล์ (`Assets/Models/Snow/`) | tris | ขนาด กว้าง x ลึก x สูง (ม.) | อนุมัติ | ภาพ |
+| --- | --- | --- | --- | --- |
+| snow_bridge_s1_v01.fbx | 1140 | 18.7 x 4.9 x 3.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_bridge_s2_v01.fbx | 1052 | 14.7 x 4.9 x 3.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_bridge_s3_v01.fbx | 1072 | 10.7 x 4.9 x 3.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_building_house_v01.fbx | 1095 | 8.9 x 8.0 x 13.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_building_house_v02.fbx | 1167 | 10.4 x 8.0 x 13.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_building_house_v03.fbx | 1129 | 8.9 x 8.0 x 13.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_building_windmillbody_v01.fbx | 649 | 6.8 x 7.5 x 14.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_building_windmillsails_v01.fbx | 474 | 14.4 x 1.2 x 14.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_castle_base_v01.fbx | 64 | 39.7 x 40.6 x 9.5 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_castle_keep_v01.fbx | 1141 | 32.4 x 36.7 x 38.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_castle_walls_v01.fbx | 1724 | 35.3 x 37.0 x 21.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_campfire_v01.fbx | 301 | 5.1 x 5.4 x 2.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_chains_v01.fbx | 780 | 42.9 x 26.6 x 13.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_deco_crystal_v01.fbx | 80 | 4.7 x 4.1 x 6.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_crystal_v02.fbx | 65 | 3.4 x 3.8 x 5.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_crystal_v03.fbx | 50 | 3.4 x 2.5 x 4.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_crystal_v04.fbx | 65 | 5.2 x 3.9 x 7.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_crystal_v05.fbx | 80 | 2.9 x 3.5 x 3.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_icecave_v01.fbx | 439 | 10.8 x 10.9 x 7.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_icecave_v02.fbx | 411 | 10.8 x 10.8 x 7.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_icelake_v01.fbx | 440 | 64.4 x 44.8 x 2.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_deco_igloo_v01.fbx | 363 | 7.0 x 8.3 x 3.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_igloo_v02.fbx | 363 | 7.8 x 9.3 x 3.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_igloo_v03.fbx | 329 | 6.3 x 7.3 x 3.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_sled_v01.fbx | 316 | 3.4 x 1.7 x 1.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_deco_snowman_v01.fbx | 414 | 4.2 x 1.9 x 4.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_path_icechunks_v01.fbx | 337 | 88.3 x 105.4 x 43.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_path_icesteps_v01.fbx | 2260 | 93.5 x 105.9 x 45.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_path_stones_v01.fbx | 642 | 200.8 x 192.6 x 33.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_path_surface_v01.fbx | 3200 | 219.3 x 208.7 x 37.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_plant_bush_v01.fbx | 114 | 3.2 x 2.3 x 1.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_plant_flower_purple_v01.fbx | 15 | 0.7 x 0.7 x 0.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_plant_flower_red_v01.fbx | 15 | 0.7 x 0.7 x 0.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_plant_flower_white_v01.fbx | 15 | 0.7 x 0.7 x 0.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_plant_flower_yellow_v01.fbx | 15 | 0.7 x 0.7 x 0.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_plant_mushroom_v01.fbx | 22 | 0.7 x 0.5 x 0.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_plant_tuft_v01.fbx | 15 | 0.4 x 0.4 x 0.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_banner_v01.fbx | 58 | 1.7 x 0.9 x 5.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_barrel_v01.fbx | 112 | 1.1 x 1.1 x 0.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_chainpost_v01.fbx | 48 | 0.5 x 0.5 x 1.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_crate_v01.fbx | 72 | 0.9 x 0.9 x 0.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_dock_v01.fbx | 412 | 8.3 x 2.7 x 3.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_fence_v01.fbx | 108 | 4.1 x 0.3 x 1.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_fountain_v01.fbx | 298 | 8.0 x 8.0 x 5.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_icelamp_v01.fbx | 111 | 1.0 x 0.8 x 3.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_lamp_v01.fbx | 142 | 1.4 x 0.6 x 3.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_signcastle_v01.fbx | 134 | 5.0 x 1.5 x 8.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_signmountain_v01.fbx | 95 | 5.0 x 1.2 x 7.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_signpine_v01.fbx | 134 | 5.0 x 2.2 x 7.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_signsnow_v01.fbx | 200 | 5.0 x 1.2 x 7.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_slabarc_v01.fbx | 72 | 1.6 x 3.2 x 0.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_stall_v01.fbx | 120 | 3.8 x 2.2 x 3.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_stall_v02.fbx | 120 | 3.8 x 2.2 x 3.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_prop_stall_v03.fbx | 120 | 3.8 x 2.2 x 3.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillar_v01.fbx | 101 | 6.4 x 6.0 x 12.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillar_v02.fbx | 101 | 6.2 x 6.4 x 12.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillar_v03.fbx | 101 | 6.5 x 6.2 x 13.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillar_v04.fbx | 101 | 6.2 x 6.4 x 13.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillarsnow_v01.fbx | 116 | 6.4 x 6.0 x 12.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillarsnow_v02.fbx | 116 | 6.2 x 6.4 x 12.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillarsnow_v03.fbx | 116 | 6.5 x 6.2 x 13.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_pillarsnow_v04.fbx | 116 | 6.2 x 6.4 x 13.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_small_v01.fbx | 46 | 1.3 x 1.1 x 0.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_small_v02.fbx | 54 | 1.8 x 1.4 x 0.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_small_v03.fbx | 51 | 2.6 x 1.9 x 1.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_small_v04.fbx | 54 | 2.8 x 2.4 x 1.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_small_v05.fbx | 46 | 3.3 x 2.8 x 1.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_small_v06.fbx | 54 | 4.0 x 3.4 x 1.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_smallsnow_v01.fbx | 46 | 1.3 x 1.1 x 0.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_smallsnow_v02.fbx | 54 | 1.8 x 1.4 x 0.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_smallsnow_v03.fbx | 46 | 2.4 x 1.9 x 1.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_smallsnow_v04.fbx | 54 | 2.8 x 2.4 x 1.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_smallsnow_v05.fbx | 46 | 3.3 x 2.8 x 1.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_rock_smallsnow_v06.fbx | 54 | 4.0 x 3.4 x 1.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_scene_cloud_v01.fbx | 128 | 182.8 x 118.2 x 21.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_scene_mist_v01.fbx | 240 | 76.7 x 66.6 x 17.3 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r0c0_v01.fbx | 2870 | 95.0 x 95.0 x 17.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r0c1_v01.fbx | 2660 | 95.0 x 95.0 x 25.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r0c2_v01.fbx | 2660 | 95.0 x 95.0 x 36.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r0c3_v01.fbx | 2870 | 95.0 x 95.0 x 39.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r1c0_v01.fbx | 2660 | 95.0 x 95.0 x 33.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r1c1_v01.fbx | 2450 | 95.0 x 95.0 x 18.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r1c2_v01.fbx | 2450 | 95.0 x 95.0 x 15.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r1c3_v01.fbx | 2660 | 95.0 x 95.0 x 42.1 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r2c0_v01.fbx | 2660 | 95.0 x 95.0 x 61.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r2c1_v01.fbx | 2450 | 95.0 x 95.0 x 31.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r2c2_v01.fbx | 2452 | 380.0 x 380.0 x 64.9 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r2c3_v01.fbx | 2660 | 95.0 x 95.0 x 63.5 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r3c0_v01.fbx | 2870 | 95.0 x 95.0 x 84.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r3c1_v01.fbx | 2660 | 95.0 x 95.0 x 81.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r3c2_v01.fbx | 2660 | 95.0 x 95.0 x 74.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_chunk_r3c3_v01.fbx | 2870 | 95.0 x 95.0 x 92.5 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_drifts_v01.fbx | 1560 | 172.0 x 357.6 x 49.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_terrain_mountain_v01.fbx | 250 | 2.1 x 1.9 x 1.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_terrain_mountain_v02.fbx | 250 | 2.2 x 1.9 x 1.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_terrain_mountain_v03.fbx | 250 | 2.1 x 1.8 x 1.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_terrain_mountain_v04.fbx | 250 | 2.2 x 2.0 x 1.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_bare_v01.fbx | 90 | 3.5 x 2.6 x 5.7 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_blossom_v01.fbx | 113 | 4.9 x 4.1 x 6.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_log_v01.fbx | 40 | 1.6 x 0.5 x 0.5 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pine_v01.fbx | 138 | 6.5 x 6.5 x 10.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pine_v02.fbx | 114 | 7.6 x 7.3 x 8.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pine_v03.fbx | 101 | 4.9 x 4.8 x 7.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pine_v04.fbx | 138 | 5.6 x 5.5 x 8.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pinesnow_v01.fbx | 135 | 6.4 x 6.6 x 10.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pinesnow_v02.fbx | 111 | 7.4 x 7.4 x 8.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pinesnow_v03.fbx | 99 | 5.0 x 4.8 x 7.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_pinesnow_v04.fbx | 135 | 5.6 x 5.5 x 8.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_round_v01.fbx | 113 | 4.9 x 4.0 x 6.2 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_stump_v01.fbx | 76 | 1.1 x 1.1 x 0.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_tree_tall_v01.fbx | 113 | 3.2 x 3.0 x 9.6 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_objects.png` |
+| snow_village_lane_v01.fbx | 32 | 6.2 x 22.0 x 3.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_village_plazapaving_v01.fbx | 120 | 18.0 x 18.0 x 0.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_branch_v01.fbx | 54 | 20.9 x 48.9 x 0.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_foam_v01.fbx | 260 | 17.7 x 22.2 x 21.4 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_lakeoutlet_v01.fbx | 4 | 14.2 x 12.1 x 0.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_pool_v01.fbx | 8 | 16.4 x 14.0 x 0.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_river_v01.fbx | 140 | 157.5 x 120.5 x 0.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_stream_v01.fbx | 64 | 81.6 x 55.0 x 0.0 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_waterfall0_v01.fbx | 90 | 14.0 x 13.5 x 20.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_waterfall1_v01.fbx | 90 | 12.2 x 13.5 x 20.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_waterfall2_v01.fbx | 90 | 10.4 x 13.5 x 20.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+| snow_water_waterfall3_v01.fbx | 90 | 8.6 x 13.5 x 20.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
+
+หมายเหตุ: ภาพรวมแมพ `Docs/snow-map-models/preview.png`; ขนาดของไฟล์ world mesh (น้ำ/ทาง/ลานหมู่บ้าน/หิมะทับสัน) = ขอบเขตทั้งแมพ ไม่ใช่ขนาดชิ้นเดียว; `snow_deco_chains_v01`/`snow_scene_mist_v01`/`snow_scene_cloud_v01` = รวมหลายก้อนเป็นไฟล์เดียว (13/5/8 ก้อน) ตำแหน่งในพิกัดโลก; `Tree_Round_NNN` ใน layout ใช้ mesh เดียวกับ `snow_tree_round_v01`; ภูมิประเทศหลักไม่มีไฟล์ `Terrain_Ground` เดี่ยว (แบ่งเป็น chunk 16 ไฟล์ r0c0..r3c3)
