@@ -115,7 +115,7 @@ namespace MedievalKnight
                 panelsPicked++;
                 {
                     int best = 0;
-                    for (int i = 1; i < 3; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
+                    for (int i = 1; i < Progress.AttrCount; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
                     g.ChooseStat(best);
                 }
             }
@@ -308,6 +308,7 @@ namespace MedievalKnight
                   .Append(";hp").Append(p.pid).Append('=').Append(F1(p.hp))
                   .Append(";par").Append(p.pid).Append('=').Append(p.ParryCount)
                   .Append(";pm").Append(p.pid).Append('=').Append(p.ParryMotionCount)
+                  .Append(";eat").Append(p.pid).Append('=').Append(p.Eating ? 1 : 0)
                   .Append(";cla").Append(p.pid).Append('=').Append(p.ClashCount)
                   .Append(";hb").Append(p.pid).Append('=').Append(p.HeavyBlockCount);
             }
@@ -474,6 +475,17 @@ namespace MedievalKnight
                     bool ok = k.DebugRoll(new Vector2(P(a[0]), P(a[1])));
                     yield return W(0.6f);
                     Reply(id, "ok=" + ok + ";an=" + k.LastAction + ";x=" + F2(k.transform.position.x) + ";z=" + F2(k.transform.position.z));
+                    break;
+                }
+
+                case "eat":                                           // seconds: hold F that long (the real eat path: a 2 s meal)
+                {
+                    k.eatHeldOverride = true;
+                    yield return W(P(a[0]));
+                    k.eatHeldOverride = false;
+                    yield return null; yield return null;
+                    k.eatHeldOverride = null;
+                    Reply(id, "ate=" + k.EatCompletedCount + ";cancel=" + k.EatCancelCount + ";hp=" + F1(k.hp));
                     break;
                 }
 
@@ -1228,12 +1240,24 @@ namespace MedievalKnight
                 yield return Sum();
                 float maxA = N(A, "mhp");
                 g.SpawnFood(Foods.Apple, spot);
-                yield return W(1.2f);
+                yield return W(0.6f);
+                yield return Sum();
+                Ck(Eq("pkall") && S("H", "pkall") == "1" && N(A, "fh") == 0f, "an Apple next to the players is NOT eaten by standing there (it is still on every screen)");
+                int ea = Send(B, "eat", "1.0");                           // B has full health: F starts no meal
+                yield return W(0.5f);
+                yield return Sum();
+                Ck(Eq("eat" + pidB) && S("H", "eat" + pidB) == "0", pidB + " (full health) holds F: no meal starts anywhere");
+                yield return Wait(ea, B);
+                int ea2 = Send(A, "eat", "2.8");
+                yield return W(1.0f);
+                yield return Sum();
+                Ck(Eq("eat" + pidA) && S("H", "eat" + pidA) == "1" && S("H", "pkall") == "1", A + " holds F: the eating pose is seen on every screen, the Apple is still on the ground");
+                yield return Wait(ea2, A);
+                yield return W(0.6f);
                 yield return Sum();
                 float wantApple = Mathf.Round(Foods.All[Foods.Apple].healFrac * maxA);
-                Ck(Eq("pkall") && S("H", "pkall") == "0", "an Apple on the ground was eaten once: it is gone on every screen");
-                Check(A + " (half health) ate the Apple: +" + S(A, "fh") + " HP (15% of his max " + F1(maxA) + " = " + F1(wantApple) + ")", Mathf.Abs(N(A, "fh") - wantApple) < 0.6f && N(B, "fh") == 0f);
-                Check(B + " (full health) did not eat it and has no heal recorded", N(B, "fh") == 0f && N(B, "hp" + pidB) > 0f);
+                Ck(Eq("pkall") && S("H", "pkall") == "0" && Eq("eat" + pidA) && S("H", "eat" + pidA) == "0", "after the 2 s the Apple was eaten once: it is gone on every screen and the eating pose ended");
+                Check(A + " (half health) ate the Apple after the 2 s: +" + S(A, "fh") + " HP (15% of his max " + F1(maxA) + " = " + F1(wantApple) + ")", Mathf.Abs(N(A, "fh") - wantApple) < 0.6f && N(B, "fh") == 0f);
 
                 yield return Cmd(A, "autoheal", "1");                    // Meat and the 60 s expiry are food rules, not network rules: not tested here
             }

@@ -59,6 +59,8 @@ namespace MedievalKnight
                 case KeyCode.Keypad1: return Key.Numpad1;
                 case KeyCode.Keypad2: return Key.Numpad2;
                 case KeyCode.Keypad3: return Key.Numpad3;
+                case KeyCode.Keypad4: return Key.Numpad4;
+                case KeyCode.Keypad5: return Key.Numpad5;
                 case KeyCode.Backspace: return Key.Backspace;      // menu text fields
                 case KeyCode.Tab: return Key.Tab;
                 case KeyCode.Return: return Key.Enter;

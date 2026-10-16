@@ -307,7 +307,7 @@ namespace MedievalKnight
             keys = new[]
             {
                 new PoseKey(55f, -25f, 0.36f, 0f, 0f, 0f),
-                new PoseKey(55f, -25f, 0.36f, 0f, 0f, 0f),
+                new PoseKey(24f, -80f, 0.14f, 22f, -0.32f, 0f),          // crouched, the food held up to the mouth
             },
         };
 

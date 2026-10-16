@@ -110,7 +110,7 @@ namespace MedievalKnight
                 panelSince = Time.unscaledTime;
                 {
                     int best = 0;
-                    for (int i = 1; i < 3; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
+                    for (int i = 1; i < Progress.AttrCount; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
                     g.ChooseStat(best);
                 }
             }
@@ -322,6 +322,7 @@ namespace MedievalKnight
                 sb.Append(";x").Append(k.pid).Append('=').Append(F2(p.x)).Append(";z").Append(k.pid).Append('=').Append(F2(p.z))
                   .Append(";lv").Append(k.pid).Append('=').Append(k.progress.level)
                   .Append(";dead").Append(k.pid).Append('=').Append(k.Dead ? 1 : 0)
+                  .Append(";eat").Append(k.pid).Append('=').Append(k.Eating ? 1 : 0)
                   .Append(";fall").Append(k.pid).Append('=').Append(k.Fallen ? 1 : 0)
                   .Append(";hp").Append(k.pid).Append('=').Append(F1(k.hp));
             }
@@ -455,6 +456,25 @@ namespace MedievalKnight
                     k.hp = k.MaxHp * P(a[0]);
                     Reply(id, "hp=" + F1(k.hp));
                     break;
+
+                case "meal":                                         // seconds hitAt: hold F that long (the real 2 s meal); hitAt > 0: a blow lands then
+                {
+                    int before = run.data.carry.Total;
+                    k.eatHeldOverride = true;
+                    float total = P(a[0]), hitAt = P(a[1]);
+                    float t0m = RT;
+                    bool hit = false;
+                    while (RT - t0m < total)
+                    {
+                        if (hitAt > 0f && !hit && RT - t0m >= hitAt) { hit = true; k.TakeDamage(3f, k.transform.position + k.Forward * 2f, "mptest"); }
+                        yield return null;
+                    }
+                    k.eatHeldOverride = false;
+                    yield return null; yield return null;
+                    k.eatHeldOverride = null;
+                    Reply(id, "before=" + before + ";carry=" + run.data.carry.Total + ";done=" + k.EatCompletedCount + ";cancel=" + k.EatCancelCount + ";hp=" + F1(k.hp));
+                    break;
+                }
 
                 case "eat":
                 {
@@ -739,6 +759,34 @@ namespace MedievalKnight
             yield return W(1.0f);
             yield return Sum();
             Ck(EqP("pk", "H", A, B), "after the meal the pickups are still the same on every screen (" + S("H", "pk") + ")");
+
+            // knight-rig-slash: the real meal - hold F for 2 s; the item goes only at the end; a blow in the middle keeps it
+            yield return Cmd(A, "give", "f", Foods.Apple.ToString());
+            yield return Cmd(A, "hp", "0.4");
+            yield return Sum();
+            string carryBefore = S(A, "carry");
+            int meal1 = Send(A, "meal", "2.6", "0");
+            yield return W(1.0f);
+            yield return Sum();
+            Ck(EqP("eat" + pidA, "H", A, B) && S("H", "eat" + pidA) == "1" && S(A, "carry") == carryBefore && S("H", "mir" + pidA) == carryBefore,
+                A + " holds F: the eating pose is seen on every screen, the Apple is still in his pack (and in the host's copy) at 1 s");
+            yield return Wait(meal1, A);
+            yield return W(0.6f);
+            yield return Sum();
+            Ck(EqP("eat" + pidA, "H", A, B) && S("H", "eat" + pidA) == "0" && S(A, "carry") == (int.Parse(carryBefore) - 1).ToString() && S("H", "mir" + pidA) == S(A, "carry"),
+                "after the 2 s the Apple is gone from his pack and from the host's copy, and the eating pose is over");
+            yield return Cmd(A, "give", "f", Foods.Apple.ToString());
+            yield return Cmd(A, "hp", "0.4");
+            yield return Sum();
+            string carryBefore2 = S(A, "carry");
+            int meal2 = Send(A, "meal", "2.6", "1.0");
+            yield return Wait(meal2, A);
+            Map mealMap2 = Parse(Rep(meal2, A));
+            yield return W(0.6f);
+            yield return Sum();
+            Ck(S(A, "carry") == carryBefore2 && S("H", "mir" + pidA) == carryBefore2 && mealMap2.G("cancel") != "0",
+                "a blow at 1 s interrupts the meal: the Apple stays in his pack and in the host's copy (nothing lost, nothing doubled)");
+            yield return Cmd(A, "autoheal", "1");
 
             // dropping: A puts a Dao down; B walks over it
             yield return Cmd(A, "drop", "2", "0");

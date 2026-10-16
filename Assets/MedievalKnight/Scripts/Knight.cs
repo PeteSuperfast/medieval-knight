@@ -13,6 +13,7 @@ namespace MedievalKnight
         public bool block;          // right mouse button held: shield up
         public bool run;            // Left Shift held
         public bool roll;           // Space pressed this frame
+        public bool eatHeld;        // F held
         public bool attackHeld;    // left mouse button / J held (read even while a panel is open, so a press that began there is not a click)
     }
 
@@ -102,6 +103,7 @@ namespace MedievalKnight
         public Vector3? aimOverride;
         public Vector2? moveOverride;
         public bool? attackHeldOverride;                    // the left button held (true) / up (false) without a device
+        public bool? eatHeldOverride;                       // F held (true) / up (false) without a device
         CodedBody body;                                     // what he looks like (the pose numbers below live in it)
         Transform rig, swordNode, swordModel;
         float swYaw { get { return body.swYaw; } set { body.swYaw = value; } }
@@ -201,8 +203,8 @@ namespace MedievalKnight
         {
             if (!progress.Spend(a)) return false;
             if (a == Attr.Hp) hp = Mathf.Min(MaxHp, hp + Progress.HpPerPoint);
-            else if (a == Attr.Block) armor = Mathf.Min(MaxArmor, armor + Progress.ArmorPerPoint);
-            else stamina = Mathf.Min(MaxStamina, stamina + Progress.StaminaPerPoint);
+            else if (a == Attr.Def) armor = Mathf.Min(MaxArmor, armor + Progress.ArmorPerPoint);
+            else if (a == Attr.Stamina) stamina = Mathf.Min(MaxStamina, stamina + Progress.StaminaPerPoint);     // (SPEED and RESISTANCE have no bar to fill)
             return true;
         }
 
@@ -251,7 +253,7 @@ namespace MedievalKnight
         void ClearActionFlags()
         {
             IsAttacking = false; lockFacing = false; invuln = false;
-            queuedClick = false; rigSpin = 0f;
+            queuedClick = false; rigSpin = 0f; eating = false;
             if (clock.act == Act.Roll) { rigLean = 0f; rigHop = 0f; }                // (a half-turned body would otherwise unwind through the floor)
             body.pivotY = 0f; body.ReleaseShield();
             clock.End();
@@ -339,6 +341,7 @@ namespace MedievalKnight
             inp.block = InputX.MouseHeld(1);
             inp.run = InputX.Held(KeyCode.LeftShift) || InputX.Held(KeyCode.RightShift);
             inp.roll = InputX.Down(KeyCode.Space);
+            inp.eatHeld = eatHeldOverride.HasValue ? eatHeldOverride.Value : InputX.Held(KeyCode.F);
             return inp;
         }
 
@@ -352,8 +355,9 @@ namespace MedievalKnight
             // left button: a click is the moment it goes down; a press that began while a panel was open never counts
             bool click = inp.attackHeld && !leftWas && canInput && !Dead;
             leftWas = inp.attackHeld;
+            UpdateEating(inp, canInput, mv);
             bool wasBlocking = IsBlocking;
-            IsBlocking = canInput && !IsAttacking && inp.block && !rolling;                   // the shield drops during a dash
+            IsBlocking = canInput && !IsAttacking && !Eating && inp.block && !rolling;                   // the shield drops during a roll
             if (IsBlocking && !wasBlocking)                                                      // a fresh press: 0.2 s parry window, unless pressed again within 0.5 s
             {
                 float now = Time.time;
@@ -380,7 +384,7 @@ namespace MedievalKnight
             }
 
             // --- movement on the XZ plane ---
-            float speedMul = IsAttacking ? 0.2f : IsBlocking ? 0.4f : 1f;
+            float speedMul = Eating ? 0f : IsAttacking ? 0.2f : IsBlocking ? 0.4f : 1f;
             if (clock.act == Act.Swing && !clock.done) speedMul = (clock.phase == 0 || clock.phase == 3) ? 0.3f : 0f;   // the strike and the follow-through are driven by the move
             else if (lockFacing && IsAttacking) speedMul = Airborne ? 0f : 0.15f;
             bool running = canInput && inp.run && mv.sqrMagnitude > 0.01f && !IsAttacking && !IsBlocking && !Airborne && !Dead && !rolling;
@@ -389,7 +393,7 @@ namespace MedievalKnight
             Vector3 p = transform.position;
             p.y = 0f;
             if (rolling) p += rollDir * (RollDistance / RollMoveTime) * dt;      // the dash replaces walking
-            else p += new Vector3(mv.x, 0f, mv.y) * MoveSpeed * speedMul * dt;
+            else p += new Vector3(mv.x, 0f, mv.y) * MoveSpeed * speedMul * progress.MoveSpeedMult * dt;     // SPEED: walking and running only
             p += knockVel * dt;
             if (running && Time.time - lastRunDust > 0.22f) { lastRunDust = Time.time; Fx.I.Dust(transform.position, 2); }
             knockVel = Vector3.MoveTowards(knockVel, Vector3.zero, 30f * dt);
@@ -429,6 +433,7 @@ namespace MedievalKnight
             if (Dead || Airborne || Time.time < rollReadyAt) return;
             if (ParryLocked) return;
             if (stamina < RollCost - 0.001f) { Deny("Roll"); return; }
+            CancelEat();
             if (IsAttacking || clock.act == Act.Parry) CancelAction();
             stamina -= RollCost;
             lastSpendTime = Time.time;
@@ -471,6 +476,141 @@ namespace MedievalKnight
             body.pivotY = 0f;
             lockFacing = false;
             clock.End();
+        }
+
+        // ---------------------------------------------------------------- eating (hold F)
+
+        // Food is never eaten at once: he stands still and holds F (or presses C / clicks the food in the Carry window) for
+        // 2.0 s, then the health comes. Interrupted (progress lost, the food stays) by a blow, a roll, a step, letting go of F,
+        // a click or the shield, falling, or a panel. A friend lying within reach is revived instead (TeamRun).
+        public const float EatReach = 1.2f;
+        bool eating, eatByKey, eatLock, netEating;
+        float eatStart, eatHurtMark;
+        public float EatFlagSince { get; set; }                     // remote knight: when his eating flag went up (the host grants ground food after ~2 s)
+        public int EatCompletedCount { get; private set; }         // test counter: meals finished
+        public int EatCancelCount { get; private set; }            // test counter: meals interrupted
+        public bool Eating { get { return remote ? netEating : eating; } }
+        public float EatProgress
+        {
+            get
+            {
+                if (remote) return netEating ? Mathf.Clamp01((Time.unscaledTime - EatFlagSince) / KnightAnim.EatSeconds) : 0f;
+                return eating ? Mathf.Clamp01((Time.unscaledTime - eatStart) / KnightAnim.EatSeconds) : 0f;
+            }
+        }
+
+        // Is there something to eat right now? Loop: the first food in the carry. The v1 arena: a food on the ground within 1.2 m.
+        public bool FoodAvailable(out Pickup ground)
+        {
+            ground = null;
+            Game g = Game.I;
+            if (g.Loop)
+            {
+                if (g.run == null || !g.run.InWorld) return false;
+                Section s; int i;
+                return g.run.PeekFood(out s, out i);
+            }
+            float best = EatReach * EatReach;
+            for (int n = 0; n < Pickup.All.Count; n++)
+            {
+                Pickup p = Pickup.All[n];
+                if (p.kind != PickupKind.Food || p.hidden || p.age < 0.35f || !p.gameObject.activeInHierarchy) continue;
+                Vector3 d = p.transform.position - transform.position; d.y = 0f;
+                if (d.sqrMagnitude <= best) { best = d.sqrMagnitude; ground = p; }
+            }
+            return ground != null;
+        }
+
+        // The hint "Hold F: Eat" is shown when this is true.
+        public bool EatPromptOn
+        {
+            get
+            {
+                if (remote || Dead || eating || IsAttacking || IsBlocking || Rolling || Game.I.PanelOpen || hp >= MaxHp - 0.5f) return false;
+                Pickup p;
+                return FoodAvailable(out p);
+            }
+        }
+
+        bool EatBlocked { get { return IsAttacking || IsBlocking || Rolling || ParryActive || Airborne || Dead; } }
+
+        // F held / C / a click on the food in the Carry window. byKey: no need to keep F down.
+        public bool TryBeginEat(bool byKey)
+        {
+            if (remote || eating || EatBlocked) return false;
+            Game g = Game.I;
+            Pickup ground;
+            bool food = FoodAvailable(out ground);
+            if (!food)
+            {
+                if (byKey && g.Loop) g.hud.Notice("No food to eat", new Color(1f, 0.85f, 0.4f));
+                return false;
+            }
+            if (hp >= MaxHp - 0.5f)
+            {
+                g.hud.Popup(transform.position + new Vector3(0f, 2.7f, 0f), "HP full", new Color(0.75f, 0.75f, 0.78f), 16);
+                g.hud.Notice("HP full", new Color(0.75f, 0.75f, 0.78f));
+                g.fullHints++;
+                return false;
+            }
+            eating = true; eatByKey = byKey; eatStart = Time.unscaledTime; eatHurtMark = LastHurtTime;
+            LastAction = "Eat";
+            ActionsSeen++;
+            Net.SendAct(21, 1f, Vector3.zero);
+            return true;
+        }
+
+        void CancelEat()
+        {
+            if (!eating) return;
+            eating = false;
+            EatCancelCount++;
+        }
+
+        void UpdateEating(KnightInput inp, bool canInput, Vector2 mv)
+        {
+            if (eatLock && !inp.eatHeld) eatLock = false;               // let go of F after a meal / an interruption before the next one
+            if (eating)
+            {
+                bool hurt = LastHurtTime > eatHurtMark + 0.0001f;
+                bool cancel = Game.I.PanelOpen || Dead || EatBlocked || inp.block || mv.sqrMagnitude > 0.01f || hurt || (!eatByKey && !inp.eatHeld) || ReviveInstead;
+                if (cancel) { CancelEat(); if (inp.eatHeld) eatLock = true; }
+                else if (Time.unscaledTime - eatStart >= KnightAnim.EatSeconds) FinishEat();
+                return;
+            }
+            if (canInput && inp.eatHeld && !eatLock && mv.sqrMagnitude <= 0.01f && !ReviveInstead)
+            {
+                if (!TryBeginEat(false)) eatLock = true;                // nothing to eat / HP full: one hint per press, not every frame
+            }
+        }
+
+        void FinishEat()
+        {
+            eating = false;
+            eatLock = true;
+            EatCompletedCount++;
+            Game g = Game.I;
+            if (g.Loop)
+            {
+                Section s; int i;
+                if (g.run != null && g.run.PeekFood(out s, out i)) g.run.Eat(s, i);          // the one place that takes the item and heals
+            }
+            else if (Net.Authority)
+            {
+                Pickup p;
+                if (FoodAvailable(out p)) g.EatGroundFood(this, p);
+            }
+            // a client in the v1 arena: the host sees the eating flag and sends the PickupTaken
+        }
+
+        void EatPose()
+        {
+            float t = EatProgress;
+            PoseKey crouch = KnightAnim.Eat.keys[1], rest = KnightAnim.Eat.keys[0];
+            float e = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t * 8f));
+            PoseKey k = PoseKey.Lerp(rest, crouch, e);
+            k.pitch += Mathf.Sin(Time.time * 9f) * 9f * e;              // bites
+            SetPose(k);
         }
 
         // ---------------------------------------------------------------- parry motion
@@ -538,6 +678,7 @@ namespace MedievalKnight
         void Click(bool rolling)
         {
             if (Dead || Airborne || rolling) return;
+            if (eating) CancelEat();                                      // a swing ends the meal at once
             if (ParryLocked) return;                                      // the first part of a parry motion cannot be cut short
             if (clock.act == Act.Parry && !clock.done) CancelAction();    // the end of it can: the swing starts at once
             if (IsAttacking)
@@ -581,7 +722,9 @@ namespace MedievalKnight
         // Shared by the local knight and by remote knights.
         void Pose(float dt, bool moving)
         {
-            body.Pose(dt, moving, IsAttacking || (!clock.done && (clock.act == Act.Roll || clock.act == Act.Parry)), Dead, IsBlocking);
+            bool eatDriven = Eating && !Dead;
+            if (eatDriven) EatPose();
+            body.Pose(dt, moving, eatDriven || IsAttacking || (!clock.done && (clock.act == Act.Roll || clock.act == Act.Parry)), Dead, IsBlocking);
 
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
             if (Glowing && !Dead) body.SetTint(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
@@ -601,11 +744,11 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- remote knight (another player)
 
         // State bits sent over the network.
-        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16;      // NetFallen: Dead + Fallen = really dead (the loop online). Bit 32 was NetCharging (protocol 5): never reuse it in protocol 6
+        public const int NetBlocking = 1, NetDead = 2, NetAirborne = 4, NetGlow = 8, NetFallen = 16, NetEating = 64;      // NetEating: holding food up (protocol 6). NetFallen: Dead + Fallen = really dead (the loop online). Bit 32 was NetCharging (protocol 5): never reuse it in protocol 6
 
         public int NetFlags
         {
-            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0); }
+            get { return (IsBlocking ? NetBlocking : 0) | (Dead ? NetDead : 0) | (Airborne ? NetAirborne : 0) | (Glowing ? NetGlow : 0) | (Fallen ? NetFallen : 0) | (Eating && !Dead ? NetEating : 0); }
         }
 
         // The loop online: who this knight is reviving right now (pid), 255 = nobody. Travels with the state so the others see it.
@@ -677,6 +820,9 @@ namespace MedievalKnight
             if (IsBlocking && !wasUp) shieldFlashUntil = Time.time + ParryWindow;
             Airborne = (flags & NetAirborne) != 0;
             netGlow = (flags & NetGlow) != 0;
+            bool nowEating = (flags & NetEating) != 0 && !nowDead;
+            if (nowEating && !netEating) EatFlagSince = Time.unscaledTime;
+            netEating = nowEating;
 
             float before = hp + armor;
             hp = newHp; armor = newArmor; netMaxHp = newMaxHp; netMaxArmor = newMaxArmor;
@@ -763,6 +909,7 @@ namespace MedievalKnight
                 act = StartCoroutine(RemoteRoll(backwards));
                 return;
             }
+            if (kind == 21) { LastAction = "Eat"; ActionsSeen++; return; }       // eating: the pose follows his flag
             if (kind == 22)                                   // a parry motion
             {
                 if (act != null) StopCoroutine(act);
@@ -1037,7 +1184,7 @@ namespace MedievalKnight
             if (IsBlocking && facing)
             {
                 // the shield costs stamina: 10 per blow, 4% less per DEF point. With too little left it does not hold: the blow lands in full.
-                float cost = BlockStaminaCost * (1f - BlockCostPerDef * progress.Points(Attr.Block));
+                float cost = BlockStaminaCost * (1f - BlockCostPerDef * progress.Points(Attr.Def));
                 if (stamina + 0.001f < cost)
                 {
                     Game.I.hud.Popup(chestPos + new Vector3(0f, 1.2f, 0f), "GUARD BROKEN", new Color(1f, 0.5f, 0.4f), 26);
@@ -1057,6 +1204,7 @@ namespace MedievalKnight
                 }
             }
 
+            damage *= progress.DamageTakenMult;                                      // RESISTANCE: after the shield, before armor and health
             float toArmor = Mathf.Min(armor, damage);
             armor -= toArmor;
             float toHp = damage - toArmor;
@@ -1066,7 +1214,7 @@ namespace MedievalKnight
             if (toArmor >= 0.5f) Game.I.hud.Popup(chestPos + new Vector3(-0.4f, 0.6f, 0f), "-" + Mathf.RoundToInt(toArmor), new Color(0.65f, 0.82f, 1f), 24);
             if (toHp >= 0.5f) Game.I.hud.Popup(chestPos + new Vector3(0.4f, 0.9f, 0f), "-" + Mathf.RoundToInt(toHp), new Color(1f, 0.35f, 0.25f), 28);
 
-            knockVel = -srcDir * (blocked ? knockback * 0.35f : knockback);
+            knockVel = -srcDir * (blocked ? knockback * 0.35f : knockback) * progress.KnockbackTakenMult;
             if (!blocked)
             {
                 hurtTint = 1f;

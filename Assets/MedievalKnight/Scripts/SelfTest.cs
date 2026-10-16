@@ -61,8 +61,9 @@ namespace MedievalKnight
         Key StatKey()
         {
             int best = 0;
-            for (int i = 1; i < 3; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
-            return best == 0 ? Key.Digit1 : best == 1 ? Key.Digit2 : Key.Digit3;
+            Key[] keys = { Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5 };
+            for (int i = 1; i < Progress.AttrCount; i++) if (k.progress.attr[i] < k.progress.attr[best]) best = i;
+            return keys[best];
         }
 
         IEnumerator Click(Vector2 pos)
@@ -217,6 +218,7 @@ namespace MedievalKnight
                 Progress.ForceCrit = 1;
                 ParkSlimes();
                 yield return SlashTests(d);
+                yield return StatTests(d);
                 yield return W(0.5f);
                 Log("done (slash cases only), screenshots=" + shot + ", failed checks=" + fails);
                 Application.Quit();
@@ -740,6 +742,7 @@ namespace MedievalKnight
 
             yield return Phase7(d);
             yield return SlashTests(d);
+            yield return StatTests(d);
             k.moveOverride = null;
             k.transform.position = new Vector3(2f, 0f, -5f);
             k.aimOverride = d.transform.position;
@@ -1138,32 +1141,100 @@ namespace MedievalKnight
                 Pickup apple = g.SpawnFood(Foods.Apple, spot + new Vector3(0.8f, 0f, 0f));
                 float life = apple.Life;
                 yield return W(0.9f);
-                float gain = k.hp - hp0;
-                Log("apple: hp " + F(hp0) + " -> " + F(k.hp) + " of " + F(max) + " (+" + F(gain) + ", want " + F(max * 0.15f) + "), lifetime " + F(life) + " s, notice \"" + g.lastNotice + "\"");
-                Check("an Apple heals 15% of max health and is gone from the ground", Mathf.Abs(gain - max * 0.15f) < 1f && !Pickup.All.Contains(apple) && g.lastFoodHeal == Mathf.RoundToInt(max * 0.15f));
+                bool notEatenByWalking = Pickup.All.Contains(apple) && Mathf.Abs(k.hp - hp0) < 0.01f;
+                string prompt = g.hud.EatLabelShown;
+                Check("food next to the knight is not eaten by walking over it; it says 'Hold F: Eat' (" + prompt + ")", notEatenByWalking && prompt.Contains("Hold F"));
                 Check("food lives 60 seconds on the ground (swords 90)", Mathf.Abs(life - 60f) < 0.01f && Mathf.Abs(Pickup.Lifetime - 90f) < 0.01f);
+                int meals0 = k.EatCompletedCount, acts0 = k.ActionsSeen;
+                Keys(Key.F);
+                yield return W(1.0f);
+                bool midway = k.Eating && k.EatProgress > 0.35f && k.EatProgress < 0.65f && g.hud.EatBarShown && g.hud.EatLabelShown == "EATING";
+                bool noHealYet = Mathf.Abs(k.hp - hp0) < 0.01f && Pickup.All.Contains(apple);
+                Shot("eating_half");
+                yield return W(1.3f);
+                Keys();
+                float gain = k.hp - hp0;
+                Log("apple: hp " + F(hp0) + " -> " + F(k.hp) + " of " + F(max) + " (+" + F(gain) + ", want " + F(max * 0.15f) + "), notice \"" + g.lastNotice + "\"");
+                Check("holding F for 2 s eats: the bar fills over 2 s, nothing is healed before it is full (progress " + F(midway ? 0.5f : 0f) + " at 1 s)", midway && noHealYet);
+                Check("an Apple heals 15% of max health after the 2 s and is gone from the ground", Mathf.Abs(gain - max * 0.15f) < 1f && !Pickup.All.Contains(apple) && g.lastFoodHeal == Mathf.RoundToInt(max * 0.15f)
+                    && k.EatCompletedCount == meals0 + 1 && k.ActionsSeen == acts0 + 1 && !k.Eating);
+                yield return W(0.4f);
 
                 k.hp = max * 0.2f;
                 hp0 = k.hp;
                 Pickup meat = g.SpawnFood(Foods.Meat, spot + new Vector3(-0.8f, 0f, 0f));
-                yield return W(0.9f);
+                yield return W(0.5f);
+                Keys(Key.F);
+                yield return W(2.3f);
+                Keys();
                 gain = k.hp - hp0;
                 Check("Roast Meat heals 40% of max health", Mathf.Abs(gain - max * 0.40f) < 1f && !Pickup.All.Contains(meat));
+                yield return W(0.4f);
 
                 k.hp = max * 0.95f;
                 Pickup over = g.SpawnFood(Foods.Meat, spot + new Vector3(0f, 0f, 0.8f));
-                yield return W(0.9f);
+                yield return W(0.5f);
+                Keys(Key.F);
+                yield return W(2.3f);
+                Keys();
                 Check("healing stops at full health (never above max)", Mathf.Abs(k.hp - max) < 0.01f && !Pickup.All.Contains(over) && g.lastFoodHeal == Mathf.RoundToInt(max * 0.05f));
+                yield return W(0.4f);
 
-                // full health: it stays, one "HP full" hint, and it expires on its own
+                // interruptions: the progress is lost, the food stays
+                {
+                    k.hp = max * 0.4f;
+                    float hpI = k.hp;
+                    Pickup food2 = g.SpawnFood(Foods.Apple, spot + new Vector3(0.6f, 0f, 0f));
+                    yield return W(0.5f);
+                    int cancel0 = k.EatCancelCount;
+                    Keys(Key.F); yield return W(1.0f); Keys();             // let go of F at 1 s
+                    yield return W(0.4f);
+                    Check("letting go of F before 2 s stops the meal: no health, the food stays", !k.Eating && Mathf.Abs(k.hp - hpI) < 0.01f && Pickup.All.Contains(food2) && k.EatCancelCount == cancel0 + 1);
+                    Keys(Key.F); yield return W(1.0f);                      // a blow at 1 s (even a blocked one counts)
+                    float hpHit = k.hp;
+                    k.TakeDamage(5f, k.transform.position + k.Forward * 2f, "selftest");
+                    float hpAfterHit = k.hp;
+                    yield return W(1.6f);
+                    Keys();
+                    Check("a blow in the middle of the meal resets it: no health, the food stays (hp " + F(hpAfterHit) + " > " + F(k.hp) + ")", Mathf.Abs(k.hp - hpAfterHit) < 0.01f && Pickup.All.Contains(food2) && !k.Eating);
+                    yield return W(0.4f);
+                    Keys(Key.F); yield return W(0.8f);
+                    k.stamina = k.MaxStamina; k.moveOverride = null;
+                    Keys(Key.F, Key.Space); yield return null; yield return null; yield return null;
+                    Keys(Key.F);
+                    yield return W(0.4f);
+                    bool rollEnded = !k.Eating;
+                    Keys();
+                    yield return W(1.0f);
+                    Check("a roll ends the meal", rollEnded && Pickup.All.Contains(food2));
+                    yield return W(0.6f);
+                    k.transform.position = spot; k.aimOverride = spot + Vector3.forward * 5f;
+                    Keys(Key.F); yield return W(0.8f);
+                    Keys(Key.F, Key.D); yield return W(0.3f);
+                    bool stepEnded = !k.Eating;
+                    Keys(); yield return W(0.4f);
+                    Check("a step ends the meal", stepEnded && Pickup.All.Contains(food2));
+                    k.transform.position = spot; yield return W(0.5f);
+                    Keys(Key.F); yield return W(0.8f);
+                    k.attackHeldOverride = true; yield return null; yield return null; k.attackHeldOverride = false; yield return null; k.attackHeldOverride = null;
+                    bool clickEnded = !k.Eating && k.IsAttacking;
+                    Keys();
+                    yield return WaitIdle(2f);
+                    Check("a click ends the meal and swings at once", clickEnded && Pickup.All.Contains(food2));
+                    Destroy(food2.gameObject);
+                    yield return W(0.5f);
+                }
+
+                // full health: F does not start a meal, one 'HP full' hint, the food stays and expires on its own
                 Heal();
+                k.transform.position = spot; k.aimOverride = spot + Vector3.forward * 5f;
                 int hints0 = g.fullHints;
                 Pickup stay = g.SpawnFood(Foods.Apple, spot + new Vector3(0.6f, 0f, 0f));
                 yield return W(0.8f);
                 bool still = Pickup.All.Contains(stay) && Mathf.Abs(k.hp - max) < 0.01f;
                 int hints1 = g.fullHints;
-                yield return W(0.6f);
-                Check("with full health the food stays on the ground and says 'HP full' once", still && hints1 == hints0 + 1 && g.fullHints == hints1);
+                Keys(Key.F); yield return W(0.6f); Keys();
+                Check("with full health F starts no meal, says 'HP full' and the food stays (still " + still + ", eating " + k.Eating + ", hints " + hints0 + ">" + g.fullHints + ", food there " + Pickup.All.Contains(stay) + ", hp " + F(k.hp) + "/" + F(max) + ")", still && !k.Eating && g.fullHints > hints0 && Pickup.All.Contains(stay));
                 stay.age = stay.Life - 0.3f;
                 yield return W(0.8f);
                 Check("food nobody ate disappears when its time is up", !Pickup.All.Contains(stay));
@@ -1256,7 +1327,7 @@ namespace MedievalKnight
                     // stat point by mouse: click the middle card = BLOCK
                     Heal();
                     float ma0 = k.MaxArmor, br0 = pr.BlockReduction;
-                    int bp0 = pr.Points(Attr.Block);
+                    int bp0 = pr.Points(Attr.Def);
                     Vector2 c2 = g.hud.CardRect(1).position;
                     SetMouse(c2, false);
                     yield return W(0.5f);                              // clicks are ignored for the first 0.35 s of a step
@@ -1264,10 +1335,10 @@ namespace MedievalKnight
                     yield return null;
                     yield return Click(c2);
                     Log("stat point by mouse click on card 2 (BLOCK) at " + c2 + ": max armor " + F(ma0) + " -> " + F(k.MaxArmor) + ", shield stops " + F(br0 * 100f) + "% -> " + F(pr.BlockReduction * 100f)
-                        + "%, BLOCK points " + pr.Points(Attr.Block) + ", panel step " + g.LevelStep);
+                        + "%, BLOCK points " + pr.Points(Attr.Def) + ", panel step " + g.LevelStep);
                     Check("mouse click puts the point into BLOCK: +10 max armor, shield stops 1.2% more",
-                        !g.LevelUpOpen && pr.Points(Attr.Block) == bp0 + 1 && Mathf.Abs(k.MaxArmor - ma0 - Progress.ArmorPerPoint) < 0.001f
-                        && Mathf.Abs(pr.BlockReduction - br0 - Progress.BlockPerPoint) < 0.0001f && Mathf.Abs(pr.BlockReduction - (0.80f + Progress.BlockPerPoint * pr.Points(Attr.Block))) < 0.0001f);
+                        !g.LevelUpOpen && pr.Points(Attr.Def) == bp0 + 1 && Mathf.Abs(k.MaxArmor - ma0 - Progress.ArmorPerPoint) < 0.001f
+                        && Mathf.Abs(pr.BlockReduction - br0 - Progress.BlockPerPoint) < 0.0001f && Mathf.Abs(pr.BlockReduction - (0.80f + Progress.BlockPerPoint * pr.Points(Attr.Def))) < 0.0001f);
                     yield return W(0.4f);
 
                     // and the better block is what a real blocked blow uses
@@ -1278,7 +1349,7 @@ namespace MedievalKnight
                     float ab = k.armor;
                     k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest");
                     float wantLoss = 20f * (1f - pr.BlockReduction);
-                    Log("block with " + pr.Points(Attr.Block) + " BLOCK point(s): blocking=" + k.IsBlocking + ", 20 damage -> armor " + F(ab) + " -> " + F(k.armor) + " (want -" + F(wantLoss) + ", was -4.00 with no points)");
+                    Log("block with " + pr.Points(Attr.Def) + " BLOCK point(s): blocking=" + k.IsBlocking + ", 20 damage -> armor " + F(ab) + " -> " + F(k.armor) + " (want -" + F(wantLoss) + ", was -4.00 with no points)");
                     Check("a blocked 20 damage blow now costs less armor than the base 4 (20 x (1 - block%))", k.IsBlocking && wantLoss < 3.99f && Mathf.Abs(ab - k.armor - wantLoss) < 0.01f);
                     SetMouse(new Vector2(Screen.width * 0.5f, Screen.height * 0.5f), false, false);
                     yield return W(0.2f);
@@ -1344,19 +1415,19 @@ namespace MedievalKnight
                     else if (g.LevelStep == 2) yield return Tap(StatKey());
                     yield return W(0.35f);
                 }
-                Log("stat points after 24 level-ups: HP " + pr.Points(Attr.Hp) + ", BLOCK " + pr.Points(Attr.Block) + ", STAMINA " + pr.Points(Attr.Stamina) + ", unspent " + pr.statPoints
+                Log("stat points after 24 level-ups: HP " + pr.Points(Attr.Hp) + ", BLOCK " + pr.Points(Attr.Def) + ", STAMINA " + pr.Points(Attr.Stamina) + ", unspent " + pr.statPoints
                     + " -> max health " + F(k.MaxHp) + " (100 + 10 x 24 levels + 20 x " + pr.Points(Attr.Hp) + "), max armor " + F(k.MaxArmor) + ", max stamina " + F(k.MaxStamina)
                     + ", shield stops " + F(pr.BlockReduction * 100f) + "%");
                 Check("all 24 stat points are spent and add up",
-                    pr.statPoints == 0 && pr.Points(Attr.Hp) + pr.Points(Attr.Block) + pr.Points(Attr.Stamina) == 24
-                    && Mathf.Abs(k.MaxHp - (100f + 240f + 20f * pr.Points(Attr.Hp))) < 0.001f && Mathf.Abs(k.MaxArmor - (60f + 10f * pr.Points(Attr.Block))) < 0.001f
+                    pr.statPoints == 0 && pr.PointsSpent == 24
+                    && Mathf.Abs(k.MaxHp - (100f + 240f + 20f * pr.Points(Attr.Hp))) < 0.001f && Mathf.Abs(k.MaxArmor - (60f + 10f * pr.Points(Attr.Def))) < 0.001f
                     && Mathf.Abs(k.MaxStamina - (100f + Progress.StaminaPerPoint * pr.Points(Attr.Stamina))) < 0.001f);
                 {
                     // the cap, on a scratch Progress: 6 points per stat, the 7th is refused
                     var scratch = new Progress { statPoints = 12 };
                     int spent = 0;
-                    for (int n = 0; n < 12; n++) if (scratch.Spend(Attr.Block)) spent++;
-                    Check("a stat takes at most 10 points (block tops out at 92%)", spent == Progress.AttrCap && scratch.statPoints == 2 && Mathf.Abs(scratch.BlockReduction - 0.92f) < 0.0001f && !scratch.CanSpend(Attr.Block) && scratch.CanSpend(Attr.Hp));
+                    for (int n = 0; n < 12; n++) if (scratch.Spend(Attr.Def)) spent++;
+                    Check("a stat takes at most 10 points (block tops out at 92%)", spent == Progress.AttrCap && scratch.statPoints == 2 && Mathf.Abs(scratch.BlockReduction - 0.92f) < 0.0001f && !scratch.CanSpend(Attr.Def) && scratch.CanSpend(Attr.Hp));
                 }
                 Log("EXP granted directly by the self-test up to max level. level " + pr.level + ", pending " + pr.pendingChoices + ", sword hit x" + F(k.DamageMult()) + " crit " + F(k.CritChance() * 100f) + "% x" + F(k.CritMult()));
                 Check("level caps at 25 with all 24 stat points spent", pr.level == Progress.MaxLevel && pr.pendingChoices == 0 && !g.LevelUpOpen);
@@ -1500,7 +1571,7 @@ namespace MedievalKnight
                     swingingBefore && swingGone && !k.IsAttacking && k.ActionsSeen == actsDown);
                 Check("dying sends the level, EXP, upgrades and stat points back to level 1",
                     lvBefore == Progress.MaxLevel && g.progress.level == 1 && g.progress.exp == 0f && g.progress.statPoints == 0 && g.progress.pendingChoices == 0
-                    && g.progress.Points(Attr.Hp) + g.progress.Points(Attr.Block) + g.progress.Points(Attr.Stamina) == 0
+                    && g.progress.PointsSpent == 0
                     && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
                     && g.progress.kills == kills0);
                 Check("YOU DIED screen shows while down, with the level from before the reset and the counter going down",
@@ -1525,11 +1596,11 @@ namespace MedievalKnight
                 yield return W(1.2f);
                 Progress f5 = g.progress;
                 Log("F5: swords owned " + k.inventory.OwnedCount + ", equipped " + k.Weapon.name + " (model " + k.SwordModel.name + ", +" + k.inventory.plus[Weapons.Boss] + " on the boss sword), stat points "
-                    + f5.Points(Attr.Hp) + "/" + f5.Points(Attr.Block) + "/" + f5.Points(Attr.Stamina) + " unspent " + f5.statPoints + ", max health/armor/stamina " + F(k.MaxHp) + "/" + F(k.MaxArmor) + "/" + F(k.MaxStamina)
+                    + f5.Points(Attr.Hp) + "/" + f5.Points(Attr.Def) + "/" + f5.Points(Attr.Stamina) + " unspent " + f5.statPoints + ", max health/armor/stamina " + F(k.MaxHp) + "/" + F(k.MaxArmor) + "/" + F(k.MaxStamina)
                     + ", pickups " + Pickup.All.Count + ", knight_ready +" + (Snds(Snd.Ready) - readyF5));
                 Check("F5 resets swords (Iron Sword only), stat points and their bonuses, and clears pickups",
                     k.inventory.OwnedCount == 1 && k.inventory.equipped == Weapons.Iron && k.SwordModel.name == "Iron Sword" && k.inventory.plus[Weapons.Boss] == 0
-                    && f5.Points(Attr.Hp) + f5.Points(Attr.Block) + f5.Points(Attr.Stamina) + f5.statPoints == 0
+                    && f5.PointsSpent + f5.statPoints == 0
                     && Mathf.Abs(k.MaxHp - 100f) < 0.001f && Mathf.Abs(k.MaxArmor - 60f) < 0.001f && Mathf.Abs(k.MaxStamina - 100f) < 0.001f
                     && Mathf.Abs(f5.BlockReduction - 0.8f) < 0.0001f && Pickup.All.Count == 0 && Mathf.Abs(k.DamageMult() - 1f) < 0.001f);
                 Check("restart plays the 'ready' voice line", Snds(Snd.Ready) - readyF5 == 1);
@@ -1880,13 +1951,13 @@ namespace MedievalKnight
                 Check("...no regeneration inside 0.6 s of the block (" + F(k.stamina - sAfter) + ")", k.stamina - sAfter < 0.5f);
                 yield return W(0.9f);
 
-                k.progress.attr[(int)Attr.Block] = 10;                 // DEF 10: the cost is 40% lower and the shield stops 92%
+                k.progress.attr[(int)Attr.Def] = 10;                 // DEF 10: the cost is 40% lower and the shield stops 92%
                 Heal();
                 yield return W(0.8f);
                 s0 = k.stamina; a0 = k.armor;
                 k.TakeDamage(20f, srcPos, "selftest");
                 Check("with DEF 10 the block costs 6 stamina (" + F(s0 - k.stamina) + ") and 20 damage cost 1.6 armor (" + F(a0 - k.armor) + ")", Near(s0 - k.stamina, 6f, 0.4f) && Near(a0 - k.armor, 1.6f, 0.01f));
-                k.progress.attr[(int)Attr.Block] = 0;
+                k.progress.attr[(int)Attr.Def] = 0;
                 Heal();
                 yield return W(0.8f);
 
@@ -1984,6 +2055,170 @@ namespace MedievalKnight
             yield return W(0.3f);
         }
 
+
+        // Opens the level-up panel by giving exactly the EXP for the next level, and waits until it is open.
+        IEnumerator OpenLevelPanel()
+        {
+            Progress pr = g.progress;
+            if (!g.LevelUpOpen) g.GrantExp(Mathf.Max(1f, Progress.Need(pr.level) - pr.exp), k.transform.position + Vector3.up * 2f);
+            float t0 = Time.realtimeSinceStartup;
+            while (!g.LevelUpOpen && Time.realtimeSinceStartup - t0 < 4f) yield return null;
+            yield return W(0.5f);                                       // (a click is ignored for the first 0.35 s of the panel)
+        }
+
+        // The five stat cards: one step, keys 1-5 (top row and keypad), clicks, the cap, and what each point does.
+        IEnumerator StatTests(Dummy d)
+        {
+            g.packsOff = true;
+            k.moveOverride = Vector2.zero;
+            ShieldDown();
+            ParkSlimes();
+            Vector3 home = new Vector3(80f, 0f, 40f);
+            Progress pr = g.progress;
+            Heal(); k.transform.position = home; k.aimOverride = home + new Vector3(0f, 0f, 10f);
+            yield return W(0.8f);
+            int base0 = pr.PointsSpent;
+
+            // 1) one step, five cards
+            yield return OpenLevelPanel();
+            Check("a level-up opens one panel with five stat cards HP / DEF / STAMINA / SPEED / RESISTANCE (shown " + g.hud.CardsShown + ")",
+                g.LevelUpOpen && g.LevelStep == 2 && g.hud.CardsShown == 5 && g.hud.CardTitle(0) == "HP" && g.hud.CardTitle(1) == "DEF" && g.hud.CardTitle(2) == "STAMINA"
+                && g.hud.CardTitle(3) == "SPEED" && g.hud.CardTitle(4) == "RESISTANCE");
+            Shot("levelup_five_cards");
+            float mh0 = k.MaxHp, ma0 = k.MaxArmor, ms0 = k.MaxStamina;
+            Check("no skill / damage / speed / crit card is offered any more", g.hud.CardLine(0).Contains("Health") && g.hud.CardLine(3).Contains("Move Speed") && g.hud.CardLine(4).Contains("Damage Taken"));
+
+            // 2) every card by its key (4 = SPEED and 5 = RESISTANCE are new), top row and keypad
+            yield return Tap(Key.Digit4);
+            Check("key 4 puts the point into SPEED and closes the panel", pr.Points(Attr.Speed) == 1 && !g.LevelUpOpen && Near(pr.MoveSpeedMult, 1.03f, 0.0001f));
+            yield return OpenLevelPanel();
+            yield return Tap(Key.Numpad5);
+            Check("keypad 5 puts the point into RESISTANCE", pr.Points(Attr.Resist) == 1 && !g.LevelUpOpen && Near(pr.DamageTakenMult, 0.975f, 0.0001f));
+            yield return OpenLevelPanel();
+            yield return Tap(Key.Digit1);
+            Check("key 1: HP +20 max health (HP bonus " + F(pr.HpBonus) + ")", pr.Points(Attr.Hp) == 1 && Near(pr.HpBonus, 20f, 0.001f) && k.MaxHp > mh0 + 19.9f && !g.LevelUpOpen);
+            yield return OpenLevelPanel();
+            yield return Tap(Key.Digit2);
+            Check("key 2: DEF +10 max armor, shield stops 81.2%", pr.Points(Attr.Def) == 1 && Near(k.MaxArmor - ma0, 10f, 0.001f) && Near(pr.BlockReduction, 0.812f, 0.0001f));
+            yield return OpenLevelPanel();
+            yield return Tap(Key.Digit3);
+            Check("key 3: STAMINA +15 max stamina, regen +5%", pr.Points(Attr.Stamina) == 1 && Near(k.MaxStamina - ms0, 15f, 0.001f) && Near(pr.StaminaRegenMult, 1.05f, 0.0001f));
+
+            // 3) a click on the 4th and the 5th card
+            yield return OpenLevelPanel();
+            yield return Click(g.hud.CardRect(3).position);
+            yield return W(0.2f);
+            Check("a click on card 4 (SPEED) spends the point there", pr.Points(Attr.Speed) == 2 && !g.LevelUpOpen);
+            yield return OpenLevelPanel();
+            yield return Click(g.hud.CardRect(4).position);
+            yield return W(0.2f);
+            Check("a click on card 5 (RESISTANCE) spends the point there", pr.Points(Attr.Resist) == 2 && !g.LevelUpOpen);
+
+            // 4) the cap: ten points; a card that is full does nothing and the panel stays open
+            pr.attr[(int)Attr.Hp] = Progress.AttrCap;
+            yield return OpenLevelPanel();
+            int spent0 = pr.PointsSpent, pts0 = pr.statPoints;
+            Shot("levelup_card_maxed");
+            yield return Tap(Key.Digit1);
+            Check("a card at 10 points says MAXED, cannot be chosen, and the panel stays open (" + g.hud.CardLine(0) + ")",
+                g.LevelUpOpen && pr.PointsSpent == spent0 && pr.statPoints == pts0 && g.hud.CardLine(0) == "MAXED");
+            yield return Tap(Key.Digit2);
+            Check("...while another card still works", !g.LevelUpOpen && pr.PointsSpent == spent0 + 1);
+            pr.attr[(int)Attr.Hp] = 1;
+
+            // 5) several level-ups in a row: the panel opens again for each
+            {
+                int lv0 = pr.level, pend0 = pr.pendingChoices, pointsBefore = pr.PointsSpent;
+                g.GrantExp(Progress.Need(pr.level) + Progress.Need(pr.level + 1) + 1f - pr.exp, k.transform.position + Vector3.up * 2f);
+                int opened = 0;
+                float t0 = Time.realtimeSinceStartup;
+                while ((g.LevelUpOpen || pr.pendingChoices > 0) && Time.realtimeSinceStartup - t0 < 12f)
+                {
+                    if (g.LevelUpOpen) { opened++; yield return W(0.5f); yield return Tap(Key.Digit5); }
+                    yield return W(0.2f);
+                }
+                Check("two level-ups at once open the card panel twice (opened " + opened + ", level " + lv0 + " > " + pr.level + ")", opened == 2 && pr.level == lv0 + 2 && pr.PointsSpent == pointsBefore + 2 && pr.statPoints == 0);
+            }
+
+            // 6) what a point does in play
+            {
+                // SPEED: walking is faster by 3% a point; the roll is not
+                pr.attr[(int)Attr.Speed] = 0;
+                Heal(); k.transform.position = home; yield return W(0.6f);
+                Vector3 p0 = k.transform.position;
+                k.moveOverride = new Vector2(0f, 1f);
+                yield return W(0.8f);
+                float walk0 = (k.transform.position - p0).magnitude;
+                k.moveOverride = Vector2.zero;
+                pr.attr[(int)Attr.Speed] = 10;
+                k.transform.position = home; yield return W(0.6f);
+                p0 = k.transform.position;
+                k.moveOverride = new Vector2(0f, 1f);
+                yield return W(0.8f);
+                float walk10 = (k.transform.position - p0).magnitude;
+                k.moveOverride = Vector2.zero;
+                Check("10 SPEED points walk 30% faster (" + F(walk0) + " m > " + F(walk10) + " m in 0.8 s, x" + F(walk10 / Mathf.Max(0.01f, walk0)) + ")", Near(walk10 / walk0, 1.3f, 0.05f));
+                Heal(); k.transform.position = home; yield return W(1.0f);
+                p0 = k.transform.position;
+                bool rolled = k.DebugRoll(new Vector2(0f, 1f));
+                yield return W(0.7f);
+                float rollLen = (k.transform.position - p0).magnitude;
+                Check("...but the roll is the same 6 m (" + F(rollLen) + " m)", rolled && Near(rollLen, 6f, 0.4f));
+                pr.attr[(int)Attr.Speed] = 0;
+
+                // RESISTANCE: -2.5% of every blow a point, after the shield, and less knock-back
+                pr.attr[(int)Attr.Resist] = 0;
+                Heal(); k.transform.position = home; yield return W(1.0f);
+                float a0 = k.armor;
+                k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest", 0f);
+                float loss0 = a0 - k.armor;
+                pr.attr[(int)Attr.Resist] = 10;
+                Heal(); yield return W(1.0f);
+                a0 = k.armor;
+                k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest", 0f);
+                float loss10 = a0 - k.armor;
+                Check("10 RESISTANCE points cut a 20 blow from " + F(loss0) + " to " + F(loss10) + " (-25%)", Near(loss0, 20f, 0.01f) && Near(loss10, 15f, 0.01f));
+                // with the shield: the shield first (80%), then resistance (-25%): 20 -> 4 -> 3
+                Heal(); yield return W(1.0f);
+                ShieldUp();
+                yield return W(0.5f);
+                a0 = k.armor;
+                k.TakeDamage(20f, k.transform.position + k.Forward * 2f, "selftest", 0f);
+                ShieldDown();
+                Check("a blocked blow loses the shield's share first and then 25% more (" + F(a0 - k.armor) + ")", Near(a0 - k.armor, 20f * (1f - pr.BlockReduction) * 0.75f, 0.01f));
+                pr.attr[(int)Attr.Resist] = 0;
+                Heal(); k.transform.position = home; yield return W(1.2f);
+                p0 = k.transform.position;
+                k.TakeDamage(1f, k.transform.position - k.Forward * 2f, "selftest", 20f);
+                yield return W(1.0f);
+                float knock0 = (k.transform.position - p0).magnitude;
+                pr.attr[(int)Attr.Resist] = 10;
+                Heal(); k.transform.position = home; yield return W(1.2f);
+                p0 = k.transform.position;
+                k.TakeDamage(1f, k.transform.position - k.Forward * 2f, "selftest", 20f);
+                yield return W(1.0f);
+                float knock10 = (k.transform.position - p0).magnitude;
+                Check("10 RESISTANCE points halve the knock-back (" + F(knock0) + " m > " + F(knock10) + " m)", knock0 > 3f && Near(knock10 / knock0, 0.25f, 0.08f));
+                pr.attr[(int)Attr.Resist] = 0;
+            }
+
+            // 7) the stat numbers never touch the sword: the same swing hits for the same damage
+            {
+                Heal(); k.transform.position = home; k.aimOverride = home + new Vector3(0f, 0f, 10f);
+                yield return W(0.8f);
+                float dmgBefore = k.DamageMult();
+                Check("the sword hit multiplier is the weapon's alone, whatever the stat points (x" + F(dmgBefore) + ")", Near(dmgBefore, k.inventory.Damage, 0.0001f));
+            }
+
+            // give everything back so the tests after this one start from the same numbers
+            for (int i = 0; i < Progress.AttrCount; i++) pr.attr[i] = 0;
+            pr.statPoints = 0; pr.pendingChoices = 0;
+            pr.level = 1; pr.exp = 0f; pr.totalExp = 0f;
+            Heal();
+            k.transform.position = home;
+            k.aimOverride = d.transform.position;
+            yield return W(0.3f);
+        }
 
         // ================================================================ Phase 7 (clash / parry, number colours, camera scroll, map). Also run alone with -p7only.
         IEnumerator Phase7(Dummy d)
@@ -3123,9 +3358,11 @@ namespace MedievalKnight
             k.hp = k.MaxHp * 0.4f;
             float hpBefore = k.hp;
             yield return Tap(Key.C);
-            yield return W(0.2f);
-            Check("loop pickup: C with missing health eats the first food (the Apple: +15% max health) and uses it up",
-                d.carry.Count(Section.Foods) == foods0 - 1 && d.carry.foods[0].IsNone && Mathf.Abs(k.hp - (hpBefore + 0.15f * k.MaxHp)) < 0.5f && g.lastFoodHeal > 0);
+            yield return W(1.0f);
+            bool eatingNow = k.Eating && d.carry.Count(Section.Foods) == foods0;      // halfway: still in the pack, nothing healed
+            yield return W(1.6f);
+            Check("loop pickup: C with missing health starts a 2 s meal of the first food (the Apple: +15% max health), which is used up only at the end (halfway: " + eatingNow + ")",
+                eatingNow && d.carry.Count(Section.Foods) == foods0 - 1 && d.carry.foods[0].IsNone && Mathf.Abs(k.hp - (hpBefore + 0.15f * k.MaxHp)) < 0.5f && g.lastFoodHeal > 0);
 
             // the pack is full: Weapons 2/2, Food 3/3, Supplies 4/4
             d.carry.foods[0] = Item.Food(Foods.Apple); d.carry.foods[2] = Item.Food(Foods.Apple);
@@ -3153,8 +3390,12 @@ namespace MedievalKnight
             k.hp = k.MaxHp * 0.3f;
             int f1 = d.carry.Count(Section.Foods);
             yield return Click(run.ui.CarryCellRect(Section.Foods, 0).position);
-            yield return W(0.2f);
-            Check("loop pickup: clicking a food in the carry window eats it", d.carry.Count(Section.Foods) == f1 - 1 && k.hp > k.MaxHp * 0.3f + 1f);
+            bool startedMeal = k.Eating && !g.InventoryOpen && d.carry.Count(Section.Foods) == f1 && Time.timeScale > 0f;
+            yield return W(2.4f);
+            Check("loop pickup: clicking a food in the carry window closes it and starts a 2 s meal (" + startedMeal + "); the food is used up and health comes at the end",
+                startedMeal && d.carry.Count(Section.Foods) == f1 - 1 && k.hp > k.MaxHp * 0.3f + 1f);
+            yield return Tap(Key.Tab);
+            yield return W(0.3f);
             yield return Click(run.ui.CarryCellRect(Section.Weapons, 0).position);
             yield return W(0.2f);
             Check("loop pickup: clicking a Weapon slot holds it (Iron Sword) and swaps the model", d.heldSlot == 0 && k.Weapon.id == Weapons.Iron);

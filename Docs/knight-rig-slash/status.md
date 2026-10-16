@@ -20,3 +20,8 @@
   - ขั้น 5 กลิ้ง (Space 0.4 วิ 6 ม. อมตะ 0.5 วิ ตัวม้วน), ท่าปัดโล่ 4 จังหวะ (Net kind 22), โล่กิน stamina 10/ครั้ง (DEF -4%/แต้ม; ไม่พอ = รับเต็ม)
   - ขั้น 6 ด่านตรวจกลาง (build เดียวกับขั้น 5): selftest เต็ม 416/0, -menutest 23 บรรทัด ผ่าน, mptest 78/0, mptest-loop 82/0
   - เหลือ: ขั้น 7 การ์ดสเตตัส 5 ใบ, ขั้น 8 กินอาหาร 2 วิ, อัปเดต Docs/reference | ขั้น 9 (fbx/Mixamo) ยังไม่เริ่ม รอรายงานแหล่ง/license/ขนาด + ผู้ขอยืนยัน
+- 2026-10-17 developer ขั้น 7-8 เสร็จ (commit เดียวกัน เพราะแก้ไฟล์ทับกัน), ผู้ขอ test_disk:
+  - ขั้น 7 การ์ดสเตตัส 5 ใบ ขั้นเดียว (HP/DEF/STAMINA/SPEED/RESISTANCE, กด 1-5 + แป้นตัวเลข + คลิก, เต็ม 10 แต้ม = MAXED), SPEED +3%/แต้ม (เดิน/วิ่งเท่านั้น), RESISTANCE -2.5% ดาเมจ/-5% แรงสะท้อน, Tab กล่อง STATS 5 แถว, EnemyHpPerLevel 0.45 -> 0.18 (D3)
+  - ขั้น 8 กินอาหารค้าง F 2 วิ ทุกโหมด (ไม่มีกินทันที): loop = จาก carry (F ค้าง / C / คลิกใน Carry), สนาม v1 = อาหารบนพื้น ≤1.2 ม.; ขัดจังหวะ: ตี/กลิ้ง/เดิน/ปล่อย F/คลิก/โล่/ล้ม/panel; flag NetEating 64 + Act 21; host ให้อาหารแก่ client ใน v1 เมื่อ flag ≥1.7 วิ (ไม่มีข้อความใหม่); แถบเขียว #8DB04A + "Hold F: Eat"
+  - ผลทดสอบ: selftest เต็ม 441/0, -menutest 23 บรรทัด ผ่าน, mptest 80/0, mptest-loop 85/0; อัปเดต Docs/reference (controls, files, online-coop, weapons-and-tab, progression, dev-guide)
+  - ยังไม่ทำ: ขั้น 9-10 (fbx/Mixamo, FileBody) รอรายงานแหล่ง/license/ขนาด + ผู้ขอยืนยัน

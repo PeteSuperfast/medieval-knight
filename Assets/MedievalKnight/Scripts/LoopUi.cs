@@ -1246,7 +1246,7 @@ namespace MedievalKnight
             else if (hover != null && clickR) run.UiCarryDrop(hover.sec, hover.index);
             if (InputX.Down(KeyCode.Alpha1) || InputX.Down(KeyCode.Keypad1)) run.SwitchHeld(0);
             if (InputX.Down(KeyCode.Alpha2) || InputX.Down(KeyCode.Keypad2)) run.SwitchHeld(1);
-            if (InputX.Down(KeyCode.C)) run.EatFirst();
+            if (InputX.Down(KeyCode.C) && run.InWorld) { if (Game.I.knight.TryBeginEat(true)) Game.I.SetInventory(false); }
             if (!run.CarryOpen) return;
             RefreshCarry(d, k);
             Item it = hover != null ? d.carry.Slots(hover.sec)[hover.index] : Item.None;

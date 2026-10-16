@@ -428,7 +428,7 @@ namespace MedievalKnight
             if (g.knight.IsAttacking) return;
             if (InputX.Down(KeyCode.Alpha1) || InputX.Down(KeyCode.Keypad1)) SwitchHeld(0);
             else if (InputX.Down(KeyCode.Alpha2) || InputX.Down(KeyCode.Keypad2)) SwitchHeld(1);
-            if (InputX.Down(KeyCode.C)) EatFirst();
+            if (InputX.Down(KeyCode.C)) g.knight.TryBeginEat(true);
         }
 
         public void SwitchHeld(int slot)
@@ -996,7 +996,16 @@ namespace MedievalKnight
             return true;
         }
 
-        // C: the first food (Food group first, then Supplies)
+        // The first food in the carry (Food group first, then Supplies) - what a meal will eat.
+        public bool PeekFood(out Section sec, out int index)
+        {
+            for (int i = 0; i < data.carry.foods.Length; i++) if (data.carry.foods[i].kind == ItemKind.Food) { sec = Section.Foods; index = i; return true; }
+            for (int i = 0; i < data.carry.supplies.Length; i++) if (data.carry.supplies[i].kind == ItemKind.Food) { sec = Section.Supplies; index = i; return true; }
+            sec = Section.Foods; index = -1;
+            return false;
+        }
+
+        // The instant version (test hook, and what a finished meal calls): the first food, eaten now. Players eat through Knight.TryBeginEat.
         public bool EatFirst()
         {
             for (int i = 0; i < data.carry.foods.Length; i++) if (data.carry.foods[i].kind == ItemKind.Food) return Eat(Section.Foods, i);
@@ -1010,7 +1019,12 @@ namespace MedievalKnight
         {
             Item it = data.carry.Slots(sec)[index];
             if (it.IsNone) return;
-            if (it.kind == ItemKind.Food) { Eat(sec, index); return; }
+            if (it.kind == ItemKind.Food)
+            {
+                if (!InWorld) { Eat(sec, index); return; }                 // at the base: only the "HP full" answer
+                if (g.knight.TryBeginEat(true)) g.SetInventory(false);     // a meal: the window closes and he sits down to eat
+                return;
+            }
             if (sec == Section.Weapons) { SwitchHeld(index); return; }
             if (data.MoveWithinCarry(index)) { SyncHeld(); g.hud.Notice(it.Name + " moved to a Weapon slot", LoopUi.Green); if (team != null) team.PackChanged(); }
             else g.hud.Notice("No free Weapon slot  -  drop a Weapon first", LoopUi.Yellow);

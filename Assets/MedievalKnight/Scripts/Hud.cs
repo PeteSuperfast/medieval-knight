@@ -30,7 +30,7 @@ namespace MedievalKnight
         {
             public RectTransform rt;
             public Image border, bg;
-            public Text key, title, line, detail;
+            public Text key, title, line, detail, foot;
         }
 
         // one sword slot of the Tab window
@@ -58,8 +58,8 @@ namespace MedievalKnight
         RawImage eqIcon;
         Text eqName, eqStats, ownedText, charText, charStats, expValue, statHead, soulKills, tabHint, tabCornerHint;
         RectTransform expFill;
-        readonly RectTransform[] statFill = new RectTransform[3];
-        readonly Text[] statNum = new Text[3], statEffect = new Text[3];
+        readonly RectTransform[] statFill = new RectTransform[Progress.AttrCount];
+        readonly Text[] statNum = new Text[Progress.AttrCount], statEffect = new Text[Progress.AttrCount];
         float lastTabRefresh, sessionShownAt;
         Text netText, invFoot;
 
@@ -86,7 +86,7 @@ namespace MedievalKnight
         readonly Image[] staminaTicks = new Image[10];
         float lastStamina, tickFlashAt = -10f;
         int tickFlash = -1;
-        readonly CardUi[] cards = new CardUi[3];
+        readonly CardUi[] cards = new CardUi[Progress.AttrCount];
         readonly RowUi[] rows = new RowUi[Weapons.All.Length];
         bool showControls = true;
         float bannerTime, actionTime, noticeTime, levelOpenedAt, invOpenedAt, bannerLength = 1.6f;
@@ -101,6 +101,9 @@ namespace MedievalKnight
         public bool InventoryVisible { get { return invRoot.activeSelf; } }
         public string NoticeShown { get { return noticeTime > 0f ? noticeText.text : ""; } }
         public RectTransform CardRect(int i) { return cards[i].rt; }
+        public int CardsShown { get { int n = 0; if (levelRoot.activeSelf) foreach (CardUi c in cards) if (c != null && c.rt.gameObject.activeSelf) n++; return n; } }
+        public string CardTitle(int i) { return cards[i].title.text; }
+        public string CardLine(int i) { return cards[i].line.text; }
         public RectTransform RowRect(int i) { return rows[i].rt; }
         public float ScaleFactor { get { return canvas.scaleFactor > 0f ? canvas.scaleFactor : 1f; } }
 
@@ -110,7 +113,8 @@ namespace MedievalKnight
         // same colours as the three bars
         public static Color AttrColor(Attr a)
         {
-            return a == Attr.Hp ? new Color(0.95f, 0.32f, 0.3f) : a == Attr.Block ? new Color(0.55f, 0.74f, 1f) : new Color(1f, 0.82f, 0.28f);
+            return a == Attr.Hp ? new Color(0.95f, 0.32f, 0.3f) : a == Attr.Def ? new Color(0.55f, 0.74f, 1f) : a == Attr.Stamina ? new Color(1f, 0.82f, 0.28f)
+                : a == Attr.Speed ? new Color(0.55f, 0.85f, 0.45f) : new Color(0.78f, 0.62f, 0.95f);
         }
 
         void Awake()
@@ -130,6 +134,7 @@ namespace MedievalKnight
             root = canvas.GetComponent<RectTransform>();
 
             popupRoot = Rect("Popups", Vector2.zero, Vector2.zero, Vector2.zero);
+            BuildEatBar();
 
             // --- knight bars + level / EXP, top-left ---
             Panel("BarsPanel", new Vector2(0, 1), new Vector2(16, -16), new Vector2(400, 180), PanelCol);
@@ -236,8 +241,8 @@ namespace MedievalKnight
                 + "Left Shift (hold)    Run\n"
                 + "Space    Roll - dodge, 0.5 s untouchable (25 stamina)\n"
                 + "Right Click (hold)    Shield block / parry\n"
-                + "F (hold)    Revive a downed friend\n"
-                + "1 / 2 / 3 or Click    Level-up: spend the stat point\n"
+                + "F (hold 2 s)    Eat food  /  revive a downed friend\n"
+                + "1 - 5 or Click    Level-up: pick a stat\n"
                 + "Tab  Inventory + stats (1 - 5 / Click equips)\n"
                 + "Walk over a dropped sword to take it\n"
                 + "M  Map   F2  Sound   Scroll  Camera\n"
@@ -350,24 +355,25 @@ namespace MedievalKnight
             levelTitle.color = new Color(1f, 0.88f, 0.35f);
             levelSub = MakeText("Sub", new Vector2(0.5f, 0.5f), new Vector2(0, 168), new Vector2(900, 30), 20, TextAnchor.MiddleCenter, lr);
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < Progress.AttrCount; i++)                 // five cards in a row, about 164 x 230 px each
             {
                 var c = new CardUi();
-                c.border = Panel("Card" + (i + 1), new Vector2(0.5f, 0.5f), new Vector2((i - 1) * 340f, -10), new Vector2(312, 250), Color.white, lr);
+                c.border = Panel("Card" + (i + 1), new Vector2(0.5f, 0.5f), new Vector2((i - 2) * 174f, -10), new Vector2(166, 232), Color.white, lr);
                 c.rt = c.border.rectTransform;
-                c.bg = Panel("Bg", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(302, 240), new Color(0.09f, 0.09f, 0.13f, 1f), c.rt);
-                c.key = MakeText("Key", new Vector2(0.5f, 1), new Vector2(0, -12), new Vector2(280, 40), 34, TextAnchor.MiddleCenter, c.rt);
+                c.bg = Panel("Bg", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(160, 226), new Color(0.09f, 0.09f, 0.13f, 1f), c.rt);
+                c.key = MakeText("Key", new Vector2(0.5f, 1), new Vector2(0, -6), new Vector2(150, 32), 26, TextAnchor.MiddleCenter, c.rt);
                 c.key.fontStyle = FontStyle.Bold;
                 c.key.text = "[ " + (i + 1) + " ]";
-                c.title = MakeText("Title", new Vector2(0.5f, 1), new Vector2(0, -62), new Vector2(290, 28), 19, TextAnchor.MiddleCenter, c.rt);
+                c.title = MakeText("Title", new Vector2(0.5f, 1), new Vector2(0, -40), new Vector2(156, 24), 16, TextAnchor.MiddleCenter, c.rt);
                 c.title.fontStyle = FontStyle.Bold;
-                c.line = MakeText("Line", new Vector2(0.5f, 1), new Vector2(0, -98), new Vector2(290, 40), 27, TextAnchor.MiddleCenter, c.rt);
+                c.line = MakeText("Line", new Vector2(0.5f, 1), new Vector2(0, -66), new Vector2(152, 44), 16, TextAnchor.MiddleCenter, c.rt);
                 c.line.fontStyle = FontStyle.Bold;
-                c.detail = MakeText("Detail", new Vector2(0.5f, 1), new Vector2(0, -150), new Vector2(290, 60), 16, TextAnchor.UpperCenter, c.rt);
+                c.line.horizontalOverflow = HorizontalWrapMode.Wrap;
+                c.detail = MakeText("Detail", new Vector2(0.5f, 1), new Vector2(0, -114), new Vector2(152, 68), 12, TextAnchor.UpperCenter, c.rt);
                 c.detail.color = new Color(0.85f, 0.87f, 0.92f);
-                var foot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 10), new Vector2(290, 20), 13, TextAnchor.MiddleCenter, c.rt);
-                foot.color = new Color(0.7f, 0.72f, 0.78f);
-                foot.text = "press " + (i + 1) + " or click";
+                c.detail.horizontalOverflow = HorizontalWrapMode.Wrap;
+                c.foot = MakeText("Foot", new Vector2(0.5f, 0), new Vector2(0, 6), new Vector2(152, 36), 12, TextAnchor.MiddleCenter, c.rt);
+                c.foot.color = new Color(0.7f, 0.72f, 0.78f);
                 cards[i] = c;
             }
             levelRoot.SetActive(false);
@@ -466,11 +472,11 @@ namespace MedievalKnight
             expValue = MakeText("Val", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(320, 20), 12, TextAnchor.MiddleCenter, expFrame.transform);
 
             // ---- right: stat points
-            Panel("StatBox", tl, new Vector2(cx - 8, -174), new Vector2(338, 136), new Color(0.1f, 0.1f, 0.14f, 1f), p);
+            Panel("StatBox", tl, new Vector2(cx - 8, -174), new Vector2(338, 242), new Color(0.1f, 0.1f, 0.14f, 1f), p);
             statHead = MakeText("StatHead", tl, new Vector2(cx, -178), new Vector2(322, 22), 15, TextAnchor.MiddleLeft, p);
             statHead.supportRichText = true;
-            Attr[] attrs = { Attr.Hp, Attr.Block, Attr.Stamina };
-            for (int a = 0; a < 3; a++)
+            Attr[] attrs = { Attr.Hp, Attr.Def, Attr.Stamina, Attr.Speed, Attr.Resist };
+            for (int a = 0; a < Progress.AttrCount; a++)
             {
                 float y = -204 - a * 34;
                 Text lab = MakeText("Stat" + a, tl, new Vector2(cx, y), new Vector2(80, 20), 14, TextAnchor.MiddleLeft, p);
@@ -617,17 +623,17 @@ namespace MedievalKnight
             popups.Clear();
         }
 
-        // Step 2 of the level-up panel: the same three cards now stand for HP / BLOCK / STAMINA.
+        // The level-up panel: five cards, one per stat (HP / DEF / STAMINA / SPEED / RESISTANCE). One is chosen: 1-5 or a click.
         public void ShowStatChoice(Knight k)
         {
             Progress pr = k.progress;
             levelRoot.SetActive(true);
             levelOpenedAt = Time.unscaledTime;
             bannerTime = 0f; bannerText.text = "";
-            levelTitle.text = "STAT POINT" + (pr.statPoints > 1 ? "   (" + pr.statPoints + " to spend)" : "");
-            levelSub.text = "Spend 1 stat point   (keys 1 / 2 / 3 or click a card)" + OnlineNote();
+            levelTitle.text = "LEVEL UP!   Lv " + pr.level + (pr.statPoints > 1 ? "   (" + pr.statPoints + " points to spend)" : "");
+            levelSub.text = "Choose 1 stat   (keys 1 - 5 or click a card)" + OnlineNote();
             DimFor(levelDim, 0.68f);
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < Progress.AttrCount; i++)
             {
                 Attr a = (Attr)i;
                 int n = pr.Points(a);
@@ -639,29 +645,38 @@ namespace MedievalKnight
                 c.border.color = col;
                 c.title.text = Progress.AttrName(a);
                 c.line.color = col;
-                string pts = "\nPoints  " + n + " > " + (n + 1) + "   (max " + Progress.AttrCap + ")";
-                if (maxed)
-                {
-                    c.line.text = "MAXED";
-                    c.detail.text = "Points  " + n + " / " + Progress.AttrCap;
-                }
-                else if (a == Attr.Hp)
+                c.foot.text = maxed ? "MAXED  " + n + " / " + Progress.AttrCap : "Points  " + n + " > " + (n + 1) + " / " + Progress.AttrCap + "\npress " + (i + 1) + " or click";
+                if (a == Attr.Hp)
                 {
                     c.line.text = "+" + Progress.HpPerPoint.ToString("0") + " Max Health";
-                    c.detail.text = "Max health  " + k.MaxHp.ToString("0") + " > " + (k.MaxHp + Progress.HpPerPoint).ToString("0") + pts;
+                    c.detail.text = "Max health\n" + k.MaxHp.ToString("0") + " > " + (k.MaxHp + Progress.HpPerPoint).ToString("0");
                 }
-                else if (a == Attr.Block)
+                else if (a == Attr.Def)
                 {
-                    c.line.text = "+" + (Progress.BlockPerPoint * 100f).ToString("0.#") + "% Block  +" + Progress.ArmorPerPoint.ToString("0") + " Armor";
-                    c.detail.text = "Shield stops  " + (pr.BlockReduction * 100f).ToString("0") + "% > " + ((pr.BlockReduction + Progress.BlockPerPoint) * 100f).ToString("0") + "%"
-                        + "\nMax armor  " + k.MaxArmor.ToString("0") + " > " + (k.MaxArmor + Progress.ArmorPerPoint).ToString("0") + pts;
+                    float cost = Knight.BlockStaminaCost * (1f - Knight.BlockCostPerDef * n), cost2 = Knight.BlockStaminaCost * (1f - Knight.BlockCostPerDef * (n + 1));
+                    c.line.text = "+" + Progress.ArmorPerPoint.ToString("0") + " Armor  +" + (Progress.BlockPerPoint * 100f).ToString("0.#") + "% Block";
+                    c.detail.text = "Armor " + k.MaxArmor.ToString("0") + " > " + (k.MaxArmor + Progress.ArmorPerPoint).ToString("0")
+                        + "\nShield stops " + (pr.BlockReduction * 100f).ToString("0") + " > " + ((pr.BlockReduction + Progress.BlockPerPoint) * 100f).ToString("0") + "%"
+                        + "\nBlock cost " + cost.ToString("0.0") + " > " + cost2.ToString("0.0");
+                }
+                else if (a == Attr.Stamina)
+                {
+                    c.line.text = "+" + Progress.StaminaPerPoint.ToString("0") + " Stamina  +" + (Progress.RegenPerPoint * 100f).ToString("0") + "% Regen";
+                    c.detail.text = "Max stamina " + k.MaxStamina.ToString("0") + " > " + (k.MaxStamina + Progress.StaminaPerPoint).ToString("0")
+                        + "\nRegen +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + " > +" + ((pr.StaminaRegenMult - 1f + Progress.RegenPerPoint) * 100f).ToString("0") + "%";
+                }
+                else if (a == Attr.Speed)
+                {
+                    c.line.text = "+" + (Progress.SpeedPerPoint * 100f).ToString("0") + "% Move Speed";
+                    c.detail.text = "Walk and run\nx" + pr.MoveSpeedMult.ToString("0.00") + " > x" + (pr.MoveSpeedMult + Progress.SpeedPerPoint).ToString("0.00") + "\n(not the roll)";
                 }
                 else
                 {
-                    c.line.text = "+" + Progress.StaminaPerPoint.ToString("0") + " Max Stamina";
-                    c.detail.text = "Max stamina  " + k.MaxStamina.ToString("0") + " > " + (k.MaxStamina + Progress.StaminaPerPoint).ToString("0")
-                        + "\nRegen  +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "% > +" + ((pr.StaminaRegenMult - 1f + Progress.RegenPerPoint) * 100f).ToString("0") + "%" + pts;
+                    c.line.text = "-" + (Progress.ResistPerPoint * 100f).ToString("0.#") + "% Damage Taken";
+                    c.detail.text = "Damage taken x" + pr.DamageTakenMult.ToString("0.000") + " > x" + (pr.DamageTakenMult - Progress.ResistPerPoint).ToString("0.000")
+                        + "\nKnock-back -" + ((1f - pr.KnockbackTakenMult) * 100f).ToString("0") + " > -" + ((1f - pr.KnockbackTakenMult + Progress.ResistKnockPerPoint) * 100f).ToString("0") + "%";
                 }
+                if (maxed) c.line.text = "MAXED";
             }
         }
 
@@ -768,16 +783,18 @@ namespace MedievalKnight
             expValue.text = max ? "MAX" : Mathf.FloorToInt(pr.exp) + " / " + Progress.Need(pr.level);
 
             // STAT POINTS
-            int spent = pr.Points(Attr.Hp) + pr.Points(Attr.Block) + pr.Points(Attr.Stamina);
-            statHead.text = "<b>STAT POINTS</b>    spent " + spent + " / " + (Progress.MaxLevel - 1)
+            int spent = pr.PointsSpent;
+            statHead.text = "<b>STATS</b>    spent " + spent + " / " + (Progress.MaxLevel - 1)
                 + (pr.statPoints > 0 ? "   <color=#ffe066>(" + pr.statPoints + " unspent)</color>" : "");
             string[] effect =
             {
                 "+" + pr.HpBonus.ToString("0") + " max health",
-                "+" + pr.ArmorBonus.ToString("0") + " armor, shield stops " + (pr.BlockReduction * 100f).ToString("0") + "%",
-                "+" + pr.StaminaBonus.ToString("0") + " stamina, regen +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "%"
+                "+" + pr.ArmorBonus.ToString("0") + " armor, shield stops " + (pr.BlockReduction * 100f).ToString("0") + "%, block cost " + (Knight.BlockStaminaCost * (1f - Knight.BlockCostPerDef * pr.Points(Attr.Def))).ToString("0.0"),
+                "+" + pr.StaminaBonus.ToString("0") + " stamina, regen +" + ((pr.StaminaRegenMult - 1f) * 100f).ToString("0") + "%",
+                "+" + ((pr.MoveSpeedMult - 1f) * 100f).ToString("0") + "% walk / run speed",
+                "-" + ((1f - pr.DamageTakenMult) * 100f).ToString("0.#") + "% damage taken, -" + ((1f - pr.KnockbackTakenMult) * 100f).ToString("0") + "% knock-back"
             };
-            for (int a = 0; a < 3; a++)
+            for (int a = 0; a < Progress.AttrCount; a++)
             {
                 float f = pr.attr[a] / (float)Progress.AttrCap;
                 statFill[a].anchorMax = new Vector2(Mathf.Max(0.0001f, f), 1f);
@@ -818,22 +835,23 @@ namespace MedievalKnight
             return pick;
         }
 
-        // Returns the picked card (0..2) or -1. Keys 1/2/3 or a left click on a card.
+        // Returns the picked card (0..4) or -1. Keys 1-5 (also on the keypad) or a left click on a card.
         public int LevelUpInput(int count)
         {
             if (!levelRoot.activeSelf) return -1;
-            if (count > 0 && (InputX.Down(KeyCode.Alpha1) || InputX.Down(KeyCode.Keypad1))) return 0;
-            if (count > 1 && (InputX.Down(KeyCode.Alpha2) || InputX.Down(KeyCode.Keypad2))) return 1;
-            if (count > 2 && (InputX.Down(KeyCode.Alpha3) || InputX.Down(KeyCode.Keypad3))) return 2;
+            KeyCode[] top = { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5 };
+            KeyCode[] pad = { KeyCode.Keypad1, KeyCode.Keypad2, KeyCode.Keypad3, KeyCode.Keypad4, KeyCode.Keypad5 };
+            for (int i = 0; i < count && i < top.Length; i++)
+                if (InputX.Down(top[i]) || InputX.Down(pad[i])) return i;
 
             int hover = -1;
             if (InputX.HasMouse)
             {
                 Vector2 m = InputX.MousePos;
-                for (int i = 0; i < count && i < 3; i++)
+                for (int i = 0; i < count && i < cards.Length; i++)
                     if (RectTransformUtility.RectangleContainsScreenPoint(cards[i].rt, m, null)) hover = i;
             }
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < cards.Length; i++)
             {
                 float target = i == hover ? 1.06f : 1f;
                 cards[i].rt.localScale = Vector3.Lerp(cards[i].rt.localScale, Vector3.one * target, 0.3f);
@@ -865,6 +883,7 @@ namespace MedievalKnight
             UpdateBar(staminaBar, k.stamina, k.MaxStamina, dt, Time.unscaledTime - k.StaminaDeniedTime < 0.35f, null);
             UpdateStaminaTicks(k);
             UpdateSoul(k);
+            UpdateEatBar(g, k);
             SetLoopTexts(g.Loop);
             if (deathRoot.activeSelf && deathKnight != null)
             {
@@ -973,6 +992,53 @@ namespace MedievalKnight
             }
         }
 
+        // ---- eating: a bar over the head while eating, "Hold F: Eat" while there is food to eat and health to gain ----
+        Image eatBg; RectTransform eatFill; Text eatLabel;
+        public static readonly Color EatCol = new Color(0.553f, 0.690f, 0.290f);       // #8DB04A (decisions D5)
+        public bool EatBarShown { get { return eatBg != null && eatBg.gameObject.activeSelf; } }
+        public string EatLabelShown { get { return eatLabel != null && eatLabel.gameObject.activeSelf ? eatLabel.text : ""; } }
+        public float EatFillShown { get { return eatFill != null ? eatFill.anchorMax.x : 0f; } }
+
+        void BuildEatBar()
+        {
+            eatBg = Panel("EatBar", Vector2.zero, Vector2.zero, new Vector2(100, 14), FrameCol, popupRoot);
+            eatBg.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            eatFill = Stretch(Panel("Fill", Vector2.zero, Vector2.zero, Vector2.zero, EatCol, eatBg.transform), 2f);
+            eatLabel = MakeText("EatText", Vector2.zero, Vector2.zero, new Vector2(220, 26), 18, TextAnchor.MiddleCenter, popupRoot);
+            eatLabel.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            eatLabel.fontStyle = FontStyle.Bold;
+            eatBg.gameObject.SetActive(false);
+            eatLabel.gameObject.SetActive(false);
+        }
+
+        void UpdateEatBar(Game g, Knight k)
+        {
+            if (eatBg == null) return;
+            bool eating = k.Eating && !k.Dead, prompt = !eating && k.EatPromptOn && !g.PanelOpen;
+            if (eatBg.gameObject.activeSelf != eating) eatBg.gameObject.SetActive(eating);
+            bool label = eating || prompt;
+            if (eatLabel.gameObject.activeSelf != label) eatLabel.gameObject.SetActive(label);
+            if (!label) return;
+            float scale = ScaleFactor;
+            Vector3 sp = g.cam.WorldToScreenPoint(k.transform.position + new Vector3(0f, eating ? 2.4f : 2.9f, 0f));
+            Vector2 pos = new Vector2(sp.x, sp.y) / scale;
+            if (eating)
+            {
+                eatBg.rectTransform.anchoredPosition = pos;
+                eatFill.anchorMax = new Vector2(Mathf.Max(0.0001f, k.EatProgress), 1f);
+                eatFill.offsetMax = new Vector2(-2f * k.EatProgress, -2f);
+                eatLabel.rectTransform.anchoredPosition = pos + new Vector2(0f, 22f);
+                eatLabel.text = "EATING";
+                eatLabel.color = EatCol;
+            }
+            else
+            {
+                eatLabel.rectTransform.anchoredPosition = pos;
+                eatLabel.text = g.Loop ? "Hold F / press C: Eat" : "Hold F: Eat";
+                eatLabel.color = new Color(1f, 1f, 1f, 0.9f);
+            }
+        }
+
         // Phase 1 loop: no Soul on screen (nothing to spend it on), the controls and the corner hint say what the keys do now.
         void SetLoopTexts(bool loop)
         {
@@ -991,10 +1057,10 @@ namespace MedievalKnight
                 + "Left Shift (hold)    Run\n"
                 + "Space    Roll - dodge, 0.5 s untouchable (25 stamina)\n"
                 + "Right Click (hold)    Shield block / parry\n"
-                + "F (hold)    Revive a downed friend\n"
+                + "F (hold 2 s)    Eat food  /  revive a downed friend\n"
                 + "1 / 2    Hold Weapon slot 1 / 2         C  Eat\n"
                 + "Tab    Carry window  (at the base: PREPARE)\n"
-                + "Level-up: 1 / 2 / 3 or Click spends the stat point\n"
+                + "Level-up: 1 - 5 or Click picks a stat\n"
                 + "Walk over a drop to take it   -   Right Click in Tab drops\n"
                 + "M  Map   F2  Sound   Scroll  Camera   Esc Esc  Menu (= death)";
         }

@@ -10,7 +10,7 @@
 
 ## วิธีเล่น
 - Host: Host Game > port > Start Hosting > บอก IP+port. Client: Join Game > IP+port > Connect (ต่อไม่ได้/เต็ม/เวอร์ชันไม่ตรง = กลับหน้า Join พร้อมข้อความ). Host ปิด = client กลับเมนู
-- **ทุกคนต้องเวอร์ชันเดียวกัน** (`Net.Protocol` = **5**; p7: `KnightHit` + attackerNetId/flags(1=หนัก), `Hit.src` 37 parry / 38 clash, `EnemyHit` flags 8 หนัก / 16 parry / 32 clash; p6: Act.kind/Hit.src 30..36, NetFlags 32 = ชาร์จ). parry/clash ตัดสินที่เครื่องเจ้าของตัว (client หน่วง `KnightHit` 0.1 วิ) แล้วรายงาน host; แผนที่ M ไม่ส่งข้อความ
+- **ทุกคนต้องเวอร์ชันเดียวกัน** (`Net.Protocol` = **6**; p6 (knight-rig-slash): `Act.kind` 0..2 = ท่าฟัน (target.x=1 = ต่อจากท่าก่อน), 20 = กลิ้ง, 21 = เริ่มกิน, 22 = ท่าปัดโล่; `Hit.src` 0..2 / 37 / 38 (อื่นๆ ถูกทิ้ง); `NetFlags` 64 = กำลังกิน (บิต 32 เดิม = ชาร์จ ห้ามนำกลับมาใช้); kind 10..13, 30..36 ถูกถอด; สนาม v1: host ให้อาหารบนพื้นแก่ client เมื่อ flag กินค้าง ≥1.7 วิ ผ่าน `PickupTaken` เดิม ไม่มีข้อความใหม่; อดีต p7: `KnightHit` + attackerNetId/flags(1=หนัก), `Hit.src` 37 parry / 38 clash, `EnemyHit` flags 8 หนัก / 16 parry / 32 clash; p6: Act.kind/Hit.src 30..36, NetFlags 32 = ชาร์จ). parry/clash ตัดสินที่เครื่องเจ้าของตัว (client หน่วง `KnightHit` 0.1 วิ) แล้วรายงาน host; แผนที่ M ไม่ส่งข้อความ
 
 ## สถาปัตยกรรม (host-authoritative)
 - `Net.Mode` Single / Host / Client; `Net.Authority` = ไม่ใช่ Client. Host จำลองโลกทั้งหมด; client จำลองเฉพาะอัศวินตัวเอง; ฉากสร้างเองทุกเครื่องจาก seed 11
@@ -43,7 +43,7 @@
 - โลกเก่าของ client จาก SP ไม่ถูกนับตอนออนไลน์; client ดูโลกเก่าของ host (`Worlds`) อ่านอย่างเดียว
 
 ## Command line (`Args.cs`)
-`-single`, `-host` / `-join <ip>` + `-port` `-name`, `-bind <ip>`, `-arena`, `-netversion <n>`, `-joindelay <วิ>`, `-selftest <โฟลเดอร์>` (`-looponly` `-p6only` `-p7only`), `-mptest <โฟลเดอร์> -role H|A|B|C|D -expect <n> [-refusals] [-expecttext <ข้อความ>]`, `-menutest <โฟลเดอร์>`, `-save <ไฟล์>`.
+`-single`, `-host` / `-join <ip>` + `-port` `-name`, `-bind <ip>`, `-arena`, `-netversion <n>`, `-joindelay <วิ>`, `-selftest <โฟลเดอร์>` (`-looponly` `-slashonly` `-p7only`), `-mptest <โฟลเดอร์> -role H|A|B|C|D -expect <n> [-refusals] [-expecttext <ข้อความ>]`, `-menutest <โฟลเดอร์>`, `-save <ไฟล์>`.
 
 ## ทดสอบหลายโปรเซส (127.0.0.1)
 - `mptest.ps1` (ใส่ `-arena` ให้เอง): ชุด v1 host + 3 client + 2 ตัวที่ถูกปฏิเสธ ~100 วิ. เช็คผันผวนตาม CPU (`smooth on B/H`, `same place on every screen`) ตกแล้วรันซ้ำ; เคส p7 (3c) ต้อง `ParkSlimes` ก่อน (สไลม์จริงตีในหน้าต่าง parry ทำให้นับเพี้ยน)

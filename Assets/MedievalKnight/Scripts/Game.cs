@@ -75,7 +75,8 @@ namespace MedievalKnight
         // so Host / Join / -single / -selftest are untouched). Health x HpMul and damage x DmgMul; ARMOR is not multiplied
         // (EnemyArmorScale), so "HP x1.5" is what the player really meets. PackMul = size of a slime pack.
         public float worldHpMul = 1f, worldDmgMul = 1f, worldPackMul = 1f;
-        float LevelHpScale { get { return (1f + 0.45f * (PartyLevel - 1f)) * (1f + CoopHpPerPlayer * Mathf.Max(0, players.Count - 1)); } }
+        public const float EnemyHpPerLevel = 0.18f;            // was 0.45: level-ups no longer raise damage, so the enemies grow slower (decisions.md D3: 0.15 - 0.20)
+        float LevelHpScale { get { return (1f + EnemyHpPerLevel * (PartyLevel - 1f)) * (1f + CoopHpPerPlayer * Mathf.Max(0, players.Count - 1)); } }
         public float EnemyHpScale { get { return LevelHpScale * worldHpMul; } }
         public float EnemyArmorScale { get { return LevelHpScale; } }
         public float EnemyDamageScale { get { return (1f + 0.08f * (PartyLevel - 1f)) * worldDmgMul; } }
@@ -973,6 +974,11 @@ namespace MedievalKnight
         }
 
         // A knight who walks over a sword takes it (decided where the world is simulated).
+        const float RemoteEatSeconds = 1.7f;                    // the host grants a client his ground food after his eating flag was up this long (2.0 s on his side, minus the delay)
+
+        // The local knight finished eating a food that lies on the ground (single player / host).
+        public void EatGroundFood(Knight k, Pickup p) { if (k != null && p != null && p.gameObject.activeInHierarchy) Collect(k, p); }
+
         void UpdatePickups()
         {
             bool loop = Loop;                                      // Phase 1: pickups go into the carry (or stay when it is full)
@@ -987,6 +993,23 @@ namespace MedievalKnight
                     for (int n = 0; n < players.Count; n++)
                         if (!players[n].Dead && FlatDist(p.transform.position, players[n].Pos) <= Pickup.CollectRadius + 0.25f) near = true;
                     if (!near) p.dropped = false;
+                    continue;
+                }
+                if (!loop && p.kind == PickupKind.Food)
+                {
+                    // food is never eaten by walking over it: the knight holds F next to it (Knight.Eating). His own meal ends in
+                    // Knight.FinishEat; a remote knight's is granted here once his eating flag has been up long enough.
+                    for (int n = 0; n < players.Count; n++)
+                    {
+                        Knight k = players[n];
+                        if (!k.remote || k.Dead || !k.Eating || k.hp >= k.MaxHp - 0.5f) continue;
+                        if (Time.unscaledTime - k.EatFlagSince < RemoteEatSeconds) continue;
+                        Vector3 d = p.transform.position - k.Pos; d.y = 0f;
+                        if (d.sqrMagnitude > (Knight.EatReach + 0.4f) * (Knight.EatReach + 0.4f)) continue;
+                        k.EatFlagSince = Time.unscaledTime;
+                        Collect(k, p);
+                        break;
+                    }
                     continue;
                 }
                 for (int n = 0; n < players.Count; n++)
@@ -1172,10 +1195,10 @@ namespace MedievalKnight
         }
 
 
-        // index 0 / 1 / 2 = HP / BLOCK / STAMINA
+        // index 0 .. 4 = HP / DEF / STAMINA / SPEED / RESISTANCE
         public void ChooseStat(int index)
         {
-            if (LevelStep != 2 || index < 0 || index > 2) return;
+            if (LevelStep != 2 || index < 0 || index >= Progress.AttrCount) return;
             Attr a = (Attr)index;
             if (!knight.SpendPoint(a)) return;                    // that stat is maxed: the panel stays open
             Debug.Log("STATPOINT " + Progress.AttrName(a) + " -> " + progress.Points(a) + " (unspent " + progress.statPoints + ")");
@@ -1388,7 +1411,7 @@ namespace MedievalKnight
             if (LevelStep != 0)
             {
                 if (!online) Time.timeScale = 0f;
-                int pick = hud.LevelUpInput(3);
+                int pick = hud.LevelUpInput(Progress.AttrCount);
                 if (pick >= 0)
                 {
                     ChooseStat(pick);
