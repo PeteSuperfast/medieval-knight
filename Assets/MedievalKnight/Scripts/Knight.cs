@@ -72,7 +72,6 @@ namespace MedievalKnight
         // Space: dash. Stamina is only used for this: one dash = 25 (one tick on the stamina bar).
         public const float DashCost = 25f, DashCooldown = 0.8f, DashDistance = 6f, DashMoveTime = 0.20f, DashInvuln = 0.5f;
         const float RestYaw = 55f, RestPitch = -25f, RestHand = 0.36f;
-        static readonly Vector3 ShieldRestPos = new Vector3(-0.5f, 1.05f, 0.12f), ShieldBlockPos = new Vector3(-0.05f, 1.12f, 0.55f);
 
         // tabard + shield colour and plume + cape colour per player slot (slot 0 is the classic blue / red knight)
         public static readonly Color[] MainColors =
@@ -223,6 +222,7 @@ namespace MedievalKnight
         public Vector3 Forward { get { return transform.forward; } }
         public WeaponDef Weapon { get { return inventory.Weapon; } }
         public Transform SwordModel { get { return swordModel; } }
+        public string BodyKind { get { return body != null ? body.Kind : ""; } }          // "coded" (a "file" body comes with the .fbx work)
 
         // --- combat numbers: level-up totals (Progress) combined with the equipped sword ---
         // skill: -1 = basic sword attack, 0..3 = Q / E / R / F. Shield Bash (2) does not use the sword.
@@ -246,20 +246,22 @@ namespace MedievalKnight
         public Vector3? aimOverride;
         public Vector2? moveOverride;
         public bool? attackHeldOverride;                    // the left button held (true) / up (false) without a device
-
-        Transform rig, chest, legL, legR, swordPivot, swordNode, swordModel, armR, shieldNode;
-        Tint tint;
-        float swYaw = RestYaw, swPitch = RestPitch, swHand = RestHand;
-        float rigLean, rigHop, rigSpin, jumpY, walkPhase, hurtTint;
+        CodedBody body;                                     // what he looks like (the pose numbers below live in it)
+        Transform rig, swordNode, swordModel;
+        float swYaw { get { return body.swYaw; } set { body.swYaw = value; } }
+        float swPitch { get { return body.swPitch; } set { body.swPitch = value; } }
+        float swHand { get { return body.swHand; } set { body.swHand = value; } }
+        float rigLean { get { return body.rigLean; } set { body.rigLean = value; } }
+        float rigHop { get { return body.rigHop; } set { body.rigHop = value; } }
+        float rigSpin { get { return body.rigSpin; } set { body.rigSpin = value; } }
+        float jumpY, hurtTint;
         float lastSpendTime = -10f, lastDamageTime = -10f, lastAttackEnd = -10f, invulnUntil, protectUntil;
         float dashInvulnUntil, dashMoveEnd, dashReadyAt, lastDodgeFx = -10f, lastRunDust, reviveAt;
         Vector3 dashDir;
         bool invuln, lockFacing, whirl, shieldPush;
-        float shieldPushK;
         Vector3 knockVel, aimPoint;
         // phase 7: parry window (0.2 s from a fresh shield press, not again within 0.5 s), clash window (the strike of a light swing +-0.1 s)
         float parryUntil, lastPressAt = -10f, clashFrom, clashTo, shieldFlashUntil;
-        Tint shieldTint;
         public const float ParryWindow = 0.2f, ParryGap = 0.5f, ClashPad = 0.1f, ClashHalfAngle = 60f, ClashRange = 5.5f;
         public bool ParryOpen { get { return Time.time < parryUntil; } }
         public bool ClashOpen { get { return clashTo > 0f && Time.time >= clashFrom && Time.time <= clashTo; } }
@@ -308,58 +310,13 @@ namespace MedievalKnight
 
         void Build()
         {
-            Material steel = Prims.Lit(new Color(0.74f, 0.77f, 0.82f), 0.7f, 0.75f);
-            Material darkSteel = Prims.Lit(new Color(0.42f, 0.45f, 0.52f), 0.55f, 0.6f);
-            Material blue = Prims.Lit(MainColors[pid & 3]);       // tabard + shield: the player's colour
-            Material red = Prims.Lit(AccentColors[pid & 3]);      // cape + plume
-            Material gold = Prims.Lit(new Color(0.96f, 0.78f, 0.22f), 0.7f, 0.8f);
-            Material leather = Prims.Lit(new Color(0.35f, 0.22f, 0.12f));
-            Material black = Prims.Lit(new Color(0.06f, 0.06f, 0.08f));
-
-            rig = Prims.Node(transform, "Rig", Vector3.zero);
-
-            legL = Prims.Node(rig, "LegL", new Vector3(-0.17f, 0.75f, 0f));
-            legR = Prims.Node(rig, "LegR", new Vector3(0.17f, 0.75f, 0f));
-            foreach (Transform leg in new[] { legL, legR })
-            {
-                Prims.Box(leg, "Leg", new Vector3(0f, -0.36f, 0f), new Vector3(0.24f, 0.72f, 0.28f), darkSteel);
-                Prims.Box(leg, "Boot", new Vector3(0f, -0.68f, 0.05f), new Vector3(0.27f, 0.14f, 0.38f), leather);
-            }
-
-            chest = Prims.Node(rig, "Chest", new Vector3(0f, 0.75f, 0f));
-            Prims.Box(chest, "Cuirass", new Vector3(0f, 0.36f, 0f), new Vector3(0.68f, 0.62f, 0.42f), steel);
-            Prims.Box(chest, "Tabard", new Vector3(0f, 0.3f, 0f), new Vector3(0.44f, 0.72f, 0.47f), blue);
-            Prims.Box(chest, "Emblem", new Vector3(0f, 0.42f, 0.24f), new Vector3(0.18f, 0.18f, 0.03f), gold);
-            Prims.Box(chest, "Belt", new Vector3(0f, 0.08f, 0f), new Vector3(0.7f, 0.1f, 0.49f), leather);
-            Prims.Part(chest, "PauldronL", Prims.Ball(6), new Vector3(-0.44f, 0.66f, 0f), new Vector3(0.4f, 0.3f, 0.44f), steel);
-            Prims.Part(chest, "PauldronR", Prims.Ball(6), new Vector3(0.44f, 0.66f, 0f), new Vector3(0.4f, 0.3f, 0.44f), steel);
-            Prims.Box(chest, "Cape", new Vector3(0f, 0.3f, -0.27f), new Vector3(0.5f, 0.62f, 0.05f), red).Rot(10f, 0f, 0f);
-            Mesh helm = Prims.Lathe("helm", 8, 0f, 0f, 0.25f, 0f, 0.29f, 0.2f, 0.25f, 0.38f, 0.12f, 0.5f, 0f, 0.52f);
-            Prims.Part(chest, "Helm", helm, new Vector3(0f, 0.68f, 0f), Vector3.one, steel);
-            Prims.Box(chest, "Visor", new Vector3(0f, 0.9f, 0.25f), new Vector3(0.3f, 0.06f, 0.08f), black);
-            Prims.Box(chest, "Plume", new Vector3(0f, 1.26f, -0.06f), new Vector3(0.09f, 0.22f, 0.5f), red);
-            Prims.Box(chest, "PlumeTail", new Vector3(0f, 1.14f, -0.34f), new Vector3(0.09f, 0.3f, 0.16f), red).Rot(-25f, 0f, 0f);
-
-            // sword arm: the pivot sits in the chest and turns the whole arm + sword
-            swordPivot = Prims.Node(rig, "SwordPivot", new Vector3(0.12f, 1.2f, 0.05f));
-            armR = Prims.Box(swordPivot, "ArmR", new Vector3(0f, 0f, 0.2f), new Vector3(0.17f, 0.17f, 0.4f), darkSteel);
-            swordNode = Prims.Node(swordPivot, "Sword", new Vector3(0f, 0f, RestHand));
-            Prims.Part(swordNode, "Gauntlet", Prims.Ball(6), Vector3.zero, new Vector3(0.24f, 0.24f, 0.24f), steel);
+            body = new CodedBody();
+            body.Build(transform, pid);
+            rig = body.Root;
+            swordNode = body.SwordMount;
             swordModel = Weapons.BuildModel(swordNode, Weapon);       // the equipped sword; replaced by Equip()
             swordModel.name = Weapon.name;
-
-            // shield arm
-            shieldNode = Prims.Node(rig, "Shield", ShieldRestPos);
-            Vector2[] l = { new Vector2(-0.36f, 0.42f), new Vector2(-0.36f, 0.05f), new Vector2(-0.25f, -0.3f), new Vector2(-0.02f, -0.56f) };
-            Vector2[] r = { new Vector2(0.36f, 0.42f), new Vector2(0.36f, 0.05f), new Vector2(0.25f, -0.3f), new Vector2(0.02f, -0.56f) };
-            Prims.Part(shieldNode, "Plate", Prims.Strip("shield", l, r, 0.08f), Vector3.zero, Vector3.one, blue);
-            Prims.Box(shieldNode, "Top", new Vector3(0f, 0.42f, 0f), new Vector3(0.76f, 0.07f, 0.11f), gold);
-            Prims.Box(shieldNode, "CrossV", new Vector3(0f, -0.04f, 0.03f), new Vector3(0.11f, 0.86f, 0.06f), gold);
-            Prims.Box(shieldNode, "CrossH", new Vector3(0f, 0.14f, 0.03f), new Vector3(0.66f, 0.11f, 0.06f), gold);
-            Prims.Box(shieldNode, "ArmL", new Vector3(0f, 0.05f, -0.16f), new Vector3(0.17f, 0.17f, 0.3f), darkSteel);
-
-            tint = new Tint(rig);
-            shieldTint = new Tint(shieldNode);
+            body.RebuildTint();
 
             if (!remote)                                           // the charge disc (phase 6): grows and turns pale when full
             {
@@ -384,7 +341,7 @@ namespace MedievalKnight
 
         void RebuildSword()
         {
-            tint.Set(Color.white, 0f);
+            body.ClearTint();
             if (swordModel != null)
             {
                 swordModel.gameObject.SetActive(false);
@@ -393,7 +350,7 @@ namespace MedievalKnight
             }
             swordModel = Weapons.BuildModel(swordNode, Weapon);
             swordModel.name = Weapon.name;
-            tint = new Tint(rig);
+            body.RebuildTint();
         }
 
         // Spends one stat point; the new maximum is filled in right away.
@@ -751,66 +708,31 @@ namespace MedievalKnight
             Sfx.I.Play(Snd.Swing, 0.7f * Volume, 0.75f);
         }
 
-        // Idle / walk / block poses, legs, shield and tint (attacks drive the sword and body themselves).
+        // Idle / walk / block poses, legs, shield (in the body) and tint (attacks drive the sword and body themselves).
         // Shared by the local knight and by remote knights.
         void Pose(float dt, bool moving)
         {
-            if (moving) walkPhase += dt * 13f * (whirl ? 0.5f : 1f);
-            if (!IsAttacking && !Dead)
-            {
-                float e = 1f - Mathf.Exp(-14f * dt);
-                bool charge = ShowsCharge && !IsBlocking;          // sword held up over the head with both hands, leaning back, a little lower
-                swYaw = Mathf.Lerp(swYaw, IsBlocking ? 80f : charge ? 0f : RestYaw + (moving ? Mathf.Sin(walkPhase) * 6f : 0f), e);
-                swPitch = Mathf.Lerp(swPitch, IsBlocking ? -55f : charge ? -125f : RestPitch + Mathf.Sin(Time.time * 2.2f) * 2f, e);
-                swHand = Mathf.Lerp(swHand, charge ? 0.5f : RestHand, e);
-                float bob = moving ? Mathf.Abs(Mathf.Sin(walkPhase)) * 0.07f : Mathf.Sin(Time.time * 2.2f) * 0.015f;
-                if (charge) bob = -0.06f;
-                rigHop = Mathf.Lerp(rigHop, bob, 1f - Mathf.Exp(-20f * dt));
-                rigLean = Mathf.Lerp(rigLean, charge ? -14f : moving ? 6f : 0f, 1f - Mathf.Exp(-12f * dt));
-                rigSpin = 0f;
-            }
-            float swing = moving && !Dead ? Mathf.Sin(walkPhase) * 32f : 0f;
-            legL.localRotation = Quaternion.Slerp(legL.localRotation, Quaternion.Euler(swing, 0f, 0f), 1f - Mathf.Exp(-18f * dt));
-            legR.localRotation = Quaternion.Slerp(legR.localRotation, Quaternion.Euler(-swing, 0f, 0f), 1f - Mathf.Exp(-18f * dt));
-
-            // shield
-            float sk = 1f - Mathf.Exp(-18f * dt);
-            shieldPushK = Mathf.MoveTowards(shieldPushK, shieldPush ? 1f : 0f, dt * (shieldPush ? 14f : 6f));
-            Vector3 sPos = IsBlocking ? ShieldBlockPos : ShieldRestPos;
-            Quaternion sRot = IsBlocking ? Quaternion.Euler(-12f, 5f, 0f) : Quaternion.Euler(-18f, -72f, 0f);
-            float sScale = IsBlocking ? 1.3f : 1f;
-            if (shieldPushK > 0.001f)
-            {
-                sPos = Vector3.Lerp(sPos, new Vector3(0f, 1.15f, 1.05f), shieldPushK);
-                sRot = Quaternion.Slerp(sRot, Quaternion.Euler(-8f, 0f, 0f), shieldPushK);
-                sScale = Mathf.Lerp(sScale, 1.6f, shieldPushK);
-                shieldNode.localPosition = sPos; shieldNode.localRotation = sRot; shieldNode.localScale = Vector3.one * sScale;
-            }
-            else
-            {
-                shieldNode.localPosition = Vector3.Lerp(shieldNode.localPosition, sPos, sk);
-                shieldNode.localRotation = Quaternion.Slerp(shieldNode.localRotation, sRot, sk);
-                shieldNode.localScale = Vector3.Lerp(shieldNode.localScale, Vector3.one * sScale, sk);
-            }
+            bool charge = ShowsCharge && !IsBlocking;          // sword held up over the head with both hands, leaning back, a little lower
+            body.Pose(dt, moving, IsAttacking, Dead, charge, IsBlocking, whirl, shieldPush);
 
             hurtTint = Mathf.Max(0f, hurtTint - dt / 0.3f);
-            if (Glowing && !Dead) tint.Set(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
-            else if (!remote && Dashing && !Dead) tint.Set(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
+            if (Glowing && !Dead) body.SetTint(new Color(1f, 1f, 0.7f), 0.35f + 0.25f * Mathf.Sin(Time.time * 25f));
+            else if (!remote && Dashing && !Dead) body.SetTint(new Color(0.81f, 0.91f, 1f), 0.45f + 0.25f * Mathf.Sin(Time.time * 40f));
             else if (hurtTint < 0.05f && ShowsCharge && !Dead)       // the blade glows while charging, brighter when full
             {
                 float shown = remote ? Time.time - netChargeSince : ChargeSeconds;
                 bool full = remote ? shown >= ChargeTime : ChargeFull;
-                tint.Set(full ? new Color(1f, 0.93f, 0.7f) : new Color(1f, 0.78f, 0.35f),
+                body.SetTint(full ? new Color(1f, 0.93f, 0.7f) : new Color(1f, 0.78f, 0.35f),
                     full ? 0.5f + 0.15f * Mathf.Sin(Time.time * 18f) : 0.12f + 0.3f * Mathf.Clamp01(shown / ChargeTime));
             }
-            else tint.Set(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
+            else body.SetTint(new Color(1f, 0.25f, 0.2f), hurtTint * 0.8f);
 
             // the shield flashes pale blue while the parry window is open (a remote knight: for 0.2 s after his shield goes up)
             bool flashing = !Dead && IsBlocking && Time.time < shieldFlashUntil;
             if (flashing || shieldFlashOn)
             {
                 shieldFlashOn = flashing;
-                shieldTint.Set(new Color(0.81f, 0.91f, 1f), flashing ? 0.75f : 0f);
+                body.SetShieldTint(new Color(0.81f, 0.91f, 1f), flashing ? 0.75f : 0f);
             }
         }
         bool shieldFlashOn;
@@ -1009,12 +931,7 @@ namespace MedievalKnight
 
         void LateUpdate()
         {
-            rig.localPosition = new Vector3(0f, rigHop, 0f);
-            if (!Dead) rig.localRotation = Quaternion.Euler(rigLean, rigSpin, 0f);
-            swordPivot.localRotation = Quaternion.Euler(swPitch, swYaw, 0f);
-            swordNode.localPosition = new Vector3(0f, 0f, swHand);
-            armR.localPosition = new Vector3(0f, 0f, swHand * 0.5f);
-            armR.localScale = new Vector3(0.17f, 0.17f, Mathf.Max(0.1f, swHand));
+            body.LateApply(Dead);
         }
 
         // ---------------------------------------------------------------- requests
