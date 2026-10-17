@@ -60,3 +60,8 @@
 - งบ (ingame-report.md): 165,383 tri, 928 renderer, สร้าง 26-31 ms, +19 MB, เฟรม ~0.5 ms; ภาพ 6 มุม + แผนที่/สไลม์/portal/โลกเก่า ใน Docs/snow-map-models/ingame/game/
 - ผล: -snowonly 50/0, -looponly 222/0, mptest-loop H94/A5/B5/C2/X1/V1/D4 FAIL 0
 - ภาพในเกมรอพีทอนุมัติ (ขั้น 7 ของ pipeline)
+
+## developer ขั้น 8 เสร็จ (เปิดสุ่มจริง)
+- RunLoop.RandomBiomes = true: โลกใหม่ของ single player/host สุ่ม Meadow:Snow = 50:50 (Biomes.Roll); scripted/selftest/mptest = ทุ่งเสมอ; `-biome` บังคับได้; ปิดสุ่มได้ด้วย RandomBiomes=false (บรรทัดเดียว)
+- ผลเทสสุดท้าย (build เดียวกัน): selftest เต็ม 453/0, -snowonly 51/0, mptest 80/0, mptest-loop H94/A5/B5/C2/X1/V1/D4 FAIL 0, -menutest 23 บรรทัด FAIL 0
+- ยังไม่ zip/อัป Drive (รอปูส้มสั่ง); CLAUDE.md ของเกมยังไม่ได้แก้ (ตามคำสั่ง) ข้อความที่ควรแก้: protocol 6->7, biome หิมะ, -biome

@@ -67,6 +67,7 @@ namespace MedievalKnight
             Check("snow: a save with an unknown map number loads as a meadow world", wl != null && wl.Find(0x3456) != null && wl.Find(0x3456).biome == Biome.Meadow);
 
             // the base is always the meadow; scripted runs never roll
+            Check("snow: new worlds roll the map for real play (RandomBiomes on) but a scripted run like this one never does", RunLoop.RandomBiomes && Args.Scripted);
             Check("snow: Args.biome is not set in the test and MapLayout starts as the meadow", Args.biome == -1 && MapLayout.Current == Biome.Meadow);
         }
 

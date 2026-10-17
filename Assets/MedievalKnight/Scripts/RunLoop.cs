@@ -341,8 +341,8 @@ namespace MedievalKnight
         public void UiConfirmEnter() { UiEnter(askedSeed); }
 
         // The map of a NEW world (single player / host only; an old world keeps its own): -biome forces one; scripted runs
-        // (selftest / mptest) are always the meadow; otherwise a 50 : 50 roll once RandomBiomes is on (snow-map-models step 8).
-        public static bool RandomBiomes = false;
+        // (selftest / mptest) are always the meadow; otherwise a 50 : 50 roll (RandomBiomes, on since snow-map-models step 8; set false to switch the snow map off).
+        public static bool RandomBiomes = true;
         static int rollCounter;
         Biome PickBiome()
         {
