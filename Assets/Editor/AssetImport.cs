@@ -94,9 +94,9 @@ public static class AssetImport
 
     // ------------------------------------------------------------------ materials + prefabs
 
-    static Color Hex(string h) { Color c; ColorUtility.TryParseHtmlString(h, out c); return c; }
+    internal static Color Hex(string h) { Color c; ColorUtility.TryParseHtmlString(h, out c); return c; }
 
-    static void EnsureDir(string path)
+    internal static void EnsureDir(string path)
     {
         if (AssetDatabase.IsValidFolder(path)) return;
         string parent = Path.GetDirectoryName(path).Replace('\\', '/');
@@ -113,7 +113,7 @@ public static class AssetImport
         return n;
     }
 
-    static Material GetKitMaterial(string key, Material imported)
+    internal static Material GetKitMaterial(string key, Material imported)
     {
         EnsureDir(MatDir);
         string path = MatDir + "/MK_" + key + ".mat";
@@ -147,14 +147,14 @@ public static class AssetImport
         return m;
     }
 
-    static void SetStatic(GameObject go)
+    internal static void SetStatic(GameObject go)
     {
         var flags = StaticEditorFlags.ContributeGI | StaticEditorFlags.OccluderStatic | StaticEditorFlags.OccludeeStatic
                   | StaticEditorFlags.BatchingStatic | StaticEditorFlags.ReflectionProbeStatic;
         foreach (var t in go.GetComponentsInChildren<Transform>(true)) GameObjectUtility.SetStaticEditorFlags(t.gameObject, flags);
     }
 
-    static Bounds BoundsOf(IEnumerable<Renderer> rs)
+    internal static Bounds BoundsOf(IEnumerable<Renderer> rs)
     {
         bool first = true;
         Bounds b = new Bounds();
@@ -322,7 +322,7 @@ public static class AssetImport
 
     // A separate pipeline asset + renderer (post-processing + SSAO) used only by the Showcase capture.
     // The game's UniversalRP.asset / Renderer3D.asset are not touched.
-    static UniversalRenderPipelineAsset EnsureShowcasePipeline()
+    internal static UniversalRenderPipelineAsset EnsureShowcasePipeline()
     {
         EnsureDir(ShowDir);
         string rp = ShowDir + "/Renderer_Showcase.asset", pp = ShowDir + "/UniversalRP_Showcase.asset";
@@ -386,7 +386,7 @@ public static class AssetImport
         return urp;
     }
 
-    static VolumeProfile EnsurePostProfile()
+    internal static VolumeProfile EnsurePostProfile()
     {
         EnsureDir(ShowDir);
         string path = ShowDir + "/Showcase_PostFX.asset";
@@ -414,7 +414,7 @@ public static class AssetImport
         return p;
     }
 
-    static Material EnsureSkyMaterial()
+    internal static Material EnsureSkyMaterial()
     {
         EnsureDir(ShowDir);
         string shaderPath = ShowDir + "/MK_SkyGradient.shader";

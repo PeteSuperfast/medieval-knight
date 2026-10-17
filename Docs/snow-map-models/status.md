@@ -18,3 +18,11 @@
 
 - 2026-10-17 พีทแจ้ง: ไฟล์ Docs\"Boss Design Doc จอมมารน้ำแข็ง.md" (ไฟล์ของพีท) เตรียมไว้เป็นบอสของแมพหิมะ -> architect/developer ของแมพหิมะต้องอ่านก่อนวางบอส (tech.md ข้อ 3 รัง/บอส) และต้องให้พีทอนุมัติ/ยืนยันขอบเขตบอสก่อนลงมือ
 - 2026-10-17 พีท(ID ตรง) สั่ง "ทำ 2 ต่อเลย" -> ส่ง developer ขั้น 0-8 (บอสเดิม Minotaur; จอมมารน้ำแข็งแยกงาน) | อัศวิน rig ขั้น 1-8 เสร็จแล้ว ไม่ชน
+
+## developer (2026-10-17) ขั้น 0 เสร็จ
+- SnowImport.cs: ตั้ง ModelImporter 123 ไฟล์ (Read/Write, ไม่มี animation/camera/light), material 28 สี (Assets/Materials/Snow), prefab 123 (Assets/Prefabs/Snow, ตัวห่อ Pivot หมุน Y180), SnowCatalog.prefab, scene Showcase_Snow, ภาพ Docs/snow-map-models/ingame/snow_*.png
+- ตรวจแกน: chunk ทั้ง 16 ตรงตำแหน่ง (r0c3 = 332.5,47.5), castle (340,340) ตรง
+- พบ: บางหน้าหลังคา/ผ้าใบ (roof_red/roof_purple/red_deep, plaster ของ stall/sails/banner) winding กลับด้าน -> สร้าง mesh คู่ (521 tri) เป็น asset แยกใน Assets/Prefabs/Snow/Meshes (ไม่แก้ .fbx)
+- พบ: chunk r2c2 มีแผ่นรองขนาดทั้งแมพ 380x380 (2 tri); Tree_Round 12 ต้น (non_instanced) ไม่มีตำแหน่งใน layout.json -> ยังไม่วาง (ขอ artist ส่งตำแหน่ง)
+- พบ: ทะเลสาบน้ำแข็ง (SM7_IceLake) ถูกพื้นทับบางส่วน ต้องตรวจความสูงในขั้น 1
+- build ผ่าน, selftest -looponly 211 pass / 0 FAIL
