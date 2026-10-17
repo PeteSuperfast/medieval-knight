@@ -11,15 +11,22 @@ namespace MedievalKnight
     {
         public const float Half = Game.ArenaHalf;
         public const float ChunkSize = 38f;                                   // 10 x 10 chunks
-        public static readonly Vector3 TownSpawn = new Vector3(0f, 0f, -150f);   // where knights start and come back
-        public static readonly Vector3 BasePoint = new Vector3(0f, 0f, 0f);       // Phase 1 loop: the base is the empty central lawn
+        // The biome the scene / logic is currently in (Game.SetBiome). Everything below answers for it; the meadow values are the original ones.
+        public static Biome Current = Biome.Meadow;
+
+        public static readonly Vector3 MeadowTownSpawn = new Vector3(0f, 0f, -150f);
+        public static readonly Vector3 MeadowDummyPos = new Vector3(25f, 0f, -140f);
+        public static readonly Vector3 MeadowLair = new Vector3(0f, 0f, 150f);
+
+        public static Vector3 TownSpawn { get { return MeadowTownSpawn; } }      // where knights start and come back
+        public static readonly Vector3 BasePoint = new Vector3(0f, 0f, 0f);       // Phase 1 loop: the base is the empty central lawn (always the meadow scene)
         public static readonly Vector3 TownCenter = new Vector3(0f, 0f, -145f);
         public static readonly Vector3 Gate = new Vector3(0f, 0f, -100f);
-        public static readonly Vector3 DummyPos = new Vector3(25f, 0f, -140f);
-        public static readonly Vector3 Lair = new Vector3(0f, 0f, 150f);
+        public static Vector3 DummyPos { get { return MeadowDummyPos; } }
+        public static Vector3 Lair { get { return MeadowLair; } }
         public static readonly Vector3 MenuFocus = new Vector3(0f, 0f, -142f);
         public static readonly Vector3 Crossroads = new Vector3(0f, 0f, -20f);
-        public const float LairRadius = 25f;
+        public static float LairRadius { get { return 25f; } }
         public const float TownMinX = -60f, TownMaxX = 60f, TownMinZ = -190f, TownMaxZ = -100f;
 
         public struct SignInfo { public Vector3 pos; public string text; }
@@ -74,8 +81,14 @@ namespace MedievalKnight
 
         class Obs { public bool box; public float x, z, r, hx, hz, c, s; public int mask; }
 
-        static readonly List<Obs> items = new List<Obs>();
-        static List<int>[,] cells = new List<int>[N, N];
+        // one set per biome (the meadow scene is built once and the snow scene once; switching only changes which set answers)
+        class Set { public List<Obs> items = new List<Obs>(); public List<int>[,] cells = new List<int>[N, N]; }
+        static readonly Set[] sets = { new Set(), new Set() };
+        static Set cur = sets[0];
+        static List<Obs> items { get { return cur.items; } }
+        static List<int>[,] cells { get { return cur.cells; } set { cur.cells = value; } }
+
+        public static void Use(Biome b) { cur = sets[(int)b]; }
 
         public static int Count { get { return items.Count; } }
 
@@ -95,10 +108,11 @@ namespace MedievalKnight
             return best < float.MaxValue;
         }
 
+        // clears the set in use (WorldBuilder calls it with the meadow set selected, as before)
         public static void Clear()
         {
-            items.Clear();
-            cells = new List<int>[N, N];
+            cur.items.Clear();
+            cur.cells = new List<int>[N, N];
         }
 
         static int Ci(float v) { return Mathf.Clamp(Mathf.FloorToInt((v - Origin) / Cell), 0, N - 1); }

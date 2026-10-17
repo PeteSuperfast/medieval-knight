@@ -20,9 +20,9 @@ namespace MedievalKnight
         public const float CoopHpPerPlayer = 0.6f, ReviveDelaySingle = 3f, ReviveDelayCoop = 5f, LevelUpProtect = 6f;
         public const float MaxHitDamage = 20000f;  // host-side sanity limit for one reported hit
         public static float TestDownSeconds = 60f; // the loop online: seconds a fallen knight can still be revived (the test shortens it)
-        static readonly Vector3 MinotaurHome = MapLayout.Lair;
-        static readonly Vector3 DummyPos = MapLayout.DummyPos;
-        static readonly Vector3 KnightSpawn = MapLayout.TownSpawn;
+        static Vector3 MinotaurHome { get { return MapLayout.Lair; } }
+        static Vector3 DummyPos { get { return MapLayout.DummyPos; } }
+        static Vector3 KnightSpawn { get { return MapLayout.TownSpawn; } }
         static readonly Vector3 MenuFocus = MapLayout.MenuFocus;
 
         public Camera cam;
