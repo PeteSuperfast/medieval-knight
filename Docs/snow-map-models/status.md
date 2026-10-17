@@ -44,3 +44,8 @@
 - SnowLayout.cs (โหลดข้อมูล/GroundY/BlockAt/โซน), SnowBuilder.cs (1180 ชิ้น -> 892 chunk mesh + 36 renderer ตรง + กังหันหมุน, 165,383 tri, สร้าง 31 ms), Game.SetBiome (สลับ root ทุ่ง/หิมะ + MapLayout.Current + Obstacles.Use), MapLayout ตอบตาม biome (TownSpawn/Lair/Dummy/InTown/ZoneAt/SpawnTier/Walkable/Signs), Ground.Y/Top, Knight y = Ground.Y, กล้องตามความสูง (+กันจมเนิน), AimPoint ใช้ระนาบที่เท้า, Fx วงแหวน/สตรีค/ฝุ่นยกตามพื้น, Kit โหลด SnowCatalog
 - เข้าด้วย -biome snow เท่านั้น (สุ่มยังปิด); ภาพในเกม Docs/snow-map-models/ingame/game/
 - ผล: selftest เต็ม (ทุ่ง) 452/0 (441 เดิม + 11 เคสใหม่), -snowonly 20/0
+
+## developer ขั้น 5 เสร็จ (การชน)
+- SnowBuilder.MakeObstacles: 2,342 obstacle (643 วงกลม + 42 กล่องจากชิ้นวาง + 1,657 กล่องจากตารางห้ามเดิน) hash 410339541 เท่ากันเมื่อสร้างซ้ำ (งบ <= 8,000); ชุดแยกต่อ biome (Obstacles.Use), เมธอดทดสอบ CountOf/HashOf/CentersIn/Overlaps
+- เทส -snowonly (32/0): waypoint 0-14 เดินถึงจากจุดเกิด (BFS 94,454 ช่อง), รัง/จุดเกิด/หุ่นฟางเป็นพื้นโล่ง, สะพาน S1 เดินได้ตลอด (ก้าวความสูงสูงสุด 0.08 ม.), เดินชนแม่น้ำ/ภูเขา/กำแพงปราสาท/ขอบแมพ + เดินทแยง 8 จุดไม่หลุดเข้าช่องห้ามเดิน
+- selftest -looponly 222/0

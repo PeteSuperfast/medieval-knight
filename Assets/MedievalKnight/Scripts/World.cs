@@ -155,10 +155,10 @@ namespace MedievalKnight
         }
 
         // How many obstacles of that biome have their centre inside the rectangle (the central lawn rule).
-        public static int CentersIn(Biome b, float minX, float maxX, float minZ, float maxZ)
+        public static int CentersIn(Biome b, float minX, float maxX, float minZ, float maxZ, bool circlesOnly = false)
         {
             int n = 0;
-            foreach (Obs o in sets[(int)b].items) if (o.x >= minX && o.x <= maxX && o.z >= minZ && o.z <= maxZ) n++;
+            foreach (Obs o in sets[(int)b].items) if (o.x >= minX && o.x <= maxX && o.z >= minZ && o.z <= maxZ && !(circlesOnly && o.box)) n++;
             return n;
         }
 

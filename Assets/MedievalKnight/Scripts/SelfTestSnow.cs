@@ -99,7 +99,130 @@ namespace MedievalKnight
                 yield return SnowLook(names[i], look[i, 0], look[i, 1]);
                 Check("snow: " + names[i] + " y follows the ground (" + F(k.transform.position.y) + " vs " + F(Ground.Y(look[i, 0], look[i, 1])) + ")", Mathf.Abs(k.transform.position.y - Ground.Y(k.transform.position.x, k.transform.position.z)) < 0.2f);
             }
+            yield return SnowCollisionTests();
             Args.biome = -1;
+        }
+
+        // ---- step 5: collision data, reachability, bridge, walking into walls
+        bool SnowFree(float x, float z)
+        {
+            return SnowLayout.Walkable(x, z) && !Obstacles.Overlaps(new Vector3(x, 0f, z), 0.4f, Obstacles.Players);
+        }
+
+        int walkBad;
+        float walkMinFree;
+
+        IEnumerator SnowWalk(Vector3 from, Vector2 dir, float seconds)
+        {
+            k.transform.position = new Vector3(from.x, Ground.Y(from.x, from.z), from.z);
+            k.moveOverride = dir;
+            walkBad = 0;
+            float t0 = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup - t0 < seconds)
+            {
+                yield return null;
+                Vector3 p = k.transform.position;
+                if (SnowLayout.BlockAt(p.x, p.z) != 0 && SnowLayout.BlockAt(p.x + 0.0f, p.z) != 0) walkBad++;
+            }
+            k.moveOverride = null;
+        }
+
+        IEnumerator SnowCollisionTests()
+        {
+            Log("---- snow map: collision, reachability, bridge");
+            int c1 = Obstacles.CountOf(Biome.Snow), h1 = Obstacles.HashOf(Biome.Snow);
+            SnowBuilder.MakeObstacles();
+            int c2 = Obstacles.CountOf(Biome.Snow), h2 = Obstacles.HashOf(Biome.Snow);
+            Log("SNOW obstacles=" + c1 + " hash=" + h1);
+            Check("snow: " + c1 + " obstacles (hash " + h1 + "), the same count and hash when they are made again, within the 8,000 budget", c1 == c2 && h1 == h2 && c1 > 1000 && c1 <= 8000);
+            Check("snow: the central lawn (|x| < 28, z -42..32) holds no tree / rock / pillar circle (the cliffs of the baked table are terrain, not scenery)", Obstacles.CentersIn(Biome.Snow, -28f, 28f, -42f, 32f, true) == 0);
+            Check("snow: the meadow's obstacles were not touched (count " + Obstacles.CountOf(Biome.Meadow) + ")", Obstacles.CountOf(Biome.Meadow) > 1000);
+
+            // reachability on the 1 m grid (8 neighbours, no corner cutting), obstacles of the players layer included
+            SnowMeta meta = SnowLayout.Meta;
+            int N = SnowLayout.N;
+            var seen = new bool[N * N];
+            var open = new Queue<int>();
+            int sx = Mathf.RoundToInt(meta.spawn[0] + 190f), sz = Mathf.RoundToInt(meta.spawn[1] + 190f);
+            seen[sz * N + sx] = true; open.Enqueue(sz * N + sx);
+            int reached = 0;
+            while (open.Count > 0)
+            {
+                int c = open.Dequeue(); reached++;
+                int ci = c % N, cj = c / N;
+                for (int dj = -1; dj <= 1; dj++)
+                    for (int di = -1; di <= 1; di++)
+                    {
+                        if (di == 0 && dj == 0) continue;
+                        int ni = ci + di, nj = cj + dj;
+                        if (ni < 0 || nj < 0 || ni >= N || nj >= N || seen[nj * N + ni]) continue;
+                        if (!SnowFree(ni - 190f, nj - 190f)) continue;
+                        if (di != 0 && dj != 0 && (!SnowFree(ci + di - 190f, cj - 190f) || !SnowFree(ci - 190f, cj + dj - 190f))) continue;
+                        seen[nj * N + ni] = true; open.Enqueue(nj * N + ni);
+                    }
+            }
+            int okWp = 0; string bad = "";
+            for (int w = 0; w < 15; w++)
+            {
+                float wx = meta.waypoints[w * 2], wz = meta.waypoints[w * 2 + 1];
+                bool found = false;
+                for (int dj = -3; dj <= 3 && !found; dj++)
+                    for (int di = -3; di <= 3 && !found; di++)
+                    {
+                        int ii = Mathf.RoundToInt(wx + 190f) + di, jj = Mathf.RoundToInt(wz + 190f) + dj;
+                        if (ii >= 0 && jj >= 0 && ii < N && jj < N && seen[jj * N + ii]) found = true;
+                    }
+                if (found) okWp++; else bad += " " + w;
+            }
+            Check("snow: waypoints 0-14 of the main road are reachable from the spawn by walking (" + okWp + " of 15" + (bad.Length > 0 ? ", not:" + bad : "") + "), " + reached + " cells reachable", okWp == 15);
+            Vector3 lr = MapLayout.Lair;
+            bool lairOk = seen[Mathf.RoundToInt(lr.z + 190f) * N + Mathf.RoundToInt(lr.x + 190f)];
+            Check("snow: the lair (" + V(lr) + ", radius " + F(MapLayout.LairRadius) + ") is reachable from the spawn", lairOk && MapLayout.LairRadius >= 18f);
+            Check("snow: the spawn and the dummy spot are open ground", SnowFree(meta.spawn[0], meta.spawn[1]) && SnowFree(meta.dummy[0], meta.dummy[1]));
+
+            // bridge S1: the deck is one walkable ribbon with a smooth height
+            Vector3 b0 = new Vector3(95f - 190f, 0f, 88f - 190f);
+            Vector2 axis = new Vector2(Mathf.Cos(48.43f * Mathf.Deg2Rad), Mathf.Sin(48.43f * Mathf.Deg2Rad));
+            float prev = Ground.Y(b0.x - axis.x * 8f, b0.z - axis.y * 8f), maxStep = 0f, minY = 999f, maxY = -999f;
+            bool deckFree = true;
+            for (float t = -8f; t <= 8f; t += 0.25f)
+            {
+                float x = b0.x + axis.x * t, z = b0.z + axis.y * t, y = Ground.Y(x, z);
+                maxStep = Mathf.Max(maxStep, Mathf.Abs(y - prev)); prev = y;
+                minY = Mathf.Min(minY, y); maxY = Mathf.Max(maxY, y);
+                if (!SnowFree(x, z)) deckFree = false;
+            }
+            Check("snow: bridge S1 is walkable end to end and its height changes smoothly (largest step " + F(maxStep) + " m per 0.25 m, " + F(minY) + ".." + F(maxY) + ")", deckFree && maxStep <= 0.5f);
+
+            // walking into things: the river, a cliff, the mountain wall, the map edge, the castle - never inside a blocked cell
+            int totalBad = 0;
+            string[] what = { "river", "north mountains", "castle walls", "east edge" };
+            Vector3[] starts = { new Vector3(-115f, 0f, -118f), new Vector3(-60f, 0f, 110f), new Vector3(130f, 0f, 120f), new Vector3(170f, 0f, -20f) };
+            Vector2[] dirs = { new Vector2(1f, 0.7f), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f) };
+            for (int i = 0; i < what.Length; i++)
+            {
+                yield return SnowWalk(starts[i], dirs[i], 3.2f);
+                totalBad += walkBad;
+                Vector3 e = k.transform.position;
+                Log("snow walk into " + what[i] + ": ends at " + V(e) + " blocked frames " + walkBad);
+                Check("snow: walking into the " + what[i] + " never enters a blocked cell (" + walkBad + " frames inside)", walkBad == 0);
+            }
+            // from the road's waypoints in all four diagonals: whatever is there (cliffs, trees, rocks, water) the knight is never inside it
+            int tries = 0, wbad = 0;
+            Vector2[] diag = { new Vector2(1f, 1f), new Vector2(-1f, 1f), new Vector2(1f, -1f), new Vector2(-1f, -1f) };
+            int[] wps = { 1, 4, 6, 8, 10, 11, 12, 13 };
+            for (int i = 0; i < wps.Length; i++)
+            {
+                float wx = meta.waypoints[wps[i] * 2], wz = meta.waypoints[wps[i] * 2 + 1];
+                if (!SnowFree(wx, wz)) continue;
+                yield return SnowWalk(new Vector3(wx, 0f, wz), diag[i % 4], 2.4f);
+                tries++; wbad += walkBad;
+                Vector3 p = k.transform.position;
+                if (Obstacles.Overlaps(p, 0.38f, Obstacles.Players)) wbad++;
+            }
+            Check("snow: walking diagonally from " + tries + " points of the road never ends inside a blocked cell or obstacle (" + wbad + " bad frames)", tries >= 6 && wbad == 0);
+            k.moveOverride = null;
+            yield return null;
         }
 #endif
     }
