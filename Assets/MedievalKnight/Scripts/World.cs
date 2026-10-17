@@ -35,6 +35,8 @@ namespace MedievalKnight
         public static bool WalkableIn(Biome b, float x, float z) { return b == Biome.Snow ? SnowLayout.Walkable(x, z) : MeadowWalkable(x, z); }
 
         public struct SignInfo { public Vector3 pos; public string text; }
+        public static void AddSnowSign(Vector3 pos, string text) { snowSigns.Add(new SignInfo { pos = pos, text = text }); }
+        public static void ClearSnowSigns() { snowSigns.Clear(); }
         static readonly List<SignInfo> meadowSigns = new List<SignInfo>(), snowSigns = new List<SignInfo>();
         public static List<SignInfo> Signs { get { return Current == Biome.Snow ? snowSigns : meadowSigns; } }
 

@@ -240,3 +240,7 @@ material = สีล้วนตามจานสี (ไม่มี texture/U
 | snow_water_waterfall3_v01.fbx | 90 | 8.6 x 13.5 x 20.8 | peatengkrub 2026-10-16 | `Docs/snow-map-models/preview_top.png` |
 
 หมายเหตุ: ภาพรวมแมพ `Docs/snow-map-models/preview.png`; ขนาดของไฟล์ world mesh (น้ำ/ทาง/ลานหมู่บ้าน/หิมะทับสัน) = ขอบเขตทั้งแมพ ไม่ใช่ขนาดชิ้นเดียว; `snow_deco_chains_v01`/`snow_scene_mist_v01`/`snow_scene_cloud_v01` = รวมหลายก้อนเป็นไฟล์เดียว (13/5/8 ก้อน) ตำแหน่งในพิกัดโลก; `Tree_Round_NNN` ใน layout ใช้ mesh เดียวกับ `snow_tree_round_v01`; ภูมิประเทศหลักไม่มีไฟล์ `Terrain_Ground` เดี่ยว (แบ่งเป็น chunk 16 ไฟล์ r0c0..r3c3)
+
+## Snow map in game (นำเข้าเกมแล้ว 2026-10-17)
+
+`Assets/Models/Snow/*.fbx` ทั้ง 123 ไฟล์ถูกนำเข้าเป็น prefab (`Assets/Prefabs/Snow`, material `Assets/Materials/Snow`, `Resources/Kit/SnowCatalog.prefab`) ด้วย Editor `SnowImport` (ตั้ง ModelImporter: Read/Write, ไม่มี animation; ไม่แก้ไฟล์ .fbx). หน้าที่หันเข้าด้านในของหลังคา/ผ้าใบ/ผิวน้ำแข็งทะเลสาบแก้ด้วย mesh สองหน้าใน `Assets/Prefabs/Snow/Meshes`. การวางใช้ `Docs/snow-map-models/layout.json` ผ่าน `SnowBake` -> `Resources/Snow`. Tree_Round 12 ต้นยังไม่มีตำแหน่งใน layout.json. รายละเอียด: `Docs/snow-map-models/ingame-report.md`

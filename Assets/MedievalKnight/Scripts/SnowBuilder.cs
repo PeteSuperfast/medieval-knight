@@ -19,6 +19,7 @@ namespace MedievalKnight
         public static void Build(Transform parent)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            long memBefore = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong();
             SnowLayout.Load();
             SnowLayoutDto lay = SnowLayout.Layout;
             var b = new StaticBatcher();
@@ -72,8 +73,13 @@ namespace MedievalKnight
             }
             int chunks = b.Build(parent);
             MakeObstacles();
+            MapLayout.ClearSnowSigns();
+            SnowMeta meta = SnowLayout.Meta;
+            for (int i = 0; i < meta.signText.Length; i++)
+                MapLayout.AddSnowSign(new Vector3(meta.signs[i * 2], Ground.Y(meta.signs[i * 2], meta.signs[i * 2 + 1]) + 0f, meta.signs[i * 2 + 1]), meta.signText[i]);
             LastStats = "SNOWWORLD built in " + sw.ElapsedMilliseconds + " ms: " + n + " pieces, " + batched + " batched parts into " + chunks + " chunk meshes, "
-                + direct + " direct renderers, " + spinners + " spinner(s), " + tris + " tris, " + missing + " prefabs missing";
+                + direct + " direct renderers, " + spinners + " spinner(s), " + tris + " tris, " + missing + " prefabs missing, +"
+                + ((UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() - memBefore) / (1024 * 1024)) + " MB";
             Debug.Log(LastStats);
         }
 

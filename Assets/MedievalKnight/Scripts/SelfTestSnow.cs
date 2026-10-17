@@ -2,6 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace MedievalKnight
 {
@@ -93,7 +96,7 @@ namespace MedievalKnight
             yield return W(0.4f);
             Shot("snow_spawn");
             yield return W(0.4f);
-            float[,] look = { { -95f - 0f, -102f }, { -55f, -50f }, { -5f, 0f }, { 35f, 45f }, { 135f, 81f }, { 150f, 130f } };
+            float[,] look = { { -95f - 0f, -102f }, { -55f, -50f }, { -5f, 0f }, { 35f, 45f }, { 135f, 81f }, { 140f, 126f } };
             string[] names = { "snow_bridge", "snow_forest", "snow_valley", "snow_cliff", "snow_lake", "snow_castle" };
             for (int i = 0; i < names.Length; i++)
             {
@@ -101,9 +104,36 @@ namespace MedievalKnight
                 Check("snow: " + names[i] + " y follows the ground (" + F(k.transform.position.y) + " vs " + F(Ground.Y(look[i, 0], look[i, 1])) + ")", Mathf.Abs(k.transform.position.y - Ground.Y(k.transform.position.x, k.transform.position.z)) < 0.2f);
             }
             yield return SnowCollisionTests();
+            yield return SnowFrameTests();
             yield return SnowActorTests();
             yield return SnowOldWorldTests();
             Args.biome = -1;
+        }
+
+        // ---- step 7: frame time (vsync off, 1280 x 720) at the village, the pine forest and the castle road
+        IEnumerator SnowFrameTests()
+        {
+            Log("---- snow map: frame time");
+            int vs = QualitySettings.vSyncCount; int tf = Application.targetFrameRate;
+            QualitySettings.vSyncCount = 0; Application.targetFrameRate = -1;
+            SnowMeta meta = SnowLayout.Meta;
+            int[] at = { 0, 5, 12, 14 };
+            string[] names = { "village", "pine forest", "snowfield", "castle road" };
+            float sum = 0f, worst = 0f;
+            for (int i = 0; i < at.Length; i++)
+            {
+                float wx = meta.waypoints[at[i] * 2], wz = meta.waypoints[at[i] * 2 + 1];
+                k.transform.position = new Vector3(wx, Ground.Y(wx, wz), wz);
+                g.SnapCamera();
+                yield return W(0.8f);
+                float t0 = Time.realtimeSinceStartup; int frames = 0;
+                while (Time.realtimeSinceStartup - t0 < 2.5f) { yield return null; frames++; }
+                float ms = (Time.realtimeSinceStartup - t0) / frames * 1000f;
+                Log("snow frame time at the " + names[i] + ": " + ms.ToString("0.00") + " ms (" + frames + " frames)");
+                sum += ms; worst = Mathf.Max(worst, ms);
+            }
+            QualitySettings.vSyncCount = vs; Application.targetFrameRate = tf;
+            Check("snow: the average frame time at 1280 x 720 is " + (sum / at.Length).ToString("0.00") + " ms (worst " + worst.ToString("0.00") + " ms), budget 8 ms", sum / at.Length <= 8f);
         }
 
         // ---- step 6: dummy, boss, slime packs, loot and portal stand on the snow ground
@@ -119,6 +149,30 @@ namespace MedievalKnight
                 && Mathf.Abs(g.minotaur.transform.position.y - Ground.Y(lair.x, lair.z)) < 0.05f);
             Check("snow: the village is a safe zone and the lair is the lair", MapLayout.ZoneAt(MapLayout.TownSpawn.x, MapLayout.TownSpawn.z) == Zone.Town && MapLayout.ZoneAt(lair.x, lair.z) == Zone.Lair
                 && MapLayout.SpawnTier(Zone.Town) == 0f && MapLayout.SpawnTier(MapLayout.ZoneAt(-78f, -75f)) > 0f);
+
+            // the M map shows the snow ground (one picture per biome), banner / signs of the snow map
+            yield return Tap(Key.M);
+            yield return W(0.4f);
+            g.Map.Probe();
+            Texture2D tex = g.Map.MapTexture;
+            Vector3[] mp = { MapLayout.TownSpawn, MapLayout.Lair, new Vector3(120f, 0f, 0f), new Vector3(-100f, 0f, -20f), new Vector3(-30f, 0f, 30f), new Vector3(40f, 0f, 40f) };
+            int mapBad = 0; string mapDesc = "";
+            foreach (Vector3 q in mp)
+            {
+                int px = Mathf.FloorToInt((q.x + 190f) / 380f * tex.width), py = Mathf.FloorToInt((q.z + 190f) / 380f * tex.height);
+                Vector2 wc = MapUi.TexelToWorld(px, py);
+                Color want = MapUi.ZoneColor(MapLayout.ZoneAt(wc.x, wc.y));
+                Color have = tex.GetPixel(px, py);
+                if (Mathf.Abs(want.r - have.r) + Mathf.Abs(want.g - have.g) + Mathf.Abs(want.b - have.b) > 0.02f) mapBad++;
+                mapDesc += MapLayout.ZoneAt(wc.x, wc.y) + " ";
+            }
+            Check("snow: the M map draws the snow zones from the snow table (" + mapDesc + ", " + mapBad + " wrong)", g.Map.Shown && mapBad == 0 && MapLayout.ZoneAt(MapLayout.TownSpawn.x, MapLayout.TownSpawn.z) == Zone.Town
+                && MapUi.ZoneColor(Zone.SnowField) != MapUi.ZoneColor(Zone.Meadow));
+            Shot("snow_map");
+            yield return W(0.4f);
+            yield return Tap(Key.M);
+            yield return W(0.2f);
+            Check("snow: the snow map has " + MapLayout.Signs.Count + " road signs with text", MapLayout.Signs.Count == 4 && MapLayout.Signs[0].text.Length > 5);
 
             // slime packs: out of the village, on open ground, standing on the ground
             g.packsOff = false;
@@ -203,13 +257,26 @@ namespace MedievalKnight
             Check("snow: back at the base the scene is the meadow again (MapLayout " + MapLayout.Current + ")", MapLayout.Current == Biome.Meadow && !run.InWorld);
 
             Args.biome = (int)Biome.Meadow;                                          // asking for a meadow world changes nothing about an old snow world
-            yield return EnterOldWorldUi(w.seed);
+            if (!run.PrepareOpen) { g.SetInventory(true); yield return W(0.2f); }
+            yield return Click(run.ui.OldWorldsRect.position);
+            yield return W(0.3f);
+            string rowText = run.ui.WorldRowText(0);
+            Check("snow: the OLD WORLDS list marks the world as SNOW (" + rowText + ")", rowText.Contains("SNOW") && rowText.Contains(w.Code));
+            yield return Click(run.ui.WorldsEnterRect.position);
+            yield return W(0.15f);
+            if (run.ui.PromptShown) yield return Tap(Key.Enter);
+            float tIn = Time.realtimeSinceStartup;
+            while (!run.InWorld && Time.realtimeSinceStartup - tIn < 4f) yield return null;
+            yield return W(0.8f);
+            k = g.knight;
+            g.packsOff = true;
             yield return W(1.0f);
             Check("snow: entering that old world plays on the snow map (MapLayout " + MapLayout.Current + ")", run.InWorld && MapLayout.Current == Biome.Snow && d0.runBiome == Biome.Snow);
             LootPile lp = Object.FindAnyObjectByType<LootPile>();
             Check("snow: its pile stands where he fell (" + (lp != null ? V(lp.transform.position) : "none") + ") on walkable ground, on the ground",
                 lp != null && Vector3.Distance(new Vector3(lp.transform.position.x, 0f, lp.transform.position.z), new Vector3(fellAt.x, 0f, fellAt.z)) < 3.5f
                 && MapLayout.Walkable(lp.transform.position.x, lp.transform.position.z) && Mathf.Abs(lp.transform.position.y - Ground.Y(lp.transform.position.x, lp.transform.position.z)) < 0.05f);
+            Check("snow: the old snow world's badge says SNOW (" + run.ui.BadgeText.Replace('\n', '/') + ")", run.ui.BadgeText.Contains("SNOW") && run.ui.BadgeText.Contains(w.Code));
             Shot("snow_old_world");
             yield return W(0.4f);
             Args.biome = -1;

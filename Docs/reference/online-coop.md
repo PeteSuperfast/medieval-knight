@@ -10,7 +10,7 @@
 
 ## วิธีเล่น
 - Host: Host Game > port > Start Hosting > บอก IP+port. Client: Join Game > IP+port > Connect (ต่อไม่ได้/เต็ม/เวอร์ชันไม่ตรง = กลับหน้า Join พร้อมข้อความ). Host ปิด = client กลับเมนู
-- **ทุกคนต้องเวอร์ชันเดียวกัน** (`Net.Protocol` = **6**; p6 (knight-rig-slash): `Act.kind` 0..2 = ท่าฟัน (target.x=1 = ต่อจากท่าก่อน), 20 = กลิ้ง, 21 = เริ่มกิน, 22 = ท่าปัดโล่; `Hit.src` 0..2 / 37 / 38 (อื่นๆ ถูกทิ้ง); `NetFlags` 64 = กำลังกิน (บิต 32 เดิม = ชาร์จ ห้ามนำกลับมาใช้); kind 10..13, 30..36 ถูกถอด; สนาม v1: host ให้อาหารบนพื้นแก่ client เมื่อ flag กินค้าง ≥1.7 วิ ผ่าน `PickupTaken` เดิม ไม่มีข้อความใหม่; อดีต p7: `KnightHit` + attackerNetId/flags(1=หนัก), `Hit.src` 37 parry / 38 clash, `EnemyHit` flags 8 หนัก / 16 parry / 32 clash; p6: Act.kind/Hit.src 30..36, NetFlags 32 = ชาร์จ). parry/clash ตัดสินที่เครื่องเจ้าของตัว (client หน่วง `KnightHit` 0.1 วิ) แล้วรายงาน host; แผนที่ M ไม่ส่งข้อความ
+- **ทุกคนต้องเวอร์ชันเดียวกัน** (`Net.Protocol` = **7**; p7 (snow-map-models): `Enter` / `Worlds` (ต่อโลก) / `Team` พกไบต์ biome (0 ทุ่ง / 1 หิมะ) ต่อจาก `left`; host เป็นคนเลือก biome (`-biome` หรือสุ่มตอนโลกใหม่) client ตามค่านี้อย่างเดียว; y ของอัศวินรับได้ -2..110 ม.; p6 (knight-rig-slash): `Act.kind` 0..2 = ท่าฟัน (target.x=1 = ต่อจากท่าก่อน), 20 = กลิ้ง, 21 = เริ่มกิน, 22 = ท่าปัดโล่; `Hit.src` 0..2 / 37 / 38 (อื่นๆ ถูกทิ้ง); `NetFlags` 64 = กำลังกิน (บิต 32 เดิม = ชาร์จ ห้ามนำกลับมาใช้); kind 10..13, 30..36 ถูกถอด; สนาม v1: host ให้อาหารบนพื้นแก่ client เมื่อ flag กินค้าง ≥1.7 วิ ผ่าน `PickupTaken` เดิม ไม่มีข้อความใหม่; อดีต p7: `KnightHit` + attackerNetId/flags(1=หนัก), `Hit.src` 37 parry / 38 clash, `EnemyHit` flags 8 หนัก / 16 parry / 32 clash; p6: Act.kind/Hit.src 30..36, NetFlags 32 = ชาร์จ). parry/clash ตัดสินที่เครื่องเจ้าของตัว (client หน่วง `KnightHit` 0.1 วิ) แล้วรายงาน host; แผนที่ M ไม่ส่งข้อความ
 
 ## สถาปัตยกรรม (host-authoritative)
 - `Net.Mode` Single / Host / Client; `Net.Authority` = ไม่ใช่ Client. Host จำลองโลกทั้งหมด; client จำลองเฉพาะอัศวินตัวเอง; ฉากสร้างเองทุกเครื่องจาก seed 11
@@ -49,3 +49,5 @@
 - `mptest.ps1` (ใส่ `-arena` ให้เอง): ชุด v1 host + 3 client + 2 ตัวที่ถูกปฏิเสธ ~100 วิ. เช็คผันผวนตาม CPU (`smooth on B/H`, `same place on every screen`) ตกแล้วรันซ้ำ; เคส p7 (3c) ต้อง `ParkSlimes` ก่อน (สไลม์จริงตีในหน้าต่าง parry ทำให้นับเพี้ยน)
 - `mptest-loop.ps1` (`MpLoopTest.cs`) ~4.5 นาที: host + A B C + X V (ปฏิเสธ) + D (เข้ากลางรอบ) ครอบคลุมห้อง/READY, mirror, ชนะ, ล้ม-ชุบ, wipe, เก็บคืน, หลุด, host ปิด. hook เวลา: `Game.TestDownSeconds` 60→6, `TeamRun.TestHomeSeconds` 15→3. `MK_EXE` = ชี้เวอร์ชัน exe
 - `-menutest`: `Builds\MedievalKnight.exe -menutest <โฟลเดอร์เต็ม> -port 47821 -bind 127.0.0.1 -screen-fullscreen 0 -logFile <log>` ดูบรรทัด `MENUTEST`
+
+- **แมพหิมะออนไลน์**: ฉากหิมะ/Obstacles สร้างบนทุกเครื่องจากไฟล์ `Resources/Snow` ชุดเดียวกัน (ไม่สุ่ม — hash ของ obstacle เท่ากันทุกเครื่อง, mptest-loop ตรวจ); ผู้เข้ากลางรอบอยู่ฐานทุ่งจนรอบถัดไป; เทส: `mptest-loop.ps1` ส่วน 9b (host `biome 1`)

@@ -148,7 +148,7 @@ namespace MedievalKnight
             int hereSeed = 0, hereLeft = 0;                          // the badge of an old world
             if (State == LoopState.World && !dying) WorldInPlay(out hereSeed, out hereLeft);
             if (hereSeed == 0) ui.SetOldBadge(null, false);
-            else ui.SetOldBadge("OLD WORLD " + OldWorld.CodeOf(hereSeed) + "\nHP x" + OldWorld.HpMul.ToString("0.0") + "  DMG x" + OldWorld.DmgMul.ToString("0.00")
+            else ui.SetOldBadge("OLD WORLD " + OldWorld.CodeOf(hereSeed) + (MapLayout.Current == Biome.Snow ? "  SNOW" : "") + "\nHP x" + OldWorld.HpMul.ToString("0.0") + "  DMG x" + OldWorld.DmgMul.ToString("0.00")
                 + "\nCrumbles in " + hereLeft + (hereLeft == 1 ? " return" : " returns"), hereLeft <= 1);
         }
 
@@ -412,21 +412,22 @@ namespace MedievalKnight
             {
                 BuildPileViews(ow);
                 float far = float.MaxValue;
-                foreach (PileView v in views) far = Mathf.Min(far, Vector3.Distance(MapLayout.TownSpawn, v.pos));
+                foreach (PileView v in views) far = Mathf.Min(far, FlatDist(MapLayout.TownSpawn, v.pos));
                 far = views.Count > 0 ? Mathf.Round(far) : 0f;
-                g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(ow.seed) + "\n" + (team != null ? "Loot lies where the team fell" : "Your loot lies where you fell") + (views.Count > 1 ? " (" + views.Count + " piles)" : "") + ". "
+                g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(ow.seed) + (ow.biome == Biome.Snow ? "  (SNOW)" : "") + "\n" + (team != null ? "Loot lies where the team fell" : "Your loot lies where you fell") + (views.Count > 1 ? " (" + views.Count + " piles)" : "") + ". "
                     + far.ToString("0") + " m away.", LoopUi.OldText, 4f);
                 ui.SetObjective2(ow.ItemCount > 0 ? "Recover your loot" : "");
             }
             else if (team != null && seedHere != 0)
             {
-                g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(seedHere) + "\nStay together. Revive with F.", LoopUi.OldText, 4f);
+                g.hud.Banner("OLD WORLD " + OldWorld.CodeOf(seedHere) + (MapLayout.Current == Biome.Snow ? "  (SNOW)" : "") + "\nStay together. Revive with F.", LoopUi.OldText, 4f);
                 ui.SetObjective2("");
             }
             else
             {
                 ui.SetObjective2("");
-                if (team != null) g.hud.Banner("WORLD\nStay together. Revive with F.", Color.white, 3.5f);
+                if (MapLayout.Current == Biome.Snow) g.hud.Banner("THE SNOWLANDS\n" + (team != null ? "Stay together. Revive with F." : "Follow the road to the ice castle."), new Color(0.75f, 0.9f, 1f), 3.5f);
+                else if (team != null) g.hud.Banner("WORLD\nStay together. Revive with F.", Color.white, 3.5f);
             }
             Sfx.I.Play(Snd.Ready);
             if (team != null && Net.IsHost) team.BroadcastPiles(255);          // the others build the same piles

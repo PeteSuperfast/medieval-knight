@@ -23,3 +23,12 @@ X ไปตะวันออก, Z ไปเหนือ (ด้านบนจ
 - ตอนฟื้นที่เมือง สไลม์ใน 60 ม. รอบจุดฟื้นถูกลบ (`PushEnemiesFrom`)
 
 - **loop (phase 1)**: ฐาน = ลานกลาง `MapLayout.BasePoint` (0,0,0) ไม่มี actor / ของกีดขวาง; เข้าโลกแล้วเกิดที่ `TownSpawn`, แพ็คสไลม์เกิดตามเดิม, Minotaur ไม่ respawn (portal เกิดแทน) ดู `loop.md`
+
+## แมพหิมะ (biome Snow — งาน snow-map-models)
+
+- โลกใหม่ของ loop เลือก biome ตอนเข้าโลก (ผู้ตัดสิน = single player / host): `-biome meadow|snow` บังคับ; selftest/mptest ที่ไม่ใส่ = ทุ่งเสมอ; ปกติ `RunLoop.RandomBiomes` = สุ่ม 50 : 50. โลกเก่าใช้ biome ที่เก็บไว้ (`OldWorld.biome`); ฐาน (ลานกลาง) เป็นฉากทุ่งเสมอ
+- พิกัด: Blender (E,N,Z) -> เกม (x = E-190, y = Z, z = N-190); จุดเกิดหมู่บ้าน SW game (-165,-165); รังบอส = ลานทะเลสาบน้ำแข็ง game (135,81) y 50.4 (วงโล่ง ~21 ม.); ปราสาทเป็นฉากหลัง (ซี่ประตูปิด เข้าไม่ได้)
+- ข้อมูล bake (`Resources/Snow/`, สร้างด้วย Editor `SnowBake` ซ้ำได้ ผลเหมือนเดิม): `snow_layout.json` (ชิ้นวาง + obstacle), `snow_height.bytes` (381x381 ushort cm +20 ม.), `snow_block.bytes` (0 เดินได้ / 1 ชัน-ขอบ / 2 น้ำ / 3 ภูเขา / 4 ปราสาท / 5 ไม่มีพื้น), `snow_meta.json`. รายงานตรวจ `Docs/snow-map-models/bake_report.txt`
+- โซน (`Zone.Snow*`, `SpawnTier`): A ทุ่ง 1.0, B ป่าสน 1.5, C ทางขึ้นเขา / D1 หิมะต่ำ / D2 ลานทะเลสาบ / D3 ปราสาท 2.0; หมู่บ้าน r 30 ม. = Town (ปลอดภัย); น้ำ = Lake, ผา/ภูเขา/กำแพงปราสาท = Mountain (tier 0, `Walkable` false)
+- collision: วงกลม/กล่องของชิ้นวาง (ต้นไม้ = Players เท่านั้น เหมือนทุ่ง) + กล่องจากตารางห้ามเดิน (2,342 รายการ); ลานกลางไม่มีวงกลม/ชิ้นวางเลย (ตัดตอน bake). ตัวละคร/ศัตรู/ของ/portal ยืนบน `Ground.Y`; กล้องตามความสูงและไม่จมเนิน
+- ภาพ: `Docs/snow-map-models/ingame-report.md`

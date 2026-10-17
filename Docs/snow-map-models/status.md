@@ -54,3 +54,9 @@
 - y ตามพื้น: Slime/Enemy(ClampToArena,Puppet,ReadNet)/Minotaur/Pickup/LootPile/Portal + วงเตือนพื้น (Ground.Top ยกตามความชัน); ระยะ 3D ที่ผูก y ถูกทำเป็นแนวราบ (Hud bossFar, ClientHit); Loadout.Sanitize ย้ายกองหิมะที่อยู่ในกำแพง -> หมู่บ้าน
 - เทส -snowonly 45/0: หุ่นฟาง/Minotaur ยืนบนพื้น (รัง (135,81) บนทะเลสาบน้ำแข็ง), สไลม์เกิดบนที่เดินได้และเท้าติดพื้นขณะกระโดด, portal+ของดรอปบนพื้น, ตายในหิมะ -> OldWorld.biome=Snow -> เซฟ/โหลด -> เข้าโลกเก่า กองอยู่ตำแหน่งเดิม
 - selftest เต็ม 452/0, mptest 80/0
+
+## developer ขั้น 7 เสร็จ (UI/แผนที่/ป้าย/งบ/ภาพ)
+- MapUi พื้นตาม biome (texture แยก, สีโซนหิมะตาม style.md), แถว OLD WORLDS + ป้ายมุม + banner ใส่ SNOW/THE SNOWLANDS, ป้ายทาง 4 ป้ายพร้อมข้อความ (Game.UpdateSigns), MpLoopTest ส่วน 9b (host `biome 1`: ทุกเครื่อง biome=Snow, hash obstacle เท่ากัน, จุดเกิด/ความสูง, wipe -> โลกเก่า bm=1 ส่งผ่าน Worlds, กลับฐาน = ทุ่ง)
+- งบ (ingame-report.md): 165,383 tri, 928 renderer, สร้าง 26-31 ms, +19 MB, เฟรม ~0.5 ms; ภาพ 6 มุม + แผนที่/สไลม์/portal/โลกเก่า ใน Docs/snow-map-models/ingame/game/
+- ผล: -snowonly 50/0, -looponly 222/0, mptest-loop H94/A5/B5/C2/X1/V1/D4 FAIL 0
+- ภาพในเกมรอพีทอนุมัติ (ขั้น 7 ของ pipeline)

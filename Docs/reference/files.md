@@ -5,7 +5,12 @@
 | ที่อยู่ (สคริปต์อยู่ใต้ `Assets/MedievalKnight/Scripts/`) | หน้าที่ |
 | --- | --- |
 | `Game.cs` | จุดเริ่มเกม (`Boot`), กล้อง top-down, แสง, สร้างฉาก (`WorldBuilder`), แพ็คสไลม์ (`UpdatePacks`), EXP + Soul (`OnEnemyKilled`), เลเวลอัป 2 ขั้น (`LevelStep`), ดรอป (`RollDrop`), เก็บของ (`UpdatePickups`), Tab (`SetInventory`), ตาย / ฟื้น, shake, hit-stop, ปุ่ม F1 / F5 / H / Tab / M / Esc. **Loop**: `StartSession(loop)`, `run`, `Loop` / **`Coop`**, `OnLoopDeath`; phase 2: `worldHpMul` / `worldDmgMul` / `worldPackMul`; **phase 4**: `WantsSnapshot` / `SendsState` / `PidFree` / `WelcomeList` (ที่ Net ถาม), join/left ของห้อง, เก็บของของเพื่อน, กล้อง spectate, `TestDownSeconds` |
-| `World.cs` | `MapLayout` (โซน, จุดเกิด / รัง / ประตู / `BasePoint`, `Walkable`, `SpawnTier`), `Obstacles` (collision บน grid 8 ม.: `Push`), `StaticBatcher`, `WorldBuilder` (ฉากทั้งหมด — `System.Random(11)` ล้วน) |
+| `World.cs` | `MapLayout` (โซน, จุดเกิด / รัง / ประตู / `BasePoint`, `Walkable`, `SpawnTier` — **ตอบตาม `MapLayout.Current` (biome)**; `TownSpawnOf` / `WalkableIn` สำหรับ biome อื่น), `Obstacles` (collision บน grid 8 ม.: `Push`; **ชุดต่อ biome** `Use(biome)`), `StaticBatcher`, `WorldBuilder` (ฉากทุ่งทั้งหมด — `System.Random(11)` ล้วน) |
+| `Biome.cs` | `enum Biome { Meadow, Snow }`, `Biomes.FromSeed / Roll / Valid / Label` |
+| `Ground.cs` | `Ground.Y(x,z)` (ทุ่ง = 0; หิมะ = ตารางความสูง bilinear), `Top(x,z,r)` (จุดสูงสุดในรัศมี สำหรับวงเตือน/ริง), `Snap` — ใช้กับภาพเท่านั้น (ตัวละคร กล้อง Fx) การสู้/ระยะ/ชนยังเป็น 2D |
+| `SnowLayout.cs` | ข้อมูลแมพหิมะที่ bake ไว้ (`Resources/Snow/*`): ตารางความสูง/ห้ามเดิน, จุดเกิด/รัง/หุ่นฟาง/หมู่บ้านปลอดภัย, โซน A-D3, ป้าย; DTO `SnowLayoutDto` / `SnowMeta` |
+| `SnowBuilder.cs` | สร้างฉากหิมะ (ชิ้นวาง ~1,180 ชิ้น -> `StaticBatcher`, ไฟล์พื้น/น้ำ/ทางเป็น renderer ตรง, กังหันหมุน) + `Obstacles` ของ biome หิมะ; เรียกจาก `Game.SetBiome` ครั้งแรกตอนจอดำ |
+| `SelfTestSnow.cs` | เคสแมพหิมะ (`-snowonly`; ข้อมูล/เซฟ/กฎอยู่ใน `-looponly` ด้วย) |
 | `Knight.cs` | ผู้เล่น: เดิน หัน วิ่ง โล่ HP / Armor / Stamina; **ท่าฟัน 3 ท่า** (`Click` > `BeginSwing` > `SwingRoutine` ขับด้วย `ActClock`, `HitArea` ทั้งพัดและแถบ `capWidth`, คิวคลิก `queuedClick`, `DebugAttack`); **กลิ้ง** (`TryRoll` / `RollRoutine`, `Rolling`, Act 20); **ปัดโล่** (`ParryRoutine`, `ParryLocked`, `ParryMotionCount`, Act 22) และ stamina ของโล่ (`BlockStaminaCost`); **กินอาหาร** (`TryBeginEat` / `UpdateEating` / `FinishEat`, `Eating`, `EatProgress`, flag `NetEating` 64, Act 21); `progress` / `inventory` / `souls`, ตัวเลขต่อสู้จากดาบอย่างเดียว (`DamageMult()` / `CritChance()` / `CritMult()` / `SwingSpeed` / `Reach(SwingDef)`), `RollDamage(base, out crit)`, `Equip`, `SetWeapon` (loop), `SpendPoint` (5 สเตตัส), `Heal`, `ResetProgress` (ตาย) / `ResetAll` (F5) / `ResetForRun` (loop), `CancelAction`; parry (`ParryOpen`) / clash (`ClashOpen`) ใน `TakeDamage(..., by, heavy)`; **phase 4**: `Down` / `Fallen` / `DownLeft`, `Revive()`, `RevTarget`, `NetFallen`, DownRoutine แบบทีม |
 | `KnightAnim.cs` | **ข้อมูลเวลาของท่าทั้งหมด**: `SwingDef[3]` (`KnightAnim.Swings`), `Roll`, `Parry`, `Eat` (ค่าคงที่ในโค้ด), `PoseKey`/`ShieldKey` (ท่าของ CodedBody), `ActClock` (phase/t จากเวลา + ฟังก์ชันล้วน `Locate`/`HitWindow`/`Pose`) — เพิ่มท่าใหม่ที่นี่ |
 | `KnightBody.cs` | ตัวแสดงผลอัศวิน: `KnightBody` (abstract), `CodedBody` (โมเดลโค้ดเดิม: ท่าเดิน ยืน โล่ ท่าฟัน/กลิ้ง/ปัด/กิน), `KnightGear.BuildShield`; `Knight.BodyKind` = "coded" (ตัว "file" มาพร้อม .fbx ขั้น 9) |
@@ -29,14 +34,14 @@
 | `Hud.cs` | UI (uGUI `Text`): แผงซ้ายบน (HP / Armor / Stamina / EXP / Soul), แถบบอส, ลูกศรชี้รัง/portal (`SetArrowTarget`), การ์ดสเตตัส 5 ใบตอนเลเวลอัป (`ShowStatChoice`, `LevelUpInput`), Tab (v1; กล่อง STATS 5 แถว), แถบกินอาหาร + "Hold F: Eat" (`UpdateEatBar`), YOU DIED, `Notice`, `Banner`, ปุ่มควบคุม (`SetLoopTexts`) |
 | `Prims.cs` | mesh low-poly ในโค้ด + material (`Lit` / `Glow`), `Tint` |
 | `InputX.cs` | ตัวกลางรับปุ่ม / เมาส์; ปุ่มใหม่ต้องเพิ่มใน `Map()` |
-| `Net.cs` | Online: `Conn` (TCP + thread), `NetW` / `NetR`, `enum Msg`, host / join / handshake, snapshot (ต่อ conn), `Protocol` 6 |
+| `Net.cs` | Online: `Conn` (TCP + thread), `NetW` / `NetR`, `enum Msg`, host / join / handshake, snapshot (ต่อ conn), `Protocol` 7 |
 | `TeamRun.cs` | **phase 4**: ห้อง (`roster`, `leavers`), READY, mirror ของ carry, Enter, ล้ม/ชุบ/wipe, portal ทีม, Take / Piles / Worlds |
 | `TeamNet.cs` | **phase 4**: เข้ารหัส/ถอดรหัสข้อความ loop (`Pack` `Drop` `Take` `Revive` `Reached` `Team` `Worlds` `Enter` `Piles` `TakeAck` `Portal` `HomeIn` `RunEnd`) |
 | `MapUi.cs` | **phase 7**: แผนที่ M (canvas ของตัวเอง; texture 190x190 จาก `MapLayout.ZoneAt`; มาร์กเกอร์ ตัวเอง/เพื่อน/portal/กอง `RunLoop.PileMarks`/รัง; ไม่แสดงศัตรู; ไม่หยุดเกม) |
 | `TeamUi.cs` | **phase 4**: รายชื่อห้อง R1/T1, รอรอบ R4, ล้ม K1, ดู S1, นับกลับ X1, ป้าย DOWN เหนือหัว |
 | `NetInterp.cs` | บัฟเฟอร์ interpolate ตำแหน่ง/มุมของ puppet |
 | `Menu.cs` | เมนู Single / Host / Join / Connecting (ทั้งสาม → loop; `-arena` Host/Join = v1) |
-| `Args.cs` | สวิตช์ command line (`-loop`, `-save`, `-arena`) |
+| `Args.cs` | สวิตช์ command line (`-loop`, `-save`, `-arena`, `-biome meadow|snow`) |
 | `MpTest.cs` | ทดสอบออนไลน์ v1 (`-mptest -arena`) + เมนู (`-menutest`); `mptest.ps1` เป็นตัวเปิด |
 | `MpLoopTest.cs` | ทดสอบ loop ออนไลน์หลายโปรเซส (`-mptest` ไม่มี `-arena`); `mptest-loop.ps1` เป็นตัวเปิด |
 | `SelfTest.cs` | ทดสอบอัตโนมัติ `-selftest <โฟลเดอร์>` (v1 ทั้งหมด แล้วเคส loop ท้ายไฟล์; `-looponly` = เฉพาะ loop) เขียน `SELFTEST PASS/FAIL` แล้วปิดเอง |

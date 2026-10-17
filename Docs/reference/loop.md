@@ -57,3 +57,7 @@
 ## ข้อควรระวัง
 - ช่องคลัง `Loadout.StashCaps` / `CarryCaps`; ฐาน = ลานกลาง ห้ามวางของกีดขวาง
 - ทุกจุดใน `Game` / `Knight` / `Hud` ที่ใช้ `Loop` ต้องคิดถึง `Coop` (ห้ามหยุดเวลาออนไลน์, ห้ามถือว่ามีผู้เล่นคนเดียว)
+
+## biome ของโลก (snow-map-models)
+- `OldWorld.biome` (เก็บตอนสร้างโลกเก่า ไม่เปลี่ยน), `Loadout.runBiome` (รอบที่เปิดอยู่; `BeginRun(seed, coop, biome)` — โลกเก่าใช้ biome ของมันเอง). เซฟ: `ow[].bm` และราก `rb` (ไม่มี = ทุ่ง; ค่าที่ไม่รู้จัก = ทุ่ง; Version ยัง 1). `Sanitize` ย้ายกองหิมะที่อยู่ในกำแพง -> หมู่บ้าน
+- `RunLoop.StartWorld` เรียก `Game.SetBiome(runBiome)` ตอนจอดำ; ทุกที่ที่กลับฐานเรียก `SetBiome(Meadow)` ก่อน `ResetForRun(BasePoint)`. แถว OLD WORLDS / ป้ายมุมขวา / banner ใส่ `SNOW`; แผนที่ M วาดพื้นตาม biome (texture แยกต่อ biome)

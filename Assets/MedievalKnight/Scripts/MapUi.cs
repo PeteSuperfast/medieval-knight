@@ -20,7 +20,9 @@ namespace MedievalKnight
         Game g;
         Font font;
         RectTransform panel, mapRect;
-        Texture2D mapTex;
+        Texture2D mapTex;                            // the ground of the biome showing now
+        readonly Texture2D[] texByBiome = new Texture2D[2];   // one picture per biome, made the first time that biome's map opens
+        RawImage groundImage;
         Image you;
         Image portal, lair, town;
         Text lairText, soundText;
@@ -40,7 +42,31 @@ namespace MedievalKnight
         public bool PortalMarker { get { return built && portal.gameObject.activeSelf; } }
         public bool YouMarker { get { return built && you.gameObject.activeSelf; } }
         public int EnemyMarkers { get { return 0; } }         // there is no such marker (decisions 6)
-        public Texture2D MapTexture { get { Build(); return mapTex; } }
+        public Texture2D MapTexture { get { Build(); UseGroundOfCurrentBiome(); return mapTex; } }
+
+        // The ground picture follows MapLayout.Current (the table behind ZoneAt is fixed per biome, so each picture is made once).
+        void UseGroundOfCurrentBiome()
+        {
+            int b = (int)MapLayout.Current;
+            if (texByBiome[b] == null)
+            {
+                var t = new Texture2D(TexSize, TexSize, TextureFormat.RGBA32, false);
+                t.filterMode = FilterMode.Point;
+                t.wrapMode = TextureWrapMode.Clamp;
+                var cols = new Color[TexSize * TexSize];
+                for (int y = 0; y < TexSize; y++)
+                    for (int x = 0; x < TexSize; x++)
+                    {
+                        Vector2 w = TexelToWorld(x, y);
+                        cols[y * TexSize + x] = ZoneColor(MapLayout.ZoneAt(w.x, w.y));
+                    }
+                t.SetPixels(cols);
+                t.Apply();
+                texByBiome[b] = t;
+            }
+            mapTex = texByBiome[b];
+            if (groundImage != null && groundImage.texture != mapTex) groundImage.texture = mapTex;
+        }
 
         static int CountActive(Image[] a)
         {
@@ -72,6 +98,13 @@ namespace MedievalKnight
                 case Zone.Lake: return new Color32(0x15, 0x94, 0xBB, 255);
                 case Zone.Mountain: return new Color32(0xAD, 0xAB, 0xB7, 255);
                 case Zone.Lair: return new Color32(0x7A, 0x3A, 0x30, 255);
+                // the snow map (style.md palette): meadow, pine valley, cliffs, low snow, ice plateau, castle
+                case Zone.SnowMeadow: return new Color32(0x8D, 0xB0, 0x4A, 255);
+                case Zone.SnowPine: return new Color32(0x6C, 0x85, 0x35, 255);
+                case Zone.SnowCliff: return new Color32(0x95, 0x8A, 0x80, 255);
+                case Zone.SnowField: return new Color32(0xEE, 0xF3, 0xF8, 255);
+                case Zone.SnowPlateau: return new Color32(0xBF, 0xE6, 0xF2, 255);
+                case Zone.SnowCastle: return new Color32(0x8F, 0xD0, 0xE4, 255);
             }
             return Color.magenta;
         }
@@ -105,19 +138,7 @@ namespace MedievalKnight
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (font == null) font = Font.CreateDynamicFontFromOSFont("Arial", 16);
 
-            // the ground
-            mapTex = new Texture2D(TexSize, TexSize, TextureFormat.RGBA32, false);
-            mapTex.filterMode = FilterMode.Point;
-            mapTex.wrapMode = TextureWrapMode.Clamp;
-            var cols = new Color[TexSize * TexSize];
-            for (int y = 0; y < TexSize; y++)
-                for (int x = 0; x < TexSize; x++)
-                {
-                    Vector2 w = TexelToWorld(x, y);
-                    cols[y * TexSize + x] = ZoneColor(MapLayout.ZoneAt(w.x, w.y));
-                }
-            mapTex.SetPixels(cols);
-            mapTex.Apply();
+            UseGroundOfCurrentBiome();                               // the ground
 
             sTriangle = MakeSprite(32, (u, v) => (v > -0.9f && Mathf.Abs(u) < (0.9f - v) * 0.5f) ? 1f : 0f);
             sDisc = MakeSprite(32, (u, v) => (1f - Mathf.Sqrt(u * u + v * v)) * 12f);
@@ -156,6 +177,7 @@ namespace MedievalKnight
             var raw = map.AddComponent<RawImage>();
             raw.texture = mapTex;
             raw.raycastTarget = false;
+            groundImage = raw;
 
             Text legend = Label("Legend", panel, new Vector2(0.5f, 0f), new Vector2(0f, 38f), 14, TextAnchor.MiddleCenter);
             legend.text = "<color=#FFFFFF>^</color> you   <color=#9DD4FF>o</color> friend   <color=#E05050>x</color> down   <color=#F5C25A>*</color> loot   <color=#28A8E0>O</color> portal   LAIR   TOWN";
@@ -265,6 +287,7 @@ namespace MedievalKnight
         public void Tick()
         {
             if (!built || g == null || g.knight == null) return;
+            UseGroundOfCurrentBiome();
             Knight me = g.knight;
             Place(you, me.Pos);
             you.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -me.transform.eulerAngles.y);

@@ -320,6 +320,7 @@ namespace MedievalKnight
             {
                 Vector3 p = k.Pos;
                 sb.Append(";x").Append(k.pid).Append('=').Append(F2(p.x)).Append(";z").Append(k.pid).Append('=').Append(F2(p.z))
+                  .Append(";y").Append(k.pid).Append('=').Append(F2(p.y))
                   .Append(";lv").Append(k.pid).Append('=').Append(k.progress.level)
                   .Append(";dead").Append(k.pid).Append('=').Append(k.Dead ? 1 : 0)
                   .Append(";eat").Append(k.pid).Append('=').Append(k.Eating ? 1 : 0)
@@ -336,6 +337,11 @@ namespace MedievalKnight
                   .Append(";revby=").Append(run.teamUi.ReviveByText.Replace(';', ',').Replace('=', ':')).Append(";revprompt=").Append(run.teamUi.RevivePromptText.Replace(';', ',').Replace('=', ':'))
                   .Append(";spec=").Append(run.teamUi.SpectatingText.Replace(';', ',').Replace('=', ':')).Append(";overhead=").Append(run.teamUi.OverheadShown);
             if (me != null) sb.Append(";lastact=").Append(me.LastAction).Append(";downleft=").Append(F1(me.DownLeft));
+            // snow-map-models: the map this machine is in, its collision fingerprint, standing on the ground, and the biome of old worlds
+            sb.Append(";biome=").Append(MapLayout.Current).Append(";obshash=").Append(Obstacles.HashOf(Biome.Snow)).Append(";obsn=").Append(Obstacles.CountOf(Biome.Snow));
+            if (me != null) sb.Append(";y=").Append(F2(me.Pos.y)).Append(";gy=").Append(F2(Ground.Y(me.Pos.x, me.Pos.z)));
+            if (run != null && run.data != null) { string wb = ""; foreach (OldWorld w in run.data.worlds) wb += w.seed + ":" + (int)w.biome + ","; sb.Append(";wbm=").Append(wb).Append(";rbm=").Append((int)run.data.runBiome); }
+            if (t != null) { string hb = ""; foreach (OldWorld w in t.HostWorlds()) hb += w.seed + ":" + (int)w.biome + ","; sb.Append(";hwbm=").Append(hb).Append(";tbm=").Append((int)t.worldBiome); }
             if (run != null)
             {
                 sb.Append(";piles=").Append(run.PileObjects).Append(";lootopen=").Append(run.LootOpen ? 1 : 0).Append(";packfull=").Append(run.PackFullHints);
@@ -384,6 +390,11 @@ namespace MedievalKnight
                     g.SnapCamera();
                     yield return W(0.25f);
                     Reply(id, "x=" + F2(k.transform.position.x) + ";z=" + F2(k.transform.position.z));
+                    break;
+
+                case "biome":                                         // 0 meadow / 1 snow: the map of the host's next new world (-biome)
+                    Args.biome = int.Parse(a[0]);
+                    Reply(id, "biome=" + Args.biome);
                     break;
 
                 case "aim":                                           // a free local knight: no input device needed
@@ -1147,6 +1158,72 @@ namespace MedievalKnight
                 Check("Dora sees the host's worlds with the new piles (" + S(D, "hwlist") + ")", S(D, "hw") == S("H", "worlds"));
                 foreach (string r in new[] { A, B, "H" }) yield return Cmd(r, "ret");
                 yield return W(0.5f);
+            }
+
+            // ------------------------------------------------ 9b. snow-map-models: the host's next world is the snow map; everybody builds the same one
+            {
+                foreach (string r in new[] { A, B, D })
+                {
+                    yield return Cmd(r, "autoheal", "1");
+                    yield return Cmd(r, "carryclear");
+                    yield return Cmd(r, "give", "w", Weapons.Iron.ToString(), "0");
+                    yield return Cmd(r, "give", "f", Foods.Apple.ToString());
+                    yield return Cmd(r, "ready", "1");
+                }
+                yield return Cmd("H", "autoheal", "1");
+                yield return Cmd("H", "carryclear");
+                yield return Cmd("H", "give", "w", Weapons.Iron.ToString(), "0");
+                yield return Cmd("H", "give", "f", Foods.Apple.ToString());
+                yield return Cmd("H", "biome", "1");
+                yield return W(0.4f);
+                yield return Cmd("H", "enter", "0");
+                yield return W(3.4f);
+                yield return Sum();
+                Check("snow: everybody (host, A, B, Dora) is in the world and the host's map is the snow map (" + S("H", "biome") + ")",
+                    S("H", "st") == "World" && S(A, "st") == "World" && S(B, "st") == "World" && S(D, "st") == "World" && S("H", "biome") == "Snow");
+                Check("snow: the clients follow the host's biome: A " + S(A, "biome") + ", B " + S(B, "biome") + ", Dora " + S(D, "biome") + " (team biome " + S(A, "tbm") + ")",
+                    S(A, "biome") == "Snow" && S(B, "biome") == "Snow" && S(D, "biome") == "Snow" && S(A, "tbm") == "1" && S("H", "rbm") == "1");
+                Check("snow: every machine made the same collision (obstacles " + S("H", "obsn") + ", hash " + S("H", "obshash") + ")",
+                    S(A, "obshash") == S("H", "obshash") && S(B, "obshash") == S("H", "obshash") && S(D, "obshash") == S("H", "obshash") && N("H", "obsn") > 1000f);
+                Vector3 snowSpawn = SnowLayout.Spawn;
+                Check("snow: everybody stands at the village spawn on the ground (host " + S("H", "x") + "," + S("H", "z") + " y " + S("H", "y") + " / ground " + S("H", "gy") + ")",
+                    Flat(new Vector3(N("H", "x"), 0f, N("H", "z")), snowSpawn) < 6f && Flat(new Vector3(N(A, "x"), 0f, N(A, "z")), snowSpawn) < 8f && Flat(new Vector3(N(B, "x"), 0f, N(B, "z")), snowSpawn) < 8f
+                    && Mathf.Abs(N("H", "y") - N("H", "gy")) < 0.1f && Mathf.Abs(N(A, "y") - N(A, "gy")) < 0.15f && N("H", "y") > 0.1f);
+                Check("snow: each machine sees the other knights (host 4, A 4, Dora 4: " + S("H", "n") + "/" + S(A, "n") + "/" + S(D, "n") + ") and the host has the boss", S("H", "n") == "4" && S(A, "n") == "4" && S(D, "n") == "4" && S("H", "mino") == "alive");
+                Shot("snow_in_world");
+                // A walks up the hill: the others see her at the right height
+                g.packsOff = true;
+                foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) Destroy(e.gameObject);
+                float wx = SnowLayout.Meta.waypoints[8 * 2], wz = SnowLayout.Meta.waypoints[8 * 2 + 1];
+                yield return Cmd(A, "tp", F2(wx), F2(wz));
+                yield return W(1.2f);
+                yield return Sum();
+                Check("snow: A stands on the cliff road at height " + S(A, "y") + " and the host sees her at the same height (" + S("H", "y" + pidA) + " vs ground " + F2(Ground.Y(wx, wz)) + ")",
+                    Mathf.Abs(N(A, "y") - Ground.Y(wx, wz)) < 0.3f && N(A, "y") > 10f);
+                // everybody falls: one old world on the snow map, the clients learn its map
+                yield return Cmd("H", "autoheal", "0");
+                yield return Cmd(A, "autoheal", "0");
+                yield return Cmd(B, "autoheal", "0");
+                yield return Cmd(D, "autoheal", "0");
+                yield return Cmd(B, "tp", F2(wx + 3f), F2(wz));
+                yield return Cmd(D, "tp", F2(wx + 6f), F2(wz));
+                yield return Cmd("H", "tp", F2(wx - 3f), F2(wz));
+                yield return W(0.4f);
+                foreach (string r in new[] { A, B, D, "H" }) yield return Cmd(r, "die");
+                yield return W(1.8f);
+                yield return Sum();
+                OldWorld snowWorld = null;
+                foreach (OldWorld w in g.run.data.worlds) if (w.biome == Biome.Snow) snowWorld = w;
+                Check("snow: the wipe made an old world on the snow map on the host (" + S("H", "wbm") + ") and everybody has the summary",
+                    snowWorld != null && S("H", "sum") == "1" && S(A, "sum") == "1" && S(B, "sum") == "1" && S(D, "sum") == "1" && S("H", "wbm").Contains(":1,"));
+                foreach (string r in new[] { A, B, D, "H" }) yield return Cmd(r, "ret");
+                yield return W(1.0f);
+                yield return Sum();
+                Check("snow: back at the base everybody is on the meadow scene again (host " + S("H", "biome") + ", A " + S(A, "biome") + ", Dora " + S(D, "biome") + ")",
+                    S("H", "biome") == "Meadow" && S(A, "biome") == "Meadow" && S(B, "biome") == "Meadow" && S(D, "biome") == "Meadow");
+                Check("snow: a client sees the host's old worlds with their map (" + S(A, "hwbm") + ")", snowWorld != null && S(A, "hwbm").Contains(snowWorld.seed + ":1"));
+                yield return Cmd("H", "biome", "0");
+                yield return Cmd("H", "biome", "-1");
             }
 
             // ------------------------------------------------ 10. the host closes the game in the middle of a run: nobody loses his pack

@@ -865,7 +865,7 @@ namespace MedievalKnight
                 bool sel = idx == worldSel;
                 r.frame.color = sel ? Gold : FrameCol;
                 r.bg.color = sel ? new Color(0.17f, 0.15f, 0.25f, 1f) : SlotBg;
-                r.text.text = "<b><color=" + Hex(OldText) + ">" + w.Code + "</color></b>   " + FellText(w.fellUnix) + "   " + w.ItemCount + (w.ItemCount == 1 ? " item" : " items");
+                r.text.text = "<b><color=" + Hex(OldText) + ">" + w.Code + "</color></b>" + (w.biome == Biome.Snow ? "  <color=#8FD0E4><b>SNOW</b></color>" : "") + "   " + FellText(w.fellUnix) + "   " + w.ItemCount + (w.ItemCount == 1 ? " item" : " items");
                 List<Item> all = w.AllItems();
                 for (int t = 0; t < 4; t++)
                 {
