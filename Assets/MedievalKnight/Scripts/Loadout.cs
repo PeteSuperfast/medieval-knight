@@ -634,6 +634,11 @@ namespace MedievalKnight
                     if (float.IsNaN(p.x) || float.IsNaN(p.z) || float.IsInfinity(p.x) || float.IsInfinity(p.z)) { p.x = w.x; p.z = w.z; }
                     p.x = System.Math.Max(-lim, System.Math.Min(lim, p.x));
                     p.z = System.Math.Max(-lim, System.Math.Min(lim, p.z));
+                    if (w.biome == Biome.Snow && !MapLayout.WalkableIn(Biome.Snow, p.x, p.z))      // a snow pile in a wall / river / cliff (a hand-edited save): the village
+                    {
+                        UnityEngine.Vector3 sv = MapLayout.TownSpawnOf(Biome.Snow);
+                        p.x = sv.x; p.z = sv.z;
+                    }
                     var items = new List<Item>();
                     foreach (Item it in p.items)
                     {

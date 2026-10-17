@@ -40,7 +40,7 @@ namespace MedievalKnight
         {
             var go = new GameObject(Names[kind]);
             go.transform.SetParent(parent, false);
-            go.transform.position = new Vector3(pos.x, 0f, pos.z);
+            go.transform.position = new Vector3(pos.x, Ground.Y(pos.x, pos.z), pos.z);
             go.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
             var s = go.AddComponent<Slime>();
             s.Setup(kind);
@@ -80,7 +80,7 @@ namespace MedievalKnight
         // Moves the slime somewhere else and cancels the hop in progress (a hop would drag it back).
         public void Warp(Vector3 p)
         {
-            transform.position = new Vector3(p.x, 0f, p.z);
+            transform.position = new Vector3(p.x, Ground.Y(p.x, p.z), p.z);
             knock = Vector3.zero;
             state = St.Wait;
             stateT = 0.4f;
@@ -110,7 +110,7 @@ namespace MedievalKnight
             }
             float r = Mathf.Lerp(2.2f, 0.9f, Mathf.Clamp01(k));
             warnDecal.gameObject.SetActive(true);
-            warnDecal.position = new Vector3(transform.position.x, 0.04f, transform.position.z);
+            warnDecal.position = new Vector3(transform.position.x, Ground.Top(transform.position.x, transform.position.z, r) + 0.04f, transform.position.z);
             warnDecal.localScale = new Vector3(r, 1f, r);
             float blink = Mathf.Sin(Time.time * Mathf.PI * 8f) > 0f ? 1f : 0.7f;      // 4 Hz
             Fx.I.SetDecal(warnDecal, new Color(0.78f, 0.28f, 0.23f, (0.35f + 0.45f * Mathf.Clamp01(k)) * blink));
@@ -247,7 +247,7 @@ namespace MedievalKnight
                         float t = Mathf.Clamp01(stateT);
                         Vector3 p = Vector3.Lerp(hopFrom, hopTo, t);
                         y = Mathf.Sin(t * Mathf.PI) * hopHeight;
-                        transform.position = new Vector3(p.x, 0f, p.z);
+                        transform.position = new Vector3(p.x, Ground.Y(p.x, p.z), p.z);
                         hopFrom += knock * dt; hopTo += knock * dt;
                         target = new Vector3(0.8f, 1.3f, 0.8f);
                         if (!hitDone && t > 0.55f)

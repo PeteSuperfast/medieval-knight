@@ -843,7 +843,7 @@ namespace MedievalKnight
             if (by == null || e == null || e.Dead) return false;
             if (src == 37 || src == 38)                                                  // phase 7: the owner of this knight parried / clashed: the monster reacts
             {
-                if (e.puppet || damage != 1f || (e.transform.position - by.Pos).magnitude > e.radius + 9f) return false;
+                if (e.puppet || damage != 1f || FlatDist(e.transform.position, by.Pos) > e.radius + 9f) return false;
                 e.Deflect(src == 37, by.Pos, by);
                 return true;
             }

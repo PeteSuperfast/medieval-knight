@@ -18,7 +18,7 @@ namespace MedievalKnight
         {
             var go = new GameObject("LootPile");
             go.transform.SetParent(parent, false);
-            go.transform.position = new Vector3(pos.x, 0f, pos.z);
+            go.transform.position = new Vector3(pos.x, Ground.Y(pos.x, pos.z), pos.z);
             var p = go.AddComponent<LootPile>();
             p.Build();
             return p;
@@ -37,8 +37,8 @@ namespace MedievalKnight
             beam = Prims.Box(transform, "Beam", new Vector3(0f, BeamHeight * 0.5f, 0f), new Vector3(0.4f, BeamHeight, 0.4f), gold, false);
             groundRing = Fx.I.MakeDecal(Prims.Arc(1.3f, 1.55f, 0f, 360f), "PileGround");
             groundRing.gameObject.SetActive(true);
-            groundRing.position = new Vector3(transform.position.x, 0.06f, transform.position.z);
-            Fx.I.Ring(new Vector3(transform.position.x, 0.06f, transform.position.z), 0.5f, 4f, new Color(Gold.r, Gold.g, Gold.b, 0.9f), 0.7f);
+            groundRing.position = new Vector3(transform.position.x, Ground.Top(transform.position.x, transform.position.z, 1.6f) + 0.06f, transform.position.z);
+            Fx.I.Ring(new Vector3(transform.position.x, transform.position.y + 0.06f, transform.position.z), 0.5f, 4f, new Color(Gold.r, Gold.g, Gold.b, 0.9f), 0.7f);
         }
 
         public Vector3 Top { get { return transform.position + Vector3.up * 2.2f; } }

@@ -909,7 +909,7 @@ namespace MedievalKnight
 
             // boss bar: only when the Minotaur is within 45 m (the map is big); the arrow to the lair covers the rest
             Minotaur m = g.minotaur;
-            bool bossFar = m != null && !m.Dead && Vector3.Distance(m.transform.position, k.Pos) > 45f;
+            bool bossFar = m != null && !m.Dead && Vector3.Distance(new Vector3(m.transform.position.x, 0f, m.transform.position.z), new Vector3(k.Pos.x, 0f, k.Pos.z)) > 45f;
             bool loopIdle = g.Loop && (!g.run.InWorld || m == null || m.Dead);        // Phase 1: nothing to show at the base or after the boss
             bool hideBoss = bossFar || loopIdle;
             if (bossPanel.activeSelf == hideBoss) bossPanel.SetActive(!hideBoss);

@@ -335,7 +335,8 @@ namespace MedievalKnight
             var go = new GameObject("Pickup " + label);
             go.transform.SetParent(parent, false);
             float lim = Game.ArenaHalf - 1f;
-            go.transform.position = new Vector3(Mathf.Clamp(pos.x, -lim, lim), 0f, Mathf.Clamp(pos.z, -lim, lim));
+            float px = Mathf.Clamp(pos.x, -lim, lim), pz = Mathf.Clamp(pos.z, -lim, lim);
+            go.transform.position = new Vector3(px, Ground.Y(px, pz), pz);
             var p = go.AddComponent<Pickup>();
             p.kind = kind;
             p.owner = owner;
@@ -424,7 +425,7 @@ namespace MedievalKnight
             float baseY = food ? 0.6f : 1.1f;
             spin.localPosition = new Vector3(0f, baseY + Mathf.Sin(age * 2.6f) * (food ? 0.08f : 0.12f), 0f);
             float pulse = 0.5f + 0.5f * Mathf.Sin(age * 5f);
-            ring.position = new Vector3(transform.position.x, 0.05f, transform.position.z);
+            ring.position = new Vector3(transform.position.x, Ground.Top(transform.position.x, transform.position.z, 0.9f) + 0.05f, transform.position.z);
             ring.localScale = Vector3.one * (1f + 0.12f * pulse);
             bool fading = age > life - 8f;                                         // blinks before it disappears
             bool show = !fading || Mathf.Sin(age * 18f) > -0.2f;

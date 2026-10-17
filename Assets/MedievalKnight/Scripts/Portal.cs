@@ -20,7 +20,7 @@ namespace MedievalKnight
         {
             var go = new GameObject("Portal");
             go.transform.SetParent(parent, false);
-            go.transform.position = new Vector3(pos.x, 0f, pos.z);
+            go.transform.position = new Vector3(pos.x, Ground.Y(pos.x, pos.z), pos.z);
             var p = go.AddComponent<Portal>();
             p.Build();
             return p;
@@ -46,10 +46,10 @@ namespace MedievalKnight
             {
                 float from = i * 360f / Segments, to = from + 360f / Segments - 1.5f;
                 fill[i] = Fx.I.MakeDecal(Prims.Arc(Radius - 0.7f, Radius - 0.2f, from, to), "PortalFill" + i);
-                fill[i].position = new Vector3(transform.position.x, 0.07f, transform.position.z);
+                fill[i].position = new Vector3(transform.position.x, Ground.Top(transform.position.x, transform.position.z, Radius) + 0.07f, transform.position.z);
             }
-            groundRing.position = new Vector3(transform.position.x, 0.06f, transform.position.z);
-            Fx.I.Ring(new Vector3(transform.position.x, 0.06f, transform.position.z), 0.5f, 6f, new Color(Blue.r, Blue.g, Blue.b, 0.9f), 0.8f);
+            groundRing.position = new Vector3(transform.position.x, Ground.Top(transform.position.x, transform.position.z, Radius) + 0.06f, transform.position.z);
+            Fx.I.Ring(new Vector3(transform.position.x, transform.position.y + 0.06f, transform.position.z), 0.5f, 6f, new Color(Blue.r, Blue.g, Blue.b, 0.9f), 0.8f);
             Fx.I.Burst(transform.position + Vector3.up, 30, Blue, 2f, 9f, Vector3.up, 0.8f, 1.0f, 3f, 0.14f);
         }
 

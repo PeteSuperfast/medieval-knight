@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace MedievalKnight
@@ -100,6 +101,117 @@ namespace MedievalKnight
                 Check("snow: " + names[i] + " y follows the ground (" + F(k.transform.position.y) + " vs " + F(Ground.Y(look[i, 0], look[i, 1])) + ")", Mathf.Abs(k.transform.position.y - Ground.Y(k.transform.position.x, k.transform.position.z)) < 0.2f);
             }
             yield return SnowCollisionTests();
+            yield return SnowActorTests();
+            yield return SnowOldWorldTests();
+            Args.biome = -1;
+        }
+
+        // ---- step 6: dummy, boss, slime packs, loot and portal stand on the snow ground
+        IEnumerator SnowActorTests()
+        {
+            Log("---- snow map: dummy, boss, slimes, loot, portal");
+            RunLoop run = g.run;
+            Vector3 dp = MapLayout.DummyPos, lair = MapLayout.Lair;
+            Check("snow: the straw dummy stands in the village (" + V(g.dummy.transform.position) + ") on the ground",
+                g.dummy != null && Mathf.Abs(g.dummy.transform.position.x - dp.x) < 0.1f && Mathf.Abs(g.dummy.transform.position.y - Ground.Y(dp.x, dp.z)) < 0.05f && MapLayout.InTown(dp.x, dp.z));
+            Check("snow: the Minotaur stands at the lair (" + V(g.minotaur.transform.position) + ", y " + F(g.minotaur.transform.position.y) + ") on the ground",
+                g.minotaur != null && Mathf.Abs(g.minotaur.transform.position.x - lair.x) < 0.1f && Mathf.Abs(g.minotaur.transform.position.z - lair.z) < 0.1f
+                && Mathf.Abs(g.minotaur.transform.position.y - Ground.Y(lair.x, lair.z)) < 0.05f);
+            Check("snow: the village is a safe zone and the lair is the lair", MapLayout.ZoneAt(MapLayout.TownSpawn.x, MapLayout.TownSpawn.z) == Zone.Town && MapLayout.ZoneAt(lair.x, lair.z) == Zone.Lair
+                && MapLayout.SpawnTier(Zone.Town) == 0f && MapLayout.SpawnTier(MapLayout.ZoneAt(-78f, -75f)) > 0f);
+
+            // slime packs: out of the village, on open ground, standing on the ground
+            g.packsOff = false;
+            SnowMeta meta = SnowLayout.Meta;
+            float wx = meta.waypoints[4 * 2], wz = meta.waypoints[4 * 2 + 1];
+            k.transform.position = new Vector3(wx, Ground.Y(wx, wz), wz);
+            g.SnapCamera();
+            float t0 = Time.realtimeSinceStartup;
+            int got = 0;
+            while (got < 4 && Time.realtimeSinceStartup - t0 < 16f)
+            {
+                yield return W(0.4f);
+                got = 0;
+                foreach (Enemy e in Enemy.All) if (e is Slime && !e.Dead) got++;
+            }
+            int badY = 0, badPlace = 0;
+            foreach (Enemy e in Enemy.All)
+            {
+                if (!(e is Slime) || e.Dead) continue;
+                Vector3 p = e.transform.position;
+                if (Mathf.Abs(p.y - Ground.Y(p.x, p.z)) > 0.06f) badY++;
+                if (!MapLayout.Walkable(p.x, p.z) || Obstacles.Overlaps(p, 0.3f, Obstacles.Enemies)) badPlace++;
+            }
+            Check("snow: a slime pack comes out of the village (" + got + " slimes), all on walkable open ground (" + badPlace + " bad) and on the ground (" + badY + " floating / sunk)", got >= 4 && badPlace == 0 && badY == 0);
+            yield return W(2.5f);                                                   // they hop at the knight: still on the ground while moving
+            badY = 0;
+            foreach (Enemy e in Enemy.All)
+            {
+                if (!(e is Slime) || e.Dead) continue;
+                Vector3 p = e.transform.position;
+                if (Mathf.Abs(p.y - Ground.Y(p.x, p.z)) > 0.06f) badY++;
+            }
+            Check("snow: hopping slimes keep their feet on the ground (" + badY + " off)", badY == 0);
+            Shot("snow_slimes");
+            yield return W(0.4f);
+            g.packsOff = true;
+            foreach (Enemy e in new List<Enemy>(Enemy.All)) if (e is Slime) { e.gameObject.SetActive(false); Destroy(e.gameObject); }
+
+            // boss: dies at the lair, the portal opens there, the loot lies on the ground
+            k.transform.position = new Vector3(lair.x - 6f, Ground.Y(lair.x - 6f, lair.z), lair.z);
+            g.SnapCamera();
+            g.foodOverride = -1; g.dropOverride = -1;
+            Vector3 fell = g.minotaur.transform.position;
+            KillMinotaur();
+            yield return W(2.4f);
+            yield return ClearLevelUps();
+            yield return W(0.5f);
+            Check("snow: when the Minotaur dies the portal opens where he fell (" + (run.portal != null ? V(run.portal.transform.position) : "none") + ") on the ground",
+                run.BossDown && run.portal != null && (run.portal.transform.position - fell).magnitude < 6f && Mathf.Abs(run.portal.transform.position.y - Ground.Y(run.portal.transform.position.x, run.portal.transform.position.z)) < 0.05f);
+            int pickBad = 0;
+            foreach (Pickup pk in Pickup.All) { Vector3 p = pk.transform.position; if (Mathf.Abs(p.y - Ground.Y(p.x, p.z)) > 0.06f) pickBad++; }
+            Check("snow: the boss's loot lies on the ground (" + Pickup.All.Count + " pickups, " + pickBad + " floating / sunk)", Pickup.All.Count >= 1 && pickBad == 0);
+            Shot("snow_portal");
+            yield return W(0.4f);
+        }
+
+        // ---- step 6: falling in the snow makes a snow old world; its pile stands where he fell, on walkable ground, after a save and load
+        IEnumerator SnowOldWorldTests()
+        {
+            Log("---- snow map: old world made on the snow");
+            Args.biome = (int)Biome.Snow;
+            yield return StartLoopWorld(d => { d.carry.foods[0] = Item.Food(Foods.Apple); });
+            RunLoop run = g.run;
+            Loadout d0 = run.data;
+            SnowMeta meta = SnowLayout.Meta;
+            float wx = meta.waypoints[6 * 2], wz = meta.waypoints[6 * 2 + 1];
+            k.transform.position = new Vector3(wx, Ground.Y(wx, wz), wz);
+            g.SnapCamera();
+            yield return W(0.4f);
+            Vector3 fellAt = k.Pos;
+            k.TakeDamage(9999f, k.transform.position + Vector3.right, "selftest");
+            yield return W(3.5f);
+            OldWorld w = d0.worlds.Count == 1 ? d0.worlds[0] : null;
+            Check("snow: falling in a new snow world makes a SNOW old world with the pile where he fell", w != null && w.biome == Biome.Snow && w.pile.Count >= 2
+                && Mathf.Abs(w.x - fellAt.x) < 1f && Mathf.Abs(w.z - fellAt.z) < 1f);
+            string saved = File.ReadAllText(LoopSave.Path);
+            Check("snow: the save file says the old world is a snow world", saved.Contains("\"bm\":1"));
+            Loadout reloaded = LoopSave.Load();
+            Check("snow: loading that save gives the same snow old world", reloaded != null && reloaded.worlds.Count == 1 && reloaded.worlds[0].biome == Biome.Snow);
+            yield return Click(run.ui.ReturnRect.position);
+            yield return W(0.5f);
+            Check("snow: back at the base the scene is the meadow again (MapLayout " + MapLayout.Current + ")", MapLayout.Current == Biome.Meadow && !run.InWorld);
+
+            Args.biome = (int)Biome.Meadow;                                          // asking for a meadow world changes nothing about an old snow world
+            yield return EnterOldWorldUi(w.seed);
+            yield return W(1.0f);
+            Check("snow: entering that old world plays on the snow map (MapLayout " + MapLayout.Current + ")", run.InWorld && MapLayout.Current == Biome.Snow && d0.runBiome == Biome.Snow);
+            LootPile lp = Object.FindAnyObjectByType<LootPile>();
+            Check("snow: its pile stands where he fell (" + (lp != null ? V(lp.transform.position) : "none") + ") on walkable ground, on the ground",
+                lp != null && Vector3.Distance(new Vector3(lp.transform.position.x, 0f, lp.transform.position.z), new Vector3(fellAt.x, 0f, fellAt.z)) < 3.5f
+                && MapLayout.Walkable(lp.transform.position.x, lp.transform.position.z) && Mathf.Abs(lp.transform.position.y - Ground.Y(lp.transform.position.x, lp.transform.position.z)) < 0.05f);
+            Shot("snow_old_world");
+            yield return W(0.4f);
             Args.biome = -1;
         }
 

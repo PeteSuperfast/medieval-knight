@@ -74,7 +74,7 @@ namespace MedievalKnight
             float x = r.Pos(), z = r.Pos(), yaw = r.Yaw();
             hp = r.F32(); maxHp = r.F32(); armor = r.F32(); maxArmor = r.F32();
             int flags = r.U8();
-            var p = new Vector3(x, 0f, z);
+            var p = new Vector3(x, Ground.Y(x, z), z);
             if (first)
             {
                 interp.delay = Net.EnemyDelay;
@@ -100,7 +100,7 @@ namespace MedievalKnight
             Vector3 d = p - transform.position; d.y = 0f;
             float dt = Time.deltaTime;
             if (dt > 0f) puppetSpeed = Mathf.Lerp(puppetSpeed, d.magnitude / dt, 0.3f);
-            transform.position = new Vector3(p.x, 0f, p.z);
+            transform.position = new Vector3(p.x, Ground.Y(p.x, p.z), p.z);
             transform.rotation = Quaternion.Euler(0f, y, 0f);
         }
 
@@ -284,6 +284,7 @@ namespace MedievalKnight
             p.x = Mathf.Clamp(p.x, -lim, lim);
             p.z = Mathf.Clamp(p.z, -lim, lim);
             if (!puppet) p = Obstacles.Push(p, Mathf.Max(0.35f, radius * 0.6f), Obstacles.Enemies);
+            p.y = Ground.Y(p.x, p.z);                              // standing on the ground of the biome (0 on the meadow)
             transform.position = p;
         }
 

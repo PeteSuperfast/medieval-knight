@@ -49,3 +49,8 @@
 - SnowBuilder.MakeObstacles: 2,342 obstacle (643 วงกลม + 42 กล่องจากชิ้นวาง + 1,657 กล่องจากตารางห้ามเดิน) hash 410339541 เท่ากันเมื่อสร้างซ้ำ (งบ <= 8,000); ชุดแยกต่อ biome (Obstacles.Use), เมธอดทดสอบ CountOf/HashOf/CentersIn/Overlaps
 - เทส -snowonly (32/0): waypoint 0-14 เดินถึงจากจุดเกิด (BFS 94,454 ช่อง), รัง/จุดเกิด/หุ่นฟางเป็นพื้นโล่ง, สะพาน S1 เดินได้ตลอด (ก้าวความสูงสูงสุด 0.08 ม.), เดินชนแม่น้ำ/ภูเขา/กำแพงปราสาท/ขอบแมพ + เดินทแยง 8 จุดไม่หลุดเข้าช่องห้ามเดิน
 - selftest -looponly 222/0
+
+## developer ขั้น 6 เสร็จ (ผู้เล่น/ศัตรู/บอส/portal บนหิมะ)
+- y ตามพื้น: Slime/Enemy(ClampToArena,Puppet,ReadNet)/Minotaur/Pickup/LootPile/Portal + วงเตือนพื้น (Ground.Top ยกตามความชัน); ระยะ 3D ที่ผูก y ถูกทำเป็นแนวราบ (Hud bossFar, ClientHit); Loadout.Sanitize ย้ายกองหิมะที่อยู่ในกำแพง -> หมู่บ้าน
+- เทส -snowonly 45/0: หุ่นฟาง/Minotaur ยืนบนพื้น (รัง (135,81) บนทะเลสาบน้ำแข็ง), สไลม์เกิดบนที่เดินได้และเท้าติดพื้นขณะกระโดด, portal+ของดรอปบนพื้น, ตายในหิมะ -> OldWorld.biome=Snow -> เซฟ/โหลด -> เข้าโลกเก่า กองอยู่ตำแหน่งเดิม
+- selftest เต็ม 452/0, mptest 80/0

@@ -31,7 +31,7 @@ namespace MedievalKnight
         {
             var go = new GameObject("Minotaur");
             go.transform.SetParent(parent, false);
-            go.transform.position = new Vector3(pos.x, 0f, pos.z);
+            go.transform.position = new Vector3(pos.x, Ground.Y(pos.x, pos.z), pos.z);
             go.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
             return go.AddComponent<Minotaur>();
         }
@@ -216,7 +216,7 @@ namespace MedievalKnight
         public void ResetToLair(Vector3 home)
         {
             InitStats(maxHp, maxArmor);
-            transform.position = new Vector3(home.x, 0f, home.z);
+            transform.position = new Vector3(home.x, Ground.Y(home.x, home.z), home.z);
             transform.rotation = Quaternion.Euler(0f, 180f, 0f);
             knock = Vector3.zero;
             stunUntil = 0f;
@@ -287,7 +287,7 @@ namespace MedievalKnight
         void ShowDecal(Transform d, Vector3 pos, float yaw, Vector3 scale, float k, bool heavy)
         {
             d.gameObject.SetActive(true);
-            d.position = new Vector3(pos.x, 0.04f, pos.z);
+            d.position = new Vector3(pos.x, Ground.Top(pos.x, pos.z, Mathf.Max(scale.x, scale.z) * 0.6f) + 0.04f, pos.z);
             d.rotation = Quaternion.Euler(0f, yaw, 0f);
             d.localScale = scale;
             if (heavy)
