@@ -16,7 +16,7 @@ namespace MedievalKnight
         [Serializable] class PileDto { public float x, z; public ItemDto[] items; }
         // pv = 2: the piles are in "piles" (several, none moves). Without pv (a phase 1-3 save) there is one pile at x, z holding "pile".
         // x / z / pile of a pv 2 file hold the first pile too, so an older build still reads something sensible.
-        [Serializable] class WorldDto { public int seed, left; public long t; public float x, z; public ItemDto[] pile; public int pv; public PileDto[] piles; }
+        [Serializable] class WorldDto { public int seed, left; public long t; public float x, z; public ItemDto[] pile; public int pv; public PileDto[] piles; public int bm; }
         [Serializable] class CrumbDto { public int seed, n; }
         // Phase 2 fields (ow, runWorld, rx, rz, rpos, unseen) are missing in a phase 1 file: that reads as "no old worlds".
         [Serializable]
@@ -25,6 +25,7 @@ namespace MedievalKnight
             public int v; public bool inRun, intro; public int held; public BagDto stash, carry;
             public WorldDto[] ow; public int runWorld; public float rx, rz; public bool rpos; public CrumbDto[] unseen;
             public bool rc;                                    // phase 4: the open run is an online run of a client
+            public int rb;                                     // snow-map-models: the biome of the open run (missing = 0 = meadow)
         }
 
         public static string PathOverride;                 // test hook: use this file (SelfTest sets it)
@@ -104,14 +105,14 @@ namespace MedievalKnight
                 Pile first = w.piles.Count > 0 ? w.piles[0] : null;
                 var wd = new WorldDto
                 {
-                    seed = w.seed, left = w.left, t = w.fellUnix, x = first != null ? first.x : w.x, z = first != null ? first.z : w.z,
+                    bm = (int)w.biome, seed = w.seed, left = w.left, t = w.fellUnix, x = first != null ? first.x : w.x, z = first != null ? first.z : w.z,
                     pile = ToDto(first != null ? first.items.ToArray() : new Item[0]), pv = 2, piles = new PileDto[w.piles.Count]
                 };
                 for (int p = 0; p < wd.piles.Length; p++)
                     wd.piles[p] = new PileDto { x = w.piles[p].x, z = w.piles[p].z, items = ToDto(w.piles[p].items.ToArray()) };
                 dto.ow[i] = wd;
             }
-            dto.runWorld = l.runWorld; dto.rx = l.runX; dto.rz = l.runZ; dto.rpos = l.runPosValid; dto.rc = l.runCoop;
+            dto.rb = (int)l.runBiome; dto.runWorld = l.runWorld; dto.rx = l.runX; dto.rz = l.runZ; dto.rpos = l.runPosValid; dto.rc = l.runCoop;
             dto.unseen = new CrumbDto[l.unseen.Count];
             for (int i = 0; i < dto.unseen.Length; i++) dto.unseen[i] = new CrumbDto { seed = l.unseen[i].seed, n = l.unseen[i].items };
             return JsonUtility.ToJson(dto);
@@ -132,7 +133,7 @@ namespace MedievalKnight
                 foreach (WorldDto wd in dto.ow)
                 {
                     if (wd == null) continue;
-                    var w = new OldWorld { seed = wd.seed, left = wd.left, fellUnix = wd.t, x = wd.x, z = wd.z };
+                    var w = new OldWorld { seed = wd.seed, left = wd.left, fellUnix = wd.t, x = wd.x, z = wd.z, biome = Biomes.Valid(wd.bm) ? (Biome)wd.bm : Biome.Meadow };
                     if (wd.pv >= 2)
                     {
                         if (wd.piles != null)
@@ -152,6 +153,7 @@ namespace MedievalKnight
                     }
                     l.worlds.Add(w);
                 }
+            l.runBiome = Biomes.Valid(dto.rb) ? (Biome)dto.rb : Biome.Meadow;
             l.runWorld = dto.runWorld; l.runX = dto.rx; l.runZ = dto.rz; l.runPosValid = dto.rpos; l.runCoop = dto.rc;
             if (dto.unseen != null)
                 foreach (CrumbDto c in dto.unseen) if (c != null && c.seed != 0) l.unseen.Add(new CrumbNote { seed = c.seed, items = Mathf.Max(0, c.n) });

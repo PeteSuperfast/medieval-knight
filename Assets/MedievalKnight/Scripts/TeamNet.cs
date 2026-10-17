@@ -105,7 +105,7 @@ namespace MedievalKnight
             {
                 OldWorld ow = sorted[i];
                 int np = Mathf.Min(ow.piles.Count, 48);
-                w.I32(ow.seed).U8(ow.left).I32((int)System.Math.Min(ow.fellUnix, int.MaxValue)).U8(np);
+                w.I32(ow.seed).U8(ow.left).U8((int)ow.biome).I32((int)System.Math.Min(ow.fellUnix, int.MaxValue)).U8(np);
                 for (int p = 0; p < np; p++)
                 {
                     Pile pl = ow.piles[p];
@@ -152,16 +152,16 @@ namespace MedievalKnight
         {
             var all = new List<Member>(t.roster);
             if (t.runLive) all.AddRange(t.leavers);                   // the ones who left show as LEFT while the run goes on
-            var w = new NetW(Msg.Team).U8(t.runLive ? 1 : 0).I32(t.worldSeed).U8(t.worldLeft).U8(all.Count);
+            var w = new NetW(Msg.Team).U8(t.runLive ? 1 : 0).I32(t.worldSeed).U8(t.worldLeft).U8((int)t.worldBiome).U8(all.Count);
             foreach (Member m in all)
                 w.U8(m.pid).Str(m.name).U8((m.ready ? 1 : 0) | (m.inRun ? 2 : 0)).U8((int)m.status).U16(Mathf.Clamp(Mathf.RoundToInt(m.downLeft), 0, 65535));
             return w.Done();
         }
 
         // H>C: the run begins in this world; the listed players take part (the others wait)
-        public static byte[] Enter(int seed, int left, List<int> pids)
+        public static byte[] Enter(int seed, int left, Biome biome, List<int> pids)
         {
-            var w = new NetW(Msg.Enter).I32(seed).U8(left).U8(pids.Count);
+            var w = new NetW(Msg.Enter).I32(seed).U8(left).U8((int)biome).U8(pids.Count);
             foreach (int p in pids) w.U8(p);
             return w.Done();
         }
@@ -228,6 +228,7 @@ namespace MedievalKnight
                 {
                     bool live = r.U8() != 0;
                     int seed = r.I32(), left = r.U8();
+                    int bm = r.U8(); Biome biome = Biomes.Valid(bm) ? (Biome)bm : Biome.Meadow;
                     int n = Mathf.Min(r.U8(), 2 * Net.MaxPlayers);
                     var list = new List<Member>();
                     for (int i = 0; i < n; i++)
@@ -239,7 +240,7 @@ namespace MedievalKnight
                         m.downLeft = r.U16();
                         list.Add(m);
                     }
-                    t.OnTeam(live, seed, left, list);
+                    t.OnTeam(live, seed, left, biome, list);
                     break;
                 }
 
@@ -287,7 +288,9 @@ namespace MedievalKnight
                     var list = new List<OldWorld>();
                     for (int i = 0; i < n; i++)
                     {
-                        var w = new OldWorld { seed = r.I32(), left = Mathf.Clamp(r.U8(), 1, OldWorld.StartLeft), fellUnix = r.I32() };
+                        var w = new OldWorld { seed = r.I32(), left = Mathf.Clamp(r.U8(), 1, OldWorld.StartLeft) };
+                        int wbm = r.U8(); w.biome = Biomes.Valid(wbm) ? (Biome)wbm : Biome.Meadow;
+                        w.fellUnix = r.I32();
                         int np = Mathf.Min(r.U8(), 48);
                         for (int p = 0; p < np; p++)
                         {
@@ -331,10 +334,11 @@ namespace MedievalKnight
                 case Msg.Enter:
                 {
                     int seed = r.I32(), left = r.U8();
+                    int ebm = r.U8(); Biome ebiome = Biomes.Valid(ebm) ? (Biome)ebm : Biome.Meadow;
                     int n = Mathf.Min(r.U8(), Net.MaxPlayers);
                     var pids = new List<int>();
                     for (int i = 0; i < n; i++) pids.Add(r.U8());
-                    t.OnEnter(seed, left, pids);
+                    t.OnEnter(seed, left, ebiome, pids);
                     break;
                 }
             }

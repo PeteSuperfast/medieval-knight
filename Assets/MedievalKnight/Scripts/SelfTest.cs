@@ -16,7 +16,7 @@ namespace MedievalKnight
     // picks up dropped swords, equips each one (inventory panel by key and click) and measures its damage /
     // swing time / crit, checks that the six sound clips load and play on the right events,
     // saves screenshots and logs "SELFTEST ..." lines, then quits. Normal play never runs this.
-    public class SelfTest : MonoBehaviour
+    public partial class SelfTest : MonoBehaviour
     {
         string dir;
         int shot, fails;
@@ -207,6 +207,16 @@ namespace MedievalKnight
                 yield return LoopTests();
                 yield return W(0.5f);
                 Log("done (loop cases only), screenshots=" + shot + ", failed checks=" + fails);
+                Application.Quit();
+                yield break;
+            }
+
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-snowonly") >= 0)    // quick run of the snow map cases only (snow-map-models)
+            {
+                g.packsOff = true;
+                yield return SnowTests();
+                yield return W(0.5f);
+                Log("done (snow cases only), screenshots=" + shot + ", failed checks=" + fails);
                 Application.Quit();
                 yield break;
             }
@@ -2687,6 +2697,9 @@ namespace MedievalKnight
             yield return OldWorldPilesTests();
             Log("---- phase 4: an online run cut short");
             yield return OnlineRunCutShortTests();
+            Log("---- snow map: biome data, save, rules");
+            SnowDataTests();
+            yield return null;
         }
 
         // From PREPARE: OLD WORLDS -> pick the row of "seed" -> ENTER OLD WORLD (answers the food question) -> in the world.

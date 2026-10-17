@@ -339,6 +339,17 @@ namespace MedievalKnight
         // Enter on the question that is showing: the world that was asked about
         public void UiConfirmEnter() { UiEnter(askedSeed); }
 
+        // The map of a NEW world (single player / host only; an old world keeps its own): -biome forces one; scripted runs
+        // (selftest / mptest) are always the meadow; otherwise a 50 : 50 roll once RandomBiomes is on (snow-map-models step 8).
+        public static bool RandomBiomes = false;
+        static int rollCounter;
+        Biome PickBiome()
+        {
+            if (Args.biome >= 0) return Biomes.Valid(Args.biome) ? (Biome)Args.biome : Biome.Meadow;
+            if (Args.Scripted || !RandomBiomes) return Biome.Meadow;
+            return Biomes.Roll(new System.Random(unchecked((int)(Loadout.NowUnix() * 31 + data.worlds.Count * 7919 + (rollCounter++) * 104729 + 5))));
+        }
+
         // The run is opened and saved first (closing the game from here on counts as a death), then the screen fades
         // and the world is built.
         void EnterWorld(int seed)
@@ -347,9 +358,9 @@ namespace MedievalKnight
             worldsOpen = false;
             g.SetInventory(false);                                  // closes PREPARE (saves a changed pack)
             OldWorld ow = data.Find(seed);
-            data.BeginRun(seed);
+            data.BeginRun(seed, false, ow != null ? ow.biome : PickBiome());
             Save();
-            if (team != null) team.StartRunHost(data.runWorld, ow != null ? ow.left : 0);       // tells the others (Enter)
+            if (team != null) team.StartRunHost(data.runWorld, ow != null ? ow.left : 0, data.runBiome);       // tells the others (Enter)
             entering = true;
             enterAt = Time.unscaledTime + 0.5f;
             ui.FadeTo(1f, 0.5f);
@@ -359,13 +370,13 @@ namespace MedievalKnight
 
         // client: the host started a run. Playing: the screen fades and the world is built like the host's (StartWorld);
         // not in the list (not ready, or came in late): stays at the base and waits for the next one.
-        public void OnTeamEnter(bool iPlay, List<int> pids)
+        public void OnTeamEnter(bool iPlay, List<int> pids, Biome biome)
         {
             Debug.Log("LOOP team enter: " + (iPlay ? "playing" : "waiting") + ", " + pids.Count + " player(s)");
             if (!iPlay || entering || State == LoopState.World || State == LoopState.Summary) return;
             worldsOpen = false;
             g.SetInventory(false);
-            data.BeginRun(0, true);                                  // the host's world: none of mine, but the run is open (rc)
+            data.BeginRun(0, true, biome);                           // the host's world: none of mine, but the run is open (rc); its map is the host's
             Save();
             entering = true;
             enterAt = Time.unscaledTime + 0.5f;

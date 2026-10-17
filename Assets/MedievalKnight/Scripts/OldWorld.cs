@@ -24,6 +24,7 @@ namespace MedievalKnight
         public const int GoneForever = 0;
 
         public int seed;                                     // never 0; unique inside one save
+        public Biome biome = Biome.Meadow;                   // the kind of map it is (set when the world is made, never changes; old saves = Meadow)
         public long fellUnix;                                // when the player fell (display only)
         public int left = StartLeft;                         // successful returns left before it crumbles
         public float x, z;                                   // where the first pile was made (a new pile through `pile` starts here)

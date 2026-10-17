@@ -230,6 +230,7 @@ namespace MedievalKnight
         // ---- phase 2: old worlds
         public readonly List<OldWorld> worlds = new List<OldWorld>();
         public int runWorld;                   // the old world the open run is played in (0 = a new world)
+        public Biome runBiome = Biome.Meadow;  // the kind of map the open run is played in (an old world's own; a new world's is picked when it is entered)
         public float runX, runZ;               // where the knight last was in the open run (autosaved)
         public bool runPosValid;
         public bool runCoop;                   // phase 4: the open run is an online run of a client (its world and piles are the host's)
@@ -353,13 +354,15 @@ namespace MedievalKnight
 
         // Entering the world: the run is open from here on.
         // coop: an online run of a client - the world (and its piles) belong to the host, so runWorld stays 0.
-        public void BeginRun(int oldWorldSeed = 0, bool coop = false)
+        public void BeginRun(int oldWorldSeed = 0, bool coop = false, Biome biome = Biome.Meadow)
         {
             EnsureHeld();
             ownedAtStart = OwnedIds();
             inRun = true;
             runCoop = coop;
             runWorld = !coop && Find(oldWorldSeed) != null ? oldWorldSeed : 0;
+            OldWorld known = Find(runWorld);
+            runBiome = known != null ? known.biome : biome;       // an old world keeps its own map
             runPosValid = false;
         }
 
@@ -525,7 +528,7 @@ namespace MedievalKnight
             }
             else if (total > 0)
             {
-                w = new OldWorld { seed = NewSeed(nowUnix), fellUnix = nowUnix, left = OldWorld.StartLeft, x = first.x, z = first.z };
+                w = new OldWorld { seed = NewSeed(nowUnix), fellUnix = nowUnix, left = OldWorld.StartLeft, x = first.x, z = first.z, biome = runBiome };
                 worlds.Add(w);
                 created = w;
                 r.worldNote = WorldNote.Created;
@@ -565,6 +568,7 @@ namespace MedievalKnight
             inRun = false;
             runCoop = false;
             runWorld = 0;
+            runBiome = Biome.Meadow;
             runPosValid = false;
             ownedAtStart = null;
             heldSlot = 0;
@@ -611,6 +615,7 @@ namespace MedievalKnight
             foreach (OldWorld w in worlds)
             {
                 if (w == null || w.seed == 0 || !seen.Add(w.seed)) continue;
+                if (!Biomes.Valid((int)w.biome)) w.biome = Biome.Meadow;     // a biome this build does not know: the meadow
                 if (w.left <= 0) continue;                               // already expired
                 if (w.left > OldWorld.StartLeft) w.left = OldWorld.StartLeft;
                 float lim = Game.ArenaHalf - 4f;
@@ -655,6 +660,8 @@ namespace MedievalKnight
             }
             if (trimmedPile && trimNote.Length == 0) trimNote = "An old world held too many items: the extra ones are gone.";
             if (runWorld != 0 && Find(runWorld) == null) runWorld = 0;
+            if (!Biomes.Valid((int)runBiome)) runBiome = Biome.Meadow;
+            { OldWorld rw = Find(runWorld); if (rw != null) runBiome = rw.biome; }
             if (float.IsNaN(runX) || float.IsNaN(runZ) || float.IsInfinity(runX) || float.IsInfinity(runZ)) runPosValid = false;
         }
     }

@@ -46,6 +46,7 @@ namespace MedievalKnight
 
         public bool runLive;                  // a run is open (somebody is playing in the world)
         public int worldSeed, worldLeft;      // that run's old world (0 = a new world) and its returns left
+        public Biome worldBiome;              // the map of that run (the host decides; a client only follows)
         bool dirty;                           // the roster changed: send Team
         float nextTeamSend;
 
@@ -192,7 +193,7 @@ namespace MedievalKnight
         // ---------------------------------------------------------------- the run
 
         // host: ENTER. The host and every ready player take part; returns their pids. Sends Enter to everybody.
-        public List<int> StartRunHost(int seed, int left)
+        public List<int> StartRunHost(int seed, int left, Biome biome)
         {
             var pids = new List<int>();
             foreach (Member m in roster)
@@ -207,32 +208,35 @@ namespace MedievalKnight
             leavers.Clear();
             worldSeed = seed;
             worldLeft = left;
-            Net.ToAll(TeamNet.Enter(seed, left, pids), null);
+            worldBiome = biome;
+            Net.ToAll(TeamNet.Enter(seed, left, biome, pids), null);
             dirty = true;
             return pids;
         }
 
         // client: the host started a run
-        public void OnEnter(int seed, int left, List<int> pids)
+        public void OnEnter(int seed, int left, Biome biome, List<int> pids)
         {
             runLive = true;
             worldSeed = seed;
             worldLeft = left;
+            worldBiome = biome;
             foreach (Member m in roster)
             {
                 m.inRun = pids.Contains(m.pid);
                 m.status = Stat.Alive;
                 m.downLeft = 0f;
             }
-            run.OnTeamEnter(pids.Contains(Net.LocalPid), pids);
+            run.OnTeamEnter(pids.Contains(Net.LocalPid), pids, biome);
         }
 
         // client: the host's roster
-        public void OnTeam(bool live, int seed, int left, List<Member> list)
+        public void OnTeam(bool live, int seed, int left, Biome biome, List<Member> list)
         {
             runLive = live;
             worldSeed = seed;
             worldLeft = left;
+            worldBiome = biome;
             bool myReady = LocalReady;
             roster.Clear();
             leavers.Clear();
@@ -257,6 +261,7 @@ namespace MedievalKnight
             runLive = false;
             worldSeed = 0;
             worldLeft = 0;
+            worldBiome = Biome.Meadow;
             foreach (Member m in roster)
             {
                 m.inRun = false;
@@ -518,7 +523,7 @@ namespace MedievalKnight
         public void OnPiles(int byPid, List<Pile> list)
         {
             if (Net.IsHost) return;
-            if (view == null) view = new OldWorld { seed = worldSeed, left = worldLeft };
+            if (view == null) view = new OldWorld { seed = worldSeed, left = worldLeft, biome = worldBiome };
             // update in place by id so an open loot window keeps its pile; new ones are added, missing ones go
             var keep = new List<Pile>();
             foreach (Pile np in list)

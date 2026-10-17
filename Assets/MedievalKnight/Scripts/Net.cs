@@ -273,7 +273,7 @@ namespace MedievalKnight
     // Net.Poll (start of Game.Update) and Net.LateTick (Game.LateUpdate).
     public static class Net
     {
-        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 6;     // 6 (knight-rig-slash): Act kinds 0..2 = the three swings (target.x = 1: chained on), 20 = roll, 22 = parry motion (10..13 skills and 30..36 gone), Hit.src 0..2 / 37 / 38, NetFlags bit 32 (charging) gone and never reused; 5 (phase 7): KnightHit ends with attackerNetId + flags (bit 1 = heavy), Hit.src 37 = parry / 38 = clash, EnemyHit flags 8 heavy / 16 parry / 32 clash; 4 (phase 6): Act kinds 30..36 (combo / heavy attacks), Hit.src 30..36, NetFlags bit 32 = charging; 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
+        public const int DefaultPort = 7777, MaxPlayers = 4, Protocol = 7;     // 7 (snow-map-models): Enter / Worlds (per world) / Team carry a biome byte after "left", knight y up to 110 m; 6 (knight-rig-slash): Act kinds 0..2 = the three swings (target.x = 1: chained on), 20 = roll, 22 = parry motion (10..13 skills and 30..36 gone), Hit.src 0..2 / 37 / 38, NetFlags bit 32 (charging) gone and never reused; 5 (phase 7): KnightHit ends with attackerNetId + flags (bit 1 = heavy), Hit.src 37 = parry / 38 = clash, EnemyHit flags 8 heavy / 16 parry / 32 clash; 4 (phase 6): Act kinds 30..36 (combo / heavy attacks), Hit.src 30..36, NetFlags bit 32 = charging; 3 (phase 4): Welcome has a mode, knights carry a revive target + NetFallen, PickupTaken a plus, the team messages (TeamNet.cs)
         public const int Magic = 0x4D4B4E54;                                 // "MKNT"
         public const float SnapshotRate = 15f, StateRate = 20f;              // messages per second
         public const float ConnectTimeout = 6f, HandshakeTimeout = 6f, SilenceTimeout = 10f;
@@ -711,7 +711,7 @@ namespace MedievalKnight
             int level = r.U8(), weapon = r.U8(), plus = r.U8(), revTarget = r.U8();
             if (k == null || !k.remote) return;
             float lim = Game.ArenaHalf + 1f;
-            p.x = Mathf.Clamp(p.x, -lim, lim); p.z = Mathf.Clamp(p.z, -lim, lim); p.y = Mathf.Clamp(p.y, 0f, 6f);
+            p.x = Mathf.Clamp(p.x, -lim, lim); p.z = Mathf.Clamp(p.z, -lim, lim); p.y = Mathf.Clamp(p.y, -2f, 110f);
             k.ApplyNet(time, p, yaw, flags, hp, maxHp, armor, maxArmor, level, weapon, plus, revTarget);
         }
 

@@ -34,3 +34,8 @@
 - ลานกลาง: ตัดคอลลิเดอร์ 45 ชิ้นตามข้อ 5.3 (รายการใน bake_report.txt); ภูมิประเทศลานกลางมีช่องชัน/ห้ามเดิน 1,197 ช่อง (หน้าผาจริงของแมพ ไม่ใช่ obstacle)
 - เทอร์เรนเหนือขอบเหนือของทะเลสาบน้ำแข็งสูงกว่าน้ำแข็งถึง 2.4 ม. ที่ 17% ของพื้นที่ (ธรรมชาติของโมเดล) ไม่ยกทะเลสาบ
 - build ผ่าน, selftest -looponly 211/0
+
+## developer ขั้น 2-3 เสร็จ
+- ขั้น 2 refactor (ebd18e1): Biome/Biomes, MapLayout property + Current, Ground.Y=0, Obstacles.Use(biome); selftest เต็ม 441/0, mptest 80/0
+- ขั้น 3 เซฟ/เครือข่าย: OldWorld.biome, Loadout.runBiome (BeginRun รับ biome, โลกเก่าใช้ biome ตัวเอง), LoopSave bm/rb (เซฟเก่า = Meadow, ค่าแปลก = Meadow), Enter/Worlds/Team +1 ไบต์ biome, Net.Protocol 6 -> 7 (tech.md เขียน 5->6 แต่โค้ดจริงเป็น 6 อยู่แล้วจาก knight-rig-slash), clamp y -2..110, Args -biome, RunLoop.PickBiome (scripted = Meadow เสมอ, RandomBiomes=false จนขั้น 8); เคสใหม่ SelfTestSnow.cs 11 ข้อ
+- ผล: selftest -looponly 222/0, mptest-loop 103/0 (protocol 7)

@@ -13,10 +13,12 @@ namespace MedievalKnight
     //   -mptest <folder>        scripted multi-process test (MpTest.cs), with -role and -expect <clients>
     //   -menutest <folder>      scripted menu test (MpTest.cs)
     //   -arena                  Host / Join play the v1 arena instead of the loop (the v1 mptest suite uses it)
+    //   -biome meadow|snow      the map of every new world of the loop (scripted runs without it are always the meadow)
     public static class Args
     {
         public static string selfTestDir, mpTestDir, menuTestDir, joinHost, name, bind, savePath, role = "", expectText = "";
         public static bool host, single, refusals, loop, arena;
+        public static int biome = -1;                                // -biome meadow|snow: the map of every NEW world (-1 = not given)
         public static int port = Net.DefaultPort, netVersion = Net.Protocol, expect = 1;
         public static float joinDelay;
         static bool parsed;
@@ -38,6 +40,7 @@ namespace MedievalKnight
                     case "-single": single = true; break;
                     case "-arena": arena = true; break;                                 // Host / Join = the v1 arena (the loop is the default online)
                     case "-loop": loop = true; break;                                  // with -single: start the Phase 1 base / world loop
+                    case "-biome": if (next != null) biome = next.ToLowerInvariant() == "snow" ? (int)Biome.Snow : next.ToLowerInvariant() == "meadow" ? (int)Biome.Meadow : -1; break;
                     case "-save": if (next != null) savePath = next; break;             // loop save file (tests use their own)
                     case "-selftest": if (next != null) selfTestDir = next; break;
                     case "-mptest": if (next != null) mpTestDir = next; break;
