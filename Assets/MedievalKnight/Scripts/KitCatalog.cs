@@ -32,7 +32,11 @@ namespace MedievalKnight
             var go = Resources.Load<GameObject>("Kit/KitCatalog");
             var cat = go != null ? go.GetComponent<KitCatalog>() : null;
             if (cat == null || cat.prefabs == null) { Debug.LogWarning("KIT: no catalog in Resources/Kit, using primitive scenery"); return; }
-            foreach (GameObject p in cat.prefabs)
+            var all = new List<GameObject>(cat.prefabs);
+            var snowGo = Resources.Load<GameObject>("Kit/SnowCatalog");             // snow-map-models: the snow_* prefabs (names never clash with the meadow kit)
+            var snowCat = snowGo != null ? snowGo.GetComponent<KitCatalog>() : null;
+            if (snowCat != null && snowCat.prefabs != null) all.AddRange(snowCat.prefabs);
+            foreach (GameObject p in all)
             {
                 if (p == null) continue;
                 var parts = new List<Part>();

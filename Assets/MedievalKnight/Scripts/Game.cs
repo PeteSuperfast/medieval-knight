@@ -199,6 +199,7 @@ namespace MedievalKnight
         {
             if (!InSession) { menu.Show(message); return; }
             if (run != null) { run.Shutdown(); run = null; }
+            SetBiome(Biome.Meadow);
             InSession = false;
             MapOpen = false;
             if (mapUi != null) mapUi.Show(false);
@@ -467,7 +468,7 @@ namespace MedievalKnight
         public static Vector3 SpawnPointFor(int pid)
         {
             float x = pid == 0 ? 0f : (pid % 2 == 1 ? -1.8f : 1.8f) * ((pid + 1) / 2);
-            return KnightSpawn + new Vector3(x, 0f, 0f);
+            return Ground.Snap(KnightSpawn + new Vector3(x, 0f, 0f));
         }
 
         public Knight SpawnKnight(int pid, string name, bool remote)
@@ -569,8 +570,10 @@ namespace MedievalKnight
         {
             Quaternion rot = Quaternion.Euler(camPitch, 0f, 0f);
             cam.transform.rotation = rot;
-            cam.transform.position = camFocus + Vector3.up * 1f + Vector3.forward * 0.6f - rot * Vector3.forward * CamDist * camZoom
+            Vector3 cp = camFocus + Vector3.up * 1f + Vector3.forward * 0.6f - rot * Vector3.forward * CamDist * camZoom
                 + rot * new Vector3(shake.x, shake.y, 0f);
+            if (MapLayout.Current == Biome.Snow) cp.y = Mathf.Max(cp.y, Ground.Y(cp.x, cp.z) + 2f);      // a hill between knight and camera never swallows the view
+            cam.transform.position = cp;
         }
 
         // M opens / closes the map. Only in the world (not at the loop base: PREPARE is there) and not over another panel; it never
@@ -605,17 +608,35 @@ namespace MedievalKnight
             if (knight == null) return Vector3.zero;
             Ray ray = cam.ScreenPointToRay(InputX.MousePos);
             if (Mathf.Abs(ray.direction.y) < 0.0001f) return knight.transform.position + knight.transform.forward;
-            float t = -ray.origin.y / ray.direction.y;
+            float t = (Ground.Y(knight.transform.position) - ray.origin.y) / ray.direction.y;       // the ground plane at the knight's feet (0 on the meadow)
             if (t <= 0f) return knight.transform.position + knight.transform.forward;
             return ray.origin + ray.direction * t;
         }
 
         // ---------------------------------------------------------------- world
 
+        Transform worldRoot, snowRoot;
+
         void BuildWorld()
         {
-            Transform world = Prims.Node(transform, "World", Vector3.zero);
-            WorldBuilder.Build(world);
+            worldRoot = Prims.Node(transform, "World", Vector3.zero);
+            WorldBuilder.Build(worldRoot);
+        }
+
+        // The map the logic and the picture are in right now. The meadow scene is built at boot (the base is always there); the
+        // snow scene is built the first time it is wanted (behind the black screen) and then only switched on and off.
+        // Obstacles / MapLayout / Ground answer for the biome set here.
+        public void SetBiome(Biome b)
+        {
+            if (b == Biome.Snow && snowRoot == null)
+            {
+                snowRoot = Prims.Node(transform, "SnowWorld", Vector3.zero);
+                SnowBuilder.Build(snowRoot);
+            }
+            if (worldRoot != null) worldRoot.gameObject.SetActive(b == Biome.Meadow);
+            if (snowRoot != null) snowRoot.gameObject.SetActive(b == Biome.Snow);
+            MapLayout.Current = b;
+            Obstacles.Use(b);
         }
 
         // ---------------------------------------------------------------- actors
@@ -1506,10 +1527,10 @@ namespace MedievalKnight
         {
             if (!InSession || knight == null) return;
             Net.LateTick();                                       // positions are final for this frame: send them
-            Vector3 target = knight.transform.position; target.y = 0f;
+            Vector3 target = knight.transform.position; target.y = Ground.Y(target.x, target.z);
             if (Coop && run.team != null && run.team.SpectateTarget != null)       // fallen for good: watch a friend
             {
-                target = run.team.SpectateTarget.transform.position; target.y = 0f;
+                target = run.team.SpectateTarget.transform.position; target.y = Ground.Y(target.x, target.z);
             }
             camFocus = Vector3.Lerp(camFocus, target, 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime));
 

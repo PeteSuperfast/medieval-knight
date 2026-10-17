@@ -39,3 +39,8 @@
 - ขั้น 2 refactor (ebd18e1): Biome/Biomes, MapLayout property + Current, Ground.Y=0, Obstacles.Use(biome); selftest เต็ม 441/0, mptest 80/0
 - ขั้น 3 เซฟ/เครือข่าย: OldWorld.biome, Loadout.runBiome (BeginRun รับ biome, โลกเก่าใช้ biome ตัวเอง), LoopSave bm/rb (เซฟเก่า = Meadow, ค่าแปลก = Meadow), Enter/Worlds/Team +1 ไบต์ biome, Net.Protocol 6 -> 7 (tech.md เขียน 5->6 แต่โค้ดจริงเป็น 6 อยู่แล้วจาก knight-rig-slash), clamp y -2..110, Args -biome, RunLoop.PickBiome (scripted = Meadow เสมอ, RandomBiomes=false จนขั้น 8); เคสใหม่ SelfTestSnow.cs 11 ข้อ
 - ผล: selftest -looponly 222/0, mptest-loop 103/0 (protocol 7)
+
+## developer ขั้น 4 เสร็จ (SnowBuilder ภาพ + y-follow)
+- SnowLayout.cs (โหลดข้อมูล/GroundY/BlockAt/โซน), SnowBuilder.cs (1180 ชิ้น -> 892 chunk mesh + 36 renderer ตรง + กังหันหมุน, 165,383 tri, สร้าง 31 ms), Game.SetBiome (สลับ root ทุ่ง/หิมะ + MapLayout.Current + Obstacles.Use), MapLayout ตอบตาม biome (TownSpawn/Lair/Dummy/InTown/ZoneAt/SpawnTier/Walkable/Signs), Ground.Y/Top, Knight y = Ground.Y, กล้องตามความสูง (+กันจมเนิน), AimPoint ใช้ระนาบที่เท้า, Fx วงแหวน/สตรีค/ฝุ่นยกตามพื้น, Kit โหลด SnowCatalog
+- เข้าด้วย -biome snow เท่านั้น (สุ่มยังปิด); ภาพในเกม Docs/snow-map-models/ingame/game/
+- ผล: selftest เต็ม (ทุ่ง) 452/0 (441 เดิม + 11 เคสใหม่), -snowonly 20/0

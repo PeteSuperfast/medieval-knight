@@ -490,7 +490,8 @@ namespace MedievalKnight
         // Died (or left the game mid-run) with no known place: everything carried lies at the town gate.
         public RunResult Die(bool abandoned)
         {
-            return Die(abandoned, MapLayout.TownSpawn.x, MapLayout.TownSpawn.z, NowUnix());
+            UnityEngine.Vector3 home = MapLayout.TownSpawnOf(runBiome);
+            return Die(abandoned, home.x, home.z, NowUnix());
         }
 
         // Died / left the game at (x, z): everything carried is gone from the knight and lies there - in the old world
@@ -619,7 +620,7 @@ namespace MedievalKnight
                 if (w.left <= 0) continue;                               // already expired
                 if (w.left > OldWorld.StartLeft) w.left = OldWorld.StartLeft;
                 float lim = Game.ArenaHalf - 4f;
-                if (float.IsNaN(w.x) || float.IsNaN(w.z) || float.IsInfinity(w.x) || float.IsInfinity(w.z)) { w.x = MapLayout.TownSpawn.x; w.z = MapLayout.TownSpawn.z; }
+                if (float.IsNaN(w.x) || float.IsNaN(w.z) || float.IsInfinity(w.x) || float.IsInfinity(w.z)) { UnityEngine.Vector3 ts = MapLayout.TownSpawnOf(w.biome); w.x = ts.x; w.z = ts.z; }
                 w.x = System.Math.Max(-lim, System.Math.Min(lim, w.x));
                 w.z = System.Math.Max(-lim, System.Math.Min(lim, w.z));
                 // piles: valid items only, every spot inside the map, all of them together at most MaxPile items,

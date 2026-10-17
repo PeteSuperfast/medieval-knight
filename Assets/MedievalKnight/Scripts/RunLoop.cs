@@ -81,14 +81,15 @@ namespace MedievalKnight
             }
             if (LoopSave.LastLoadNote.Length > 0) g.hud.Notice(LoopSave.LastLoadNote, LoopUi.Yellow);
             else if (data.trimNote.Length > 0) g.hud.Notice(data.trimNote, LoopUi.Yellow);
-            g.knight.ResetForRun(MapLayout.BasePoint);
+            g.SetBiome(Biome.Meadow); g.knight.ResetForRun(MapLayout.BasePoint);
             ResetWorldMultipliers();
             if (data.inRun)
             {
                 // the game was closed in the middle of a run: that counts as a death (no save-scumming). The loot lies
                 // where the knight last was (autosaved while he walked); no spot saved = at the town gate.
                 // An online run of a client has no world of his own: what he carried is simply gone.
-                float ax = data.runPosValid ? data.runX : MapLayout.TownSpawn.x, az = data.runPosValid ? data.runZ : MapLayout.TownSpawn.z;
+                Vector3 home = MapLayout.TownSpawnOf(data.runBiome);
+                float ax = data.runPosValid ? data.runX : home.x, az = data.runPosValid ? data.runZ : home.z;
                 bool online = data.runCoop;
                 result = online ? data.LoseCarry(true) : data.Die(true, ax, az, Loadout.NowUnix());
                 if (online) g.hud.Notice("An online run was cut short: what you carried is gone", LoopUi.Yellow);
@@ -390,6 +391,7 @@ namespace MedievalKnight
             DropPortal();
             Knight k = g.knight;
             g.ClearWorld();
+            g.SetBiome(data.runBiome);                               // the map of this world (the meadow scene stays for the base)
             k.ResetForRun(Game.SpawnPointFor(Net.LocalPid));         // (pid 0 = the town gate, as always)
             Item held = data.Held;
             k.SetWeapon(held.id, held.plus);
@@ -475,7 +477,7 @@ namespace MedievalKnight
         public void OnDeath()
         {
             if (State == LoopState.World || State == LoopState.Summary) return;
-            g.knight.ResetForRun(MapLayout.BasePoint);
+            g.SetBiome(Biome.Meadow); g.knight.ResetForRun(MapLayout.BasePoint);
             g.knight.SetWeapon(data.Held.id, data.Held.plus);
         }
 
@@ -863,7 +865,7 @@ namespace MedievalKnight
             DropPortal();
             if (team != null) team.RemoveTeammates();                // the knights of the others go with the world
             g.ClearWorld();
-            g.knight.ResetForRun(MapLayout.BasePoint);
+            g.SetBiome(Biome.Meadow); g.knight.ResetForRun(MapLayout.BasePoint);
             data.AutoPack();
             g.knight.SetWeapon(data.Held.id, data.Held.plus);
             Save();

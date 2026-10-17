@@ -66,10 +66,40 @@ namespace MedievalKnight
             Check("snow: Args.biome is not set in the test and MapLayout starts as the meadow", Args.biome == -1 && MapLayout.Current == Biome.Meadow);
         }
 
+        // Teleports the local knight to a point of the snow map (game coordinates) and photographs it.
+        IEnumerator SnowLook(string label, float x, float z)
+        {
+            k.transform.position = new Vector3(x, Ground.Y(x, z), z);
+            g.SnapCamera();
+            yield return W(0.7f);
+            Shot(label);
+            yield return W(0.2f);
+        }
+
         IEnumerator SnowTests()
         {
             SnowDataTests();
             yield return null;
+            Log("---- snow map: the scene and y-follow");
+            Args.biome = (int)Biome.Snow;                                   // a new world of this run is a snow world
+            yield return StartLoopWorld(null);
+            RunLoop run = g.run;
+            Check("snow: a new world entered with -biome snow is the snow map (MapLayout.Current)", run.InWorld && MapLayout.Current == Biome.Snow && run.data.runBiome == Biome.Snow);
+            Check("snow: the snow scene was built behind the black screen: " + SnowBuilder.LastStats, SnowBuilder.LastStats.StartsWith("SNOWWORLD built") && SnowBuilder.LastStats.Contains("0 prefabs missing"));
+            Vector3 sp = MapLayout.TownSpawn;
+            Check("snow: the knight spawns at the village (" + V(sp) + ") standing on the ground (y " + F(k.transform.position.y) + " = " + F(Ground.Y(sp.x, sp.z)) + ")",
+                Mathf.Abs(k.transform.position.x - Game.SpawnPointFor(0).x) < 0.1f && Mathf.Abs(k.transform.position.y - Ground.Y(k.transform.position.x, k.transform.position.z)) < 0.05f && k.transform.position.y > 0f);
+            yield return W(0.4f);
+            Shot("snow_spawn");
+            yield return W(0.4f);
+            float[,] look = { { -95f - 0f, -102f }, { -55f, -50f }, { -5f, 0f }, { 35f, 45f }, { 135f, 81f }, { 150f, 130f } };
+            string[] names = { "snow_bridge", "snow_forest", "snow_valley", "snow_cliff", "snow_lake", "snow_castle" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                yield return SnowLook(names[i], look[i, 0], look[i, 1]);
+                Check("snow: " + names[i] + " y follows the ground (" + F(k.transform.position.y) + " vs " + F(Ground.Y(look[i, 0], look[i, 1])) + ")", Mathf.Abs(k.transform.position.y - Ground.Y(k.transform.position.x, k.transform.position.z)) < 0.2f);
+            }
+            Args.biome = -1;
         }
 #endif
     }

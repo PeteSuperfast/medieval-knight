@@ -230,7 +230,7 @@ namespace MedievalKnight
             swYaw = RestYaw; swPitch = RestPitch; swHand = RestHand;
             invulnUntil = 0f; protectUntil = 0f;
             rollInvulnUntil = 0f; rollMoveEnd = 0f; rollReadyAt = 0f;
-            transform.position = at;
+            transform.position = Ground.Snap(at);
             transform.rotation = Quaternion.identity;
         }
 
@@ -416,7 +416,7 @@ namespace MedievalKnight
             float lim = Game.ArenaHalf - 0.4f;
             p.x = Mathf.Clamp(p.x, -lim, lim);
             p.z = Mathf.Clamp(p.z, -lim, lim);
-            p.y = jumpY;
+            p.y = jumpY + Ground.Y(p.x, p.z);                        // the picture follows the ground (0 on the meadow); fighting stays flat
             transform.position = p;
 
             Pose(dt, (mv.sqrMagnitude > 0.01f || rolling) && !Airborne);
@@ -713,7 +713,7 @@ namespace MedievalKnight
         void RollFx(Vector3 dir)
         {
             float yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
-            Fx.I.Streak(Ground(0.9f), yaw, RollDistance, 0.7f, new Color(0.8f, 0.92f, 1f, 0.85f), 0.25f);
+            Fx.I.Streak(OnGround(0.9f), yaw, RollDistance, 0.7f, new Color(0.8f, 0.92f, 1f, 0.85f), 0.25f);
             Fx.I.Dust(transform.position, 8);
             Sfx.I.Play(Snd.Swing, 0.7f * Volume, 0.75f);
         }
@@ -781,7 +781,7 @@ namespace MedievalKnight
             invulnUntil = 0f;
             Protect(3f);
             Sfx.I.Play(Snd.Ready);
-            Fx.I.Ring(Ground(0.06f), 0.4f, 3.5f, new Color(0.7f, 1f, 0.7f, 0.9f), 0.6f);
+            Fx.I.Ring(OnGround(0.06f), 0.4f, 3.5f, new Color(0.7f, 1f, 0.7f, 0.9f), 0.6f);
             Fx.I.Burst(transform.position + Vector3.up * 1.0f, 18, new Color(0.7f, 1f, 0.75f), 2f, 6f, Vector3.up, 0.8f, 0.7f, 2f, 0.1f);
             Game.I.OnKnightRevived(this);
         }
@@ -1031,7 +1031,7 @@ namespace MedievalKnight
             if (!remote) transform.position += delta;
         }
 
-        Vector3 Ground(float y) { return new Vector3(transform.position.x, y, transform.position.z); }
+        Vector3 OnGround(float y) { return new Vector3(transform.position.x, Ground.Y(transform.position.x, transform.position.z) + y, transform.position.z); }
 
         // ---------------------------------------------------------------- swings
 
@@ -1120,7 +1120,7 @@ namespace MedievalKnight
         void SwingFx(SwingDef d, Vector3 dir)
         {
             float yaw = transform.eulerAngles.y;
-            Vector3 pos = Ground(1.05f);
+            Vector3 pos = OnGround(1.05f);
             Color c = d.fx; c.a = 0.9f;
             if (d.capsule)
             {
@@ -1313,7 +1313,7 @@ namespace MedievalKnight
             invulnUntil = Time.time + 2.5f;
             Dead = false;
             Sfx.I.Play(Snd.Ready);
-            Fx.I.Ring(Ground(0.06f), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
+            Fx.I.Ring(OnGround(0.06f), 0.4f, 3.5f, new Color(0.7f, 0.9f, 1f, 0.9f), 0.6f);
             Fx.I.Burst(transform.position + Vector3.up * 1.0f, 18, new Color(0.8f, 0.92f, 1f), 2f, 6f, Vector3.up, 0.8f, 0.7f, 2f, 0.1f);
         }
     }

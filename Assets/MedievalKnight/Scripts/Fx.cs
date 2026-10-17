@@ -70,7 +70,7 @@ namespace MedievalKnight
         // Dust puff on the ground.
         public void Dust(Vector3 at, int n, float power = 1f)
         {
-            Burst(new Vector3(at.x, 0.12f, at.z), n, new Color(0.78f, 0.72f, 0.56f), 1f * power, 3.2f * power, Vector3.up, 0.85f, 0.4f, 3f, 0.16f);
+            Burst(new Vector3(at.x, Ground.Y(at.x, at.z) + 0.12f, at.z), n, new Color(0.78f, 0.72f, 0.56f), 1f * power, 3.2f * power, Vector3.up, 0.85f, 0.4f, 3f, 0.16f);
         }
 
         Particle NewParticle()
@@ -94,6 +94,7 @@ namespace MedievalKnight
         // Straight streak on the XZ plane starting at pos and running "length" along yaw (thrusts, dashes).
         public void Streak(Vector3 pos, float yaw, float length, float width, Color color, float life)
         {
+            pos.y = Mathf.Max(pos.y, Ground.Top(pos.x, pos.z, length * 0.6f) + 0.05f);
             Spawn(Prims.Lane, Prims.Gradient, pos, yaw, 1f, 1f, color, life, 0f, null);
             Flat f = flats[flats.Count - 1];
             f.baseScale = new Vector3(width, 1f, length);
@@ -115,6 +116,7 @@ namespace MedievalKnight
         void Spawn(Mesh mesh, Texture tex, Vector3 pos, float yaw, float s0, float s1, Color color, float life, float spin, Transform follow)
         {
             Flat f = flatPool.Count > 0 ? flatPool.Pop() : NewFlat();
+            if (MapLayout.Current == Biome.Snow && follow == null) pos.y = Mathf.Max(pos.y, Ground.Top(pos.x, pos.z, Mathf.Max(s0, s1) * 0.9f) + 0.05f);   // flat pictures never sink into a slope
             f.mf.sharedMesh = mesh;
             f.color = color;
             f.alpha = color.a;
@@ -186,9 +188,10 @@ namespace MedievalKnight
                 p.vel.y -= p.gravity * dt;
                 p.vel *= 1f - Mathf.Clamp01(1.5f * dt);
                 Vector3 pos = p.t.position + p.vel * dt;
-                if (pos.y < 0.06f && p.gravity > 0f)   // bounce on the floor
+                float floorY = Ground.Y(pos.x, pos.z) + 0.06f;
+                if (pos.y < floorY && p.gravity > 0f)   // bounce on the floor (the ground of the biome)
                 {
-                    pos.y = 0.06f;
+                    pos.y = floorY;
                     p.vel.y = -p.vel.y * 0.35f;
                     p.vel.x *= 0.6f; p.vel.z *= 0.6f;
                 }

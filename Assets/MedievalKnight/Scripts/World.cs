@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace MedievalKnight
 {
-    public enum Zone { Town, Meadow, AutumnForest, DarkPineForest, Farmland, Lake, Mountain, Lair }
+    // (the Snow* ones belong to the snow map: A meadow, B pine valley, C cliff ascent, D1 low snow, D2 ice lake plateau, D3 castle)
+    public enum Zone { Town, Meadow, AutumnForest, DarkPineForest, Farmland, Lake, Mountain, Lair, SnowMeadow, SnowPine, SnowCliff, SnowField, SnowPlateau, SnowCastle }
 
     // Where everything is on the 380 x 380 m map (X east, Z north, the camera never turns so north is the top of the screen).
     // Plain data + a few queries; the scene itself is made by WorldBuilder from these numbers.
@@ -18,29 +19,36 @@ namespace MedievalKnight
         public static readonly Vector3 MeadowDummyPos = new Vector3(25f, 0f, -140f);
         public static readonly Vector3 MeadowLair = new Vector3(0f, 0f, 150f);
 
-        public static Vector3 TownSpawn { get { return MeadowTownSpawn; } }      // where knights start and come back
+        public static Vector3 TownSpawn { get { return Current == Biome.Snow ? SnowLayout.Spawn : MeadowTownSpawn; } }      // where knights start and come back
         public static readonly Vector3 BasePoint = new Vector3(0f, 0f, 0f);       // Phase 1 loop: the base is the empty central lawn (always the meadow scene)
         public static readonly Vector3 TownCenter = new Vector3(0f, 0f, -145f);
         public static readonly Vector3 Gate = new Vector3(0f, 0f, -100f);
-        public static Vector3 DummyPos { get { return MeadowDummyPos; } }
-        public static Vector3 Lair { get { return MeadowLair; } }
+        public static Vector3 DummyPos { get { return Current == Biome.Snow ? SnowLayout.Dummy : MeadowDummyPos; } }
+        public static Vector3 Lair { get { return Current == Biome.Snow ? SnowLayout.Lair : MeadowLair; } }
         public static readonly Vector3 MenuFocus = new Vector3(0f, 0f, -142f);
         public static readonly Vector3 Crossroads = new Vector3(0f, 0f, -20f);
-        public static float LairRadius { get { return 25f; } }
+        public static float LairRadius { get { return Current == Biome.Snow ? SnowLayout.LairRadius : 25f; } }
         public const float TownMinX = -60f, TownMaxX = 60f, TownMinZ = -190f, TownMaxZ = -100f;
 
+        // The same answers for a biome that is not the current one (saves and old worlds: where is a pile, where do they stand up).
+        public static Vector3 TownSpawnOf(Biome b) { return b == Biome.Snow ? SnowLayout.Spawn : MeadowTownSpawn; }
+        public static bool WalkableIn(Biome b, float x, float z) { return b == Biome.Snow ? SnowLayout.Walkable(x, z) : MeadowWalkable(x, z); }
+
         public struct SignInfo { public Vector3 pos; public string text; }
-        public static readonly List<SignInfo> Signs = new List<SignInfo>();
+        static readonly List<SignInfo> meadowSigns = new List<SignInfo>(), snowSigns = new List<SignInfo>();
+        public static List<SignInfo> Signs { get { return Current == Biome.Snow ? snowSigns : meadowSigns; } }
 
         // The town is a rectangle (not a circle): the safe zone, spawn and revive point.
         public static bool InTown(float x, float z)
         {
+            if (Current == Biome.Snow) return SnowLayout.InTown(x, z);
             return x >= TownMinX && x <= TownMaxX && z >= TownMinZ && z <= TownMaxZ;
         }
 
         // Priority: lair, town, lake, mountain, the other regions, then meadow as the default.
         public static Zone ZoneAt(float x, float z)
         {
+            if (Current == Biome.Snow) return SnowZoneAt(x, z);
             float dx = x - Lair.x, dz = z - Lair.z;
             if (dx * dx + dz * dz <= LairRadius * LairRadius) return Zone.Lair;
             if (InTown(x, z)) return Zone.Town;
@@ -52,6 +60,30 @@ namespace MedievalKnight
             return Zone.Meadow;
         }
 
+        // Snow map: lair circle, village (safe), then water / cliffs / mountains / castle walls from the baked table, then the design's
+        // rectangles (A meadow, B pine valley, C cliff ascent, D1 low snow, D2 plateau, D3 castle); the rest is open snow.
+        static Zone SnowZoneAt(float x, float z)
+        {
+            Vector3 lair = SnowLayout.Lair;
+            float dx = x - lair.x, dz = z - lair.z, r = SnowLayout.LairRadius;
+            if (dx * dx + dz * dz <= r * r) return Zone.Lair;
+            if (SnowLayout.InTown(x, z)) return Zone.Town;
+            int code = SnowLayout.BlockAt(x, z);
+            if (code == 2) return Zone.Lake;
+            if (code != 0) return Zone.Mountain;
+            float tier;
+            switch (SnowLayout.RectZone(x, z, out tier))
+            {
+                case 0: return Zone.SnowMeadow;
+                case 1: return Zone.SnowPine;
+                case 2: return Zone.SnowCliff;
+                case 3: return Zone.SnowField;
+                case 4: return Zone.SnowPlateau;
+                case 5: return Zone.SnowCastle;
+                default: return Zone.SnowField;
+            }
+        }
+
         // Multiplier of the slimes' blue / red chances in a zone; 0 = nothing spawns there.
         public static float SpawnTier(Zone z)
         {
@@ -60,11 +92,20 @@ namespace MedievalKnight
                 case Zone.Meadow: case Zone.Farmland: return 1f;
                 case Zone.AutumnForest: return 1.5f;
                 case Zone.DarkPineForest: case Zone.Lair: return 2f;
+                case Zone.SnowMeadow: return 1f;
+                case Zone.SnowPine: return 1.5f;
+                case Zone.SnowCliff: case Zone.SnowField: case Zone.SnowPlateau: case Zone.SnowCastle: return 2f;
                 default: return 0f;
             }
         }
 
         public static bool Walkable(float x, float z)
+        {
+            if (Current == Biome.Snow) return SnowLayout.Walkable(x, z);
+            return MeadowWalkable(x, z);
+        }
+
+        static bool MeadowWalkable(float x, float z)
         {
             Zone zn = ZoneAt(x, z);
             return zn != Zone.Lake && zn != Zone.Mountain;
@@ -89,6 +130,44 @@ namespace MedievalKnight
         static List<int>[,] cells { get { return cur.cells; } set { cur.cells = value; } }
 
         public static void Use(Biome b) { cur = sets[(int)b]; }
+
+        // ---- test helpers: the set of a biome (not necessarily the one in use)
+        public static int CountOf(Biome b) { return sets[(int)b].items.Count; }
+
+        // A number that depends on every obstacle (kind, position, size, yaw, mask) in order: two builds of the same map must agree.
+        public static int HashOf(Biome b)
+        {
+            unchecked
+            {
+                int h = 17;
+                foreach (Obs o in sets[(int)b].items)
+                {
+                    h = h * 31 + (o.box ? 1 : 0);
+                    h = h * 31 + Mathf.RoundToInt(o.x * 100f);
+                    h = h * 31 + Mathf.RoundToInt(o.z * 100f);
+                    h = h * 31 + Mathf.RoundToInt((o.box ? o.hx : o.r) * 100f);
+                    h = h * 31 + Mathf.RoundToInt(o.hz * 100f);
+                    h = h * 31 + Mathf.RoundToInt(Mathf.Atan2(o.s, o.c) * Mathf.Rad2Deg * 10f);
+                    h = h * 31 + o.mask;
+                }
+                return h;
+            }
+        }
+
+        // How many obstacles of that biome have their centre inside the rectangle (the central lawn rule).
+        public static int CentersIn(Biome b, float minX, float maxX, float minZ, float maxZ)
+        {
+            int n = 0;
+            foreach (Obs o in sets[(int)b].items) if (o.x >= minX && o.x <= maxX && o.z >= minZ && o.z <= maxZ) n++;
+            return n;
+        }
+
+        // True when a circle of this radius at p overlaps something on that layer (the set in use).
+        public static bool Overlaps(Vector3 p, float radius, int layer)
+        {
+            Vector3 q = Push(p, radius, layer);
+            return (q.x - p.x) * (q.x - p.x) + (q.z - p.z) * (q.z - p.z) > 1e-6f;
+        }
 
         public static int Count { get { return items.Count; } }
 

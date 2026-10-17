@@ -9,7 +9,20 @@ namespace MedievalKnight
     {
         public static float Y(float x, float z)
         {
-            return 0f;
+            return MapLayout.Current == Biome.Snow ? SnowLayout.GroundY(x, z) : 0f;
+        }
+
+        // The highest ground within r of a point (flat ground pictures that must not sink into a slope: rings, markers).
+        public static float Top(float x, float z, float r)
+        {
+            float y = Y(x, z);
+            if (MapLayout.Current != Biome.Snow || r <= 0.01f) return y;
+            for (int i = 0; i < 8; i++)
+            {
+                float a = i * Mathf.PI * 0.25f;
+                y = Mathf.Max(y, Y(x + Mathf.Cos(a) * r, z + Mathf.Sin(a) * r));
+            }
+            return y;
         }
 
         public static float Y(Vector3 p) { return Y(p.x, p.z); }
