@@ -33,3 +33,7 @@
 - เหลือ: ขั้น 9 (ค้นหา free model อัศวิน CC0/CC-BY / Mixamo -> รายงานแหล่ง+license+ขนาดให้ test_disk ยืนยันก่อนนำเข้า; สีผู้เล่น 4 สี D2), ขั้น 10 (ภาพเทียบ design, frame time), แก้ CLAUDE.md ของเกม (ยังเขียน protocol 5/คอมโบ/สกิล — ต้องให้พีทสั่ง), zip -> Drive
 - รอ: test_disk เลือกลองเล่นก่อน/ให้เริ่มหา free model; พีทสั่งพัก
 - ทำต่อ: "อ่าน Docs\knight-rig-slash\status.md + tech.md ขั้น 9 แล้วทำต่อ" (ห้ามนำเข้า fbx ก่อนผู้ขอยืนยัน license)
+- 2026-10-17: รับ Knight_Showcase.fbx จาก test_disk + ขอผ้าคลุมสีผู้เล่น; คิวรอแมพหิมะจบ แล้วส่ง developer ทำขั้น 9
+- 2026-10-17: test_disk ยืนยันผ้าคลุม + ขอปรับสเกลตัวละคร; รอแมพหิมะจบ
+- 2026-10-17: test_disk ขอ hammer/ไม่เอา demon/แก้ arc slash fade ทยอย; ขอไฟล์ตัวอย่างอีกรอบ
+- 2026-10-17: ได้ไฟล์อ้างอิง effect (ref/); งาน effect arc fade อยู่คิวหลังแมพหิมะ
