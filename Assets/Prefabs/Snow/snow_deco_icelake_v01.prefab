@@ -132,6 +132,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[4]'
       value: 
       objectReference: {fileID: 2100000, guid: e564c0fcf80a46b4191ed5013ff82c20, type: 2}
+    - target: {fileID: -5754084199372789682, guid: fc0ac207bf38b4e40b99d0de5cf47eba, type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 4300000, guid: cd7756a3eff02e446804f1cd32a88e32, type: 2}
     - target: {fileID: 919132149155446097, guid: fc0ac207bf38b4e40b99d0de5cf47eba, type: 3}
       propertyPath: m_Name
       value: snow_deco_icelake_v01

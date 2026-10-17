@@ -1,0 +1,75 @@
+pieces=1180 (layout.json instances=1144, terrain chunks=16)
+height samples 145161 / 145161 (no ground: 0)
+lake collider: ok
+ice lake excess histogram (<=0.02,<=0.1,<=0.3,<=0.6,<=1,>1): 1828,122,99,47,34,68; mean pos of >0.3 m = (329.906,287.698) lake bounds E287-352 N248-292 y 49.72..50.85
+ice lake: 2198 cells, terrain above ice on 370 cells, max excess 2.43 m
+raw blocked: slope>40deg 6091, water 3678, mountain 28803, castle 512
+walkable cells 100294 / 145161
+central lawn: dropped collider Pine_000 (25.7,-30.5)
+central lawn: dropped collider Pine_001 (-14.5,21.4)
+central lawn: dropped collider Pine_002 (-16.7,24.9)
+central lawn: dropped collider Pine_012 (7.0,-18.1)
+central lawn: dropped collider Pine_020 (-11.9,30.5)
+central lawn: dropped collider Pine_029 (-19.7,25.4)
+central lawn: dropped collider Pine_040 (26.8,21.5)
+central lawn: dropped collider Pine_053 (-3.3,-39.6)
+central lawn: dropped collider Pine_058 (0.2,-20.0)
+central lawn: dropped collider Pine_060 (4.6,23.9)
+central lawn: dropped collider Pine_079 (26.4,-8.9)
+central lawn: dropped collider Pine_094 (7.6,-27.6)
+central lawn: dropped collider Pine_097 (-5.4,-41.8)
+central lawn: dropped collider Pine_099 (16.0,-37.7)
+central lawn: dropped collider Pine_103 (-4.5,-23.8)
+central lawn: dropped collider Pine_105 (27.1,14.6)
+central lawn: dropped collider Pine_109 (12.1,-6.0)
+central lawn: dropped collider Pine_113 (-0.3,-8.8)
+central lawn: dropped collider Pine_115 (14.1,-41.8)
+central lawn: dropped collider Pine_118 (15.0,-29.5)
+central lawn: dropped collider Pine_119 (8.8,-39.3)
+central lawn: dropped collider Pine_121 (16.8,3.0)
+central lawn: dropped collider Pine_128 (12.8,-17.9)
+central lawn: dropped collider Pine_133 (1.7,-24.9)
+central lawn: dropped collider Pine_141 (14.2,3.4)
+central lawn: dropped collider Pine_160 (17.5,5.3)
+central lawn: dropped collider Pine_163 (27.3,10.2)
+central lawn: dropped collider Pine_175 (-13.8,-37.0)
+central lawn: dropped collider Pine_Hill_001 (-5.4,-34.1)
+central lawn: dropped collider Pine_Hill_036 (-26.9,28.4)
+central lawn: dropped collider Road_Rock_31 (-17.3,-11.2)
+central lawn: dropped collider Road_Rock_32 (-16.9,-9.2)
+central lawn: dropped collider Road_Rock_33 (-7.5,-7.6)
+central lawn: dropped collider Road_Rock_34 (-10.7,0.8)
+central lawn: dropped collider Road_Rock_35 (-2.1,-2.5)
+central lawn: dropped collider Road_Rock_36 (0.4,-2.0)
+central lawn: dropped collider Road_Rock_38 (-0.7,12.5)
+central lawn: dropped collider Road_Rock_39 (-0.5,13.5)
+central lawn: dropped collider Rock_031 (12.0,-33.6)
+central lawn: dropped collider CliffPillar_15 (-11.5,2.5)
+obstacles from pieces: circles 643, boxes 42, dropped in central lawn 45
+central lawn blocked terrain cells: 1197
+walkable regions: 45, main region 94447 cells
+spawn clearance >= 4.5 m
+spawn (E,N)=(25,25) game=(-165,-165) y=0.30 clearance 4.8
+waypoint 0 (25,25) walkable, main region yes, nearest reachable 0.0 m
+waypoint 1 (55,50) walkable, main region yes, nearest reachable 0.0 m
+waypoint 2 (75,72) walkable, main region yes, nearest reachable 0.0 m
+waypoint 3 (95,88) walkable, main region yes, nearest reachable 0.0 m
+waypoint 4 (112,115) walkable, main region yes, nearest reachable 0.0 m
+waypoint 5 (135,140) walkable, main region yes, nearest reachable 0.0 m
+waypoint 6 (160,165) walkable, main region yes, nearest reachable 0.0 m
+waypoint 7 (185,190) walkable, main region yes, nearest reachable 0.0 m
+waypoint 8 (205,215) walkable, main region yes, nearest reachable 0.0 m
+waypoint 9 (225,235) walkable, main region yes, nearest reachable 0.0 m
+waypoint 10 (250,245) walkable, main region yes, nearest reachable 0.0 m
+waypoint 11 (275,235) walkable, main region yes, nearest reachable 0.0 m
+waypoint 12 (295,255) walkable, main region yes, nearest reachable 0.0 m
+waypoint 13 (315,300) walkable, main region yes, nearest reachable 0.0 m
+waypoint 14 (330,320) walkable, main region yes, nearest reachable 0.0 m
+waypoint 15 (340,335) walkable, main region no, nearest reachable 11.7 m
+bridge S1 link: waypoint 2 comp 1, waypoint 4 comp 1 (same main region = bridge connects)
+lair centre (E,N)=(325,271) game=(135,81) y=50.41 clearance 21.7 m (need >= 20; design target 22)
+blocked-terrain boxes: 1657 (from 1657 rectangles)
+TOTAL obstacles 2342 (limit 8000)
+files: layout 332 KB, height 283 KB, block 141 KB
+lakeLift=0 m
+elapsed 693 ms

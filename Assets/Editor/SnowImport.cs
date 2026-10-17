@@ -83,6 +83,30 @@ public static class SnowImport
 
     public static Vector3 ToUnityScale(float[] s) { return new Vector3(s[0], s[2], s[1]); }
 
+    public class Placed { public string proto, name; public Vector3 pos, scale; public Quaternion rot; public bool world; }
+
+    // every piece of the map in "Blender world" Unity coordinates (E, Z, N): terrain chunks, placed instances (layout.json order),
+    // then the files that already hold their own world coordinates (water, paths, drifts, lane, plaza, chains, mist, clouds)
+    public static List<Placed> AllPlaced()
+    {
+        var lay = LoadLayout();
+        var l = new List<Placed>();
+        foreach (var c in lay.terrain_chunks)
+            l.Add(new Placed { proto = c.fbx, name = c.id, pos = ToUnityPos(c.pivot_world), rot = Quaternion.identity, scale = Vector3.one });
+        foreach (var i in lay.instances)
+            l.Add(new Placed { proto = i.fbx, name = i.name, pos = ToUnityPos(i.pos), rot = ToUnityRot(i.rot_deg), scale = ToUnityScale(i.scale) });
+        var used = new HashSet<string>();
+        foreach (var p in l) used.Add(p.proto);
+        foreach (string n in FbxNames())
+        {
+            if (used.Contains(n)) continue;
+            if (n.StartsWith("snow_terrain_drifts") || n.StartsWith("snow_water") || n.StartsWith("snow_path") || n.StartsWith("snow_village")
+                || n.StartsWith("snow_deco_chains") || n.StartsWith("snow_scene"))
+                l.Add(new Placed { proto = n, name = n, pos = Vector3.zero, rot = Quaternion.identity, scale = Vector3.one, world = true });
+        }
+        return l;
+    }
+
     // ------------------------------------------------------------------ entry points
 
     public static void RunStep0()
@@ -254,7 +278,7 @@ public static class SnowImport
         for (int i = 0; i < m.subMeshCount && i < src.Length; i++)
         {
             string key = Key(src[i] != null ? src[i].name : "none");
-            if (TwoSided.Contains(key) || (key == "plaster" && (prefabName.Contains("stall") || prefabName.Contains("sails") || prefabName.Contains("banner")))) { need[i] = true; any = true; }
+            if (prefabName.Contains("icelake") || TwoSided.Contains(key) || (key == "plaster" && (prefabName.Contains("stall") || prefabName.Contains("sails") || prefabName.Contains("banner")))) { need[i] = true; any = true; }
         }
         if (!any) return;
         var verts = new List<Vector3>(m.vertices);
